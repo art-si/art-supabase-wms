@@ -3,6 +3,8 @@
     kind="inbound"
     view-permission="WmsReceiptInbound:View"
     action-permission="WmsReceiptInbound:Confirm"
+    scope-permission="WmsReceiptInbound:AssignScope"
+    serial-permission="WmsReceiptInbound:CaptureSN"
   />
 </template>
 

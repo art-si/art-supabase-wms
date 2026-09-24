@@ -1,100 +1,99 @@
 <template>
-  <div class="wms-workbench business-workspace-page">
+  <div class="business-workspace-page art-full-height min-w-0 space-y-4">
     <BusinessWorkspaceHeader
       eyebrow="WAREHOUSE OPERATIONS"
       title="仓储运营工作台"
-      density="compact"
-      description="围绕收货、上架、库存、拣选与发运建立统一作业视图，按实施路线逐步启用仓储业务。"
+      description="统一处理收料、库存、项目供货与 SN 追溯，沿着 SCM 到 MES 的业务链路查看仓内实绩。"
       icon="ri:store-3-line"
+      density="compact"
       :tags="[
-        { label: '仓内执行', type: 'primary' },
-        { label: 'MDM 协同', type: 'success' },
-        { label: '建设准备中', type: 'info' }
+        { label: '单一库存底座', type: 'primary' },
+        { label: '项目施工号', type: 'success' },
+        { label: '批次 · 垛包 · SN', type: 'info' }
       ]"
       :metrics="metrics"
+      refreshable
+      :refresh-loading="loading"
+      @refresh="loadStats"
     />
+    <ElAlert v-if="loadError" type="warning" :closable="false" show-icon>
+      仓储概览加载失败，业务页面仍可使用。
+      <ElButton link type="primary" @click="loadStats">重新加载</ElButton>
+    </ElAlert>
 
-    <div class="wms-workbench__content">
-      <ArtSectionCard
-        class="wms-workbench__flow-card"
-        title="仓内作业链路"
-        subtitle="以一条可追踪链路组织入库、库存和出库作业，后续启用后将在这里呈现实时节点状态。"
-        preserve-content-structure
-      >
-        <template #actions><ElTag type="success" effect="plain" round>边界已定义</ElTag></template>
-        <ol class="operation-flow" aria-label="仓内作业流程">
-          <li v-for="(stage, index) in operationStages" :key="stage.title">
-            <span class="operation-flow__index">{{ String(index + 1).padStart(2, '0') }}</span>
-            <span class="operation-flow__icon"><ArtSvgIcon :icon="stage.icon" /></span>
-            <div
-              ><strong>{{ stage.title }}</strong
-              ><small>{{ stage.description }}</small></div
+    <div class="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.8fr)]">
+      <ArtSectionCard title="仓内作业" subtitle="根据当前任务进入收料、库存、追溯或项目复盘。">
+        <div class="grid gap-3 sm:grid-cols-2">
+          <RouterLink
+            v-for="entry in visibleEntries"
+            :key="entry.path"
+            :to="entry.path"
+            class="group flex min-w-0 items-start gap-3 rounded-xl border border-[var(--el-border-color-light)] bg-[var(--el-fill-color-lighter)] p-4 transition-[border-color,background-color,transform] duration-200 hover:-translate-y-0.5 hover:border-[var(--el-color-primary-light-5)] hover:bg-[var(--el-color-primary-light-9)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--el-color-primary)]"
+          >
+            <span
+              class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[var(--el-color-primary-light-9)] text-[var(--el-color-primary)]"
+              aria-hidden="true"
             >
+              <ArtSvgIcon :icon="entry.icon" />
+            </span>
+            <span class="min-w-0 flex-1">
+              <strong class="block text-sm">{{ entry.title }}</strong>
+              <small class="mt-1 block text-xs leading-5 text-[var(--el-text-color-secondary)]">
+                {{ entry.description }}
+              </small>
+            </span>
+            <ArtSvgIcon
+              icon="ri:arrow-right-up-line"
+              class="shrink-0 text-[var(--el-text-color-placeholder)] group-hover:text-[var(--el-color-primary)]"
+              aria-hidden="true"
+            />
+          </RouterLink>
+        </div>
+      </ArtSectionCard>
+      <ArtSectionCard title="跨域作业链路" subtitle="已有单据和主数据在 WMS 汇入同一库存台账。">
+        <ol class="space-y-4">
+          <li v-for="(stage, index) in stages" :key="stage.title" class="flex min-w-0 gap-3">
+            <span
+              class="flex size-8 shrink-0 items-center justify-center rounded-full bg-[var(--el-color-primary-light-9)] text-xs font-semibold text-[var(--el-color-primary)]"
+            >
+              {{ String(index + 1).padStart(2, '0') }}
+            </span>
+            <div class="min-w-0 border-b border-[var(--el-border-color-light)] pb-4 last:border-0">
+              <strong class="block text-sm">{{ stage.title }}</strong>
+              <p class="mt-1 text-xs leading-5 text-[var(--el-text-color-secondary)]">
+                {{ stage.description }}
+              </p>
+            </div>
           </li>
         </ol>
-        <div class="ownership-band">
-          <div
-            ><span class="ownership-band__label">MDM 提供</span
-            ><strong>仓库 · 库位 · 物料统一身份</strong></div
-          >
-          <ArtSvgIcon icon="ri:arrow-right-line" />
-          <div
-            ><span class="ownership-band__label is-wms">WMS 负责</span
-            ><strong>库存余额 · 收发存流水 · 作业状态</strong></div
-          >
-        </div>
-      </ArtSectionCard>
-
-      <ArtSectionCard
-        class="wms-workbench__readiness-card"
-        title="上线准备"
-        subtitle="当前接入状态与下一步建设重点。"
-        preserve-content-structure
-      >
-        <ul class="readiness-list">
-          <li v-for="item in readinessItems" :key="item.label">
-            <span class="readiness-list__icon"><ArtSvgIcon icon="ri:check-line" /></span>
-            <div
-              ><strong>{{ item.label }}</strong
-              ><small>{{ item.description }}</small></div
-            >
-            <ElTag size="small" type="success" effect="light" round>已完成</ElTag>
-          </li>
-        </ul>
-        <div class="next-step">
-          <span><ArtSvgIcon icon="ri:flag-line" /></span>
-          <div
-            ><small>下一步建设重点</small><strong>建立仓库、库区与库位模型</strong
-            ><p>先完成仓网基础与库存台账，再接收入库和出库作业。</p></div
-          >
-        </div>
-      </ArtSectionCard>
-
-      <ArtSectionCard
-        class="wms-workbench__roadmap-card"
-        title="能力实施路线"
-        subtitle="按数据基础、核心执行、运营优化三个阶段推进，减少跨域返工。"
-        preserve-content-structure
-      >
-        <div class="roadmap-grid">
-          <article v-for="(phase, index) in roadmap" :key="phase.title">
-            <div class="roadmap-grid__heading"
-              ><span>{{ index + 1 }}</span
-              ><div
-                ><small>{{ phase.code }}</small
-                ><strong>{{ phase.title }}</strong></div
-              ></div
-            >
-            <p>{{ phase.description }}</p>
-            <div class="roadmap-grid__tags"
-              ><ElTag v-for="item in phase.items" :key="item" size="small" effect="plain">{{
-                item
-              }}</ElTag></div
-            >
-          </article>
-        </div>
       </ArtSectionCard>
     </div>
+
+    <ArtSectionCard
+      title="一套底座，适配三类业务"
+      subtitle="仓库、库位、批次、单据和权限共享；项目、板材与 SN 维度按业务启用。"
+    >
+      <div class="grid gap-3 lg:grid-cols-3">
+        <article
+          v-for="scenario in scenarios"
+          :key="scenario.title"
+          class="min-w-0 rounded-xl border border-[var(--el-border-color-light)] p-4"
+        >
+          <div class="flex items-center gap-2">
+            <ArtSvgIcon :icon="scenario.icon" class="text-xl text-[var(--el-color-primary)]" />
+            <strong>{{ scenario.title }}</strong>
+          </div>
+          <p class="mt-2 text-sm leading-6 text-[var(--el-text-color-secondary)]">
+            {{ scenario.description }}
+          </p>
+          <div class="mt-3 flex flex-wrap gap-1.5">
+            <ElTag v-for="tag in scenario.tags" :key="tag" size="small" effect="plain" round>
+              {{ tag }}
+            </ElTag>
+          </div>
+        </article>
+      </div>
+    </ArtSectionCard>
   </div>
 </template>
 
@@ -104,402 +103,155 @@
   } from '@/components/business/business-workspace-header/index.vue'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
+  import { useAuth } from '@/hooks/core/useAuth'
+  import { useTenantScopeStore } from '@/store/modules/tenantScope'
+  import { fetchWmsWorkbenchStats, type WmsWorkbenchStats } from '@wms/api'
 
   defineOptions({ name: 'WmsWorkbench' })
-
-  const metrics: BusinessWorkspaceMetric[] = [
+  const { hasAuth } = useAuth()
+  const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
+  const stats = shallowRef<WmsWorkbenchStats>()
+  const loading = ref(false)
+  const loadError = ref(false)
+  let requestId = 0
+  const metrics = computed<BusinessWorkspaceMetric[]>(() => [
     {
-      label: '应用运行时',
-      value: '已接入',
-      description: '仓储应用入口已就绪',
-      icon: 'ri:links-line',
-      tone: 'success'
+      label: '在库批次',
+      value: stats.value?.stockBatchCount ?? '—',
+      description: '当前范围有库存的批次',
+      icon: 'ri:archive-stack-line',
+      tone: 'primary',
+      loading: loading.value
     },
     {
-      label: '菜单与权限',
-      value: '已注册',
-      description: '按角色授权访问',
-      icon: 'ri:shield-keyhole-line',
-      tone: 'success'
+      label: '序列号',
+      value: stats.value?.serialCount ?? '—',
+      description: '主机与关键件身份记录',
+      icon: 'ri:qr-scan-2-line',
+      tone: 'success',
+      loading: loading.value
     },
     {
-      label: '主数据协同',
-      value: '待配置',
-      description: '仓库、库位与物料',
-      icon: 'ri:database-2-line',
-      tone: 'warning'
+      label: '有效预留',
+      value: stats.value?.activeReservationCount ?? '—',
+      description: '工单已锁定的库存',
+      icon: 'ri:lock-2-line',
+      tone: 'warning',
+      loading: loading.value
     },
     {
-      label: '业务作业',
-      value: '待启用',
-      description: '业务接入后查看实绩',
-      icon: 'ri:play-circle-line',
-      tone: 'info'
+      label: '待确认收料',
+      value: stats.value?.draftInboundCount ?? '—',
+      description: 'SCM 下推的收料入库草稿',
+      icon: 'ri:inbox-archive-line',
+      tone: 'info',
+      loading: loading.value
+    }
+  ])
+  const entries = [
+    {
+      title: '收料入库',
+      description: '核对收料通知并确认采购入库。',
+      icon: 'ri:inbox-archive-line',
+      path: '/wms/receipt-inbound',
+      permission: 'WmsReceiptInbound:View'
+    },
+    {
+      title: '即时库存',
+      description: '查批次、垛包、库位及项目占用。',
+      icon: 'ri:archive-stack-line',
+      path: '/wms/stock',
+      permission: 'WmsStock:View'
+    },
+    {
+      title: '库存作业',
+      description: '办理入库、出库、工单领料及直接调拨。',
+      icon: 'ri:swap-box-line',
+      path: '/wms/stock-operation',
+      permission: 'WmsStockOperation:View'
+    },
+    {
+      title: '分步调拨',
+      description: '异地仓库调出、在途跟踪和入库确认。',
+      icon: 'ri:truck-line',
+      path: '/wms/transfer',
+      permission: 'WmsTransfer:View'
+    },
+    {
+      title: '项目施工号',
+      description: '维护标段和交付范围的库存归属。',
+      icon: 'ri:building-2-line',
+      path: '/wms/project-section',
+      permission: 'WmsProjectSection:View'
+    },
+    {
+      title: '序列号追溯',
+      description: '查看主机与关键件 SN 父子关系。',
+      icon: 'ri:qr-scan-2-line',
+      path: '/wms/serial-trace',
+      permission: 'WmsSerialTrace:View'
+    },
+    {
+      title: '库存流水',
+      description: '追溯收、发、调拨与项目变更。',
+      icon: 'ri:file-list-3-line',
+      path: '/wms/inventory-ledger',
+      permission: 'WmsInventoryLedger:View'
+    },
+    {
+      title: '项目仓储复盘',
+      description: '按施工号查看库存、工单与供货。',
+      icon: 'ri:bar-chart-box-line',
+      path: '/wms/project-report',
+      permission: 'WmsProjectReport:View'
+    }
+  ]
+  const visibleEntries = computed(() => entries.filter((entry) => hasAuth(entry.permission)))
+  const stages = [
+    {
+      title: 'SCM 采购与收料',
+      description: '采购明细下推收料入库草稿；施工号随单据进入库存批次。'
+    },
+    {
+      title: 'MES 工单与发料',
+      description: '项目工单下达时按批次预留原料，领料只能消耗允许的项目库存。'
+    },
+    { title: 'WMS 收发存与追溯', description: '成品垛包、主子件 SN、调拨和出库统一写入库存流水。' }
+  ]
+  const scenarios = [
+    {
+      title: '板材加工',
+      icon: 'ri:layout-grid-line',
+      description: '长宽厚、面积、工单动态参数与垛包同批次保存。',
+      tags: ['聚氨酯板', '岩棉板', '排包']
+    },
+    {
+      title: '装配制造',
+      icon: 'ri:settings-3-line',
+      description: '关键焊接件与主机一物一码，追溯父子 SN 和项目归属。',
+      tags: ['关键件 SN', '主机 SN', '装配']
+    },
+    {
+      title: '工程项目供货',
+      icon: 'ri:building-line',
+      description: '项目与施工号隔离预留、出入库和供货，保留完整变更历史。',
+      tags: ['施工号', '项目调拨', '项目复盘']
     }
   ]
 
-  const operationStages = [
-    { title: '预约', description: '到货计划', icon: 'ri:calendar-check-line' },
-    { title: '收货', description: '数量交接', icon: 'ri:inbox-archive-line' },
-    { title: '上架', description: '推荐库位', icon: 'ri:stack-line' },
-    { title: '拣选', description: '任务执行', icon: 'ri:hand-coin-line' },
-    { title: '复核', description: '差异控制', icon: 'ri:checkbox-multiple-line' },
-    { title: '发运', description: '装车交接', icon: 'ri:truck-line' }
-  ]
-
-  const readinessItems = [
-    { label: '应用入口', description: '仓储工作台已接入平台' },
-    { label: '统一工作空间', description: '共享登录、主题与导航' },
-    { label: '访问权限', description: '菜单与角色授权已登记' }
-  ]
-
-  const roadmap = [
-    {
-      code: 'FOUNDATION',
-      title: '数据基础',
-      description: '先建立稳定的仓网模型与库存身份，成为所有作业的共同坐标。',
-      items: ['仓库网络', '库存台账', '批次序列']
-    },
-    {
-      code: 'EXECUTION',
-      title: '核心执行',
-      description: '打通入库、库内与出库闭环，让每个任务可分派、可追踪。',
-      items: ['入库作业', '库内作业', '出库作业']
-    },
-    {
-      code: 'OPTIMIZATION',
-      title: '运营优化',
-      description: '基于真实流水形成库存健康、周转效率和作业绩效指标。',
-      items: ['库存预警', '效率分析', '策略优化']
+  async function loadStats(): Promise<void> {
+    const id = ++requestId
+    loading.value = true
+    loadError.value = false
+    try {
+      const value = await fetchWmsWorkbenchStats(effectiveTenantId.value || undefined)
+      if (id === requestId) stats.value = value
+    } catch {
+      if (id === requestId) loadError.value = true
+    } finally {
+      if (id === requestId) loading.value = false
     }
-  ]
+  }
+  watch(effectiveTenantId, () => void loadStats())
+  onMounted(() => void loadStats())
 </script>
-
-<style scoped lang="scss">
-  .wms-workbench {
-    &__content {
-      display: grid;
-      flex: 0 0 auto;
-      grid-template-columns: minmax(0, 1.8fr) minmax(300px, 0.8fr);
-      gap: 16px;
-      align-content: start;
-      min-height: 0;
-    }
-
-    &__flow-card,
-    &__readiness-card,
-    &__roadmap-card {
-      padding: 18px;
-    }
-
-    &__roadmap-card {
-      grid-column: 1 / -1;
-    }
-  }
-
-  .operation-flow {
-    display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-    padding: 22px 8px 20px;
-    margin: 0;
-    list-style: none;
-
-    li {
-      position: relative;
-      display: grid;
-      justify-items: center;
-      min-width: 0;
-      text-align: center;
-
-      &:not(:last-child)::after {
-        position: absolute;
-        top: 25px;
-        left: calc(50% + 27px);
-        width: calc(100% - 54px);
-        height: 1px;
-        content: '';
-        background: var(--el-border-color);
-      }
-    }
-
-    &__index {
-      position: absolute;
-      top: -13px;
-      font-size: 9px;
-      font-weight: 700;
-      color: var(--el-text-color-placeholder);
-      letter-spacing: 0.08em;
-    }
-
-    &__icon {
-      z-index: 1;
-      display: grid;
-      place-items: center;
-      width: 50px;
-      height: 50px;
-      margin-bottom: 10px;
-      font-size: 21px;
-      color: var(--el-color-primary);
-      background: color-mix(in srgb, var(--theme-color) 10%, var(--el-bg-color));
-      border: 1px solid color-mix(in srgb, var(--theme-color) 25%, var(--el-border-color-lighter));
-      border-radius: 14px;
-    }
-
-    strong,
-    small {
-      display: block;
-    }
-
-    strong {
-      font-size: 13px;
-      color: var(--el-text-color-primary);
-    }
-
-    small {
-      margin-top: 3px;
-      font-size: 11px;
-      color: var(--el-text-color-secondary);
-    }
-  }
-
-  .ownership-band {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-    gap: 16px;
-    align-items: center;
-    padding: 14px 18px;
-    background: var(--el-fill-color-lighter);
-    border: 1px solid var(--el-border-color-lighter);
-    border-radius: var(--el-border-radius-base);
-
-    div {
-      display: grid;
-      gap: 4px;
-    }
-
-    > svg {
-      color: var(--el-text-color-placeholder);
-    }
-
-    &__label {
-      width: fit-content;
-      padding: 2px 7px;
-      font-size: 10px;
-      font-weight: 700;
-      color: var(--el-color-success-dark-2);
-      background: var(--el-color-success-light-9);
-      border-radius: 99px;
-    }
-
-    &__label.is-wms {
-      color: var(--el-color-primary);
-      background: color-mix(in srgb, var(--theme-color) 10%, var(--el-bg-color));
-    }
-
-    strong {
-      font-size: 12px;
-      line-height: 1.5;
-    }
-  }
-
-  .readiness-list {
-    display: grid;
-    gap: 2px;
-    padding: 0;
-    margin: 0;
-    list-style: none;
-
-    li {
-      display: grid;
-      grid-template-columns: auto minmax(0, 1fr) auto;
-      gap: 10px;
-      align-items: center;
-      padding: 10px 0;
-    }
-
-    li + li {
-      border-top: 1px solid var(--el-border-color-lighter);
-    }
-
-    li > div {
-      min-width: 0;
-      overflow-wrap: anywhere;
-    }
-
-    :deep(.el-tag) {
-      justify-self: end;
-      min-width: 60px;
-      white-space: nowrap;
-    }
-
-    &__icon {
-      display: grid;
-      place-items: center;
-      width: 28px;
-      height: 28px;
-      color: var(--el-color-success);
-      background: var(--el-color-success-light-9);
-      border-radius: 8px;
-    }
-
-    strong,
-    small {
-      display: block;
-    }
-
-    strong {
-      font-size: 13px;
-    }
-
-    small {
-      margin-top: 2px;
-      font-size: 11px;
-      color: var(--el-text-color-secondary);
-    }
-  }
-
-  .next-step {
-    display: flex;
-    gap: 12px;
-    padding: 14px;
-    margin-top: 12px;
-    background: color-mix(in srgb, var(--el-color-warning) 8%, var(--el-bg-color));
-    border: 1px solid var(--el-color-warning-light-7);
-    border-radius: var(--el-border-radius-base);
-
-    > span {
-      display: grid;
-      flex: 0 0 34px;
-      place-items: center;
-      width: 34px;
-      height: 34px;
-      color: var(--el-color-warning-dark-2);
-      background: var(--el-color-warning-light-9);
-      border-radius: 9px;
-    }
-
-    small,
-    strong {
-      display: block;
-    }
-
-    small {
-      font-size: 9px;
-      font-weight: 700;
-      color: var(--el-color-warning-dark-2);
-      letter-spacing: 0.1em;
-    }
-
-    strong {
-      margin-top: 3px;
-      font-size: 13px;
-    }
-
-    p {
-      margin: 4px 0 0;
-      font-size: 11px;
-      line-height: 1.55;
-      color: var(--el-text-color-secondary);
-    }
-  }
-
-  .roadmap-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    overflow: hidden;
-    border: 1px solid var(--el-border-color-lighter);
-    border-radius: var(--el-border-radius-base);
-
-    article {
-      min-width: 0;
-      padding: 16px 18px;
-    }
-
-    article + article {
-      border-left: 1px solid var(--el-border-color-lighter);
-    }
-
-    article p {
-      min-height: 38px;
-      margin: 10px 0 12px;
-      font-size: 12px;
-      line-height: 1.6;
-      color: var(--el-text-color-secondary);
-    }
-
-    &__heading {
-      display: flex;
-      gap: 10px;
-      align-items: center;
-    }
-
-    &__heading > span {
-      display: grid;
-      place-items: center;
-      width: 32px;
-      height: 32px;
-      font-size: 12px;
-      font-weight: 700;
-      color: var(--el-color-primary);
-      background: color-mix(in srgb, var(--theme-color) 10%, var(--el-bg-color));
-      border-radius: 9px;
-    }
-
-    &__heading small,
-    &__heading strong {
-      display: block;
-    }
-
-    &__heading small {
-      font-size: 9px;
-      color: var(--el-text-color-placeholder);
-      letter-spacing: 0.08em;
-    }
-
-    &__heading strong {
-      margin-top: 2px;
-      font-size: 14px;
-    }
-
-    &__tags {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-    }
-  }
-
-  @media (width <= 1024px) {
-    .wms-workbench__content {
-      grid-template-columns: 1fr;
-    }
-
-    .wms-workbench__roadmap-card {
-      grid-column: auto;
-    }
-  }
-
-  @media (width <= 720px) {
-    .operation-flow {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 18px 8px;
-    }
-
-    .operation-flow li::after {
-      display: none;
-    }
-
-    .ownership-band,
-    .roadmap-grid {
-      grid-template-columns: 1fr;
-    }
-
-    .ownership-band > svg {
-      transform: rotate(90deg);
-    }
-
-    .roadmap-grid article + article {
-      border-top: 1px solid var(--el-border-color-lighter);
-      border-left: 0;
-    }
-  }
-</style>
