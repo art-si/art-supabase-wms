@@ -1,6 +1,7 @@
 export interface WmsWarehouse {
   id: string
   tenantId: string
+  organizationId: string
   warehouseCode: string
   warehouseName: string
   warehouseType: string
@@ -22,6 +23,7 @@ export interface WmsMaterialOption {
   materialName: string
   specificationModel: string | null
   description: string | null
+  serialManagementEnabled: boolean
 }
 
 export interface WmsWorkOrderOption {
@@ -29,7 +31,17 @@ export interface WmsWorkOrderOption {
   tenantId: string
   workOrderNo: string
   materialId: string | null
+  materialName: string
+  projectId: string | null
   constructionNo: string | null
+  completedQuantity: number
+  warehousedQuantity: number
+}
+
+export interface WmsPackOption {
+  id: string
+  packNo: string
+  items: { pieces: number }[]
 }
 
 export interface WmsProject {
@@ -56,6 +68,7 @@ export interface WmsProjectSection {
 export interface WmsStockBatch {
   id: string
   tenantId: string
+  organizationId: string
   warehouseId: string
   binId: string | null
   materialId: string
@@ -74,6 +87,13 @@ export interface WmsStockBatch {
   lastMovementAt: string
   status: string
   ownerType: string
+  ownerId: string | null
+  productionDate: string | null
+  expiryDate: string | null
+  auxiliaryAttributes: Record<string, unknown>
+  trackingNo: string | null
+  displayUnitId: string | null
+  displayQuantity: number | null
   warehouse?: Pick<WmsWarehouse, 'warehouseCode' | 'warehouseName'> | null
   bin?: { binCode: string; binName: string } | null
   material?: {
@@ -81,6 +101,9 @@ export interface WmsStockBatch {
     materialName: string
     specificationModel: string | null
     serialManagementEnabled: boolean
+    baseUnitId: string | null
+    inventoryUnitId: string | null
+    unitConversions: Array<{ sourceUnitId: string; sourceFactor: number; baseFactor: number }>
   } | null
   workOrder?: { workOrderNo: string } | null
   pack?: { packNo: string } | null
@@ -88,9 +111,13 @@ export interface WmsStockBatch {
 
 export interface WmsStockQuery {
   tenantId?: string
+  organizationId?: string
   warehouseId?: string
+  materialId?: string
   projectId?: string
+  publicOnly?: boolean
   constructionNo?: string
+  batchNo?: string
   keyword?: string
   status?: string
   positiveOnly?: boolean
@@ -101,6 +128,8 @@ export interface WmsStockQuery {
 export interface WmsMovement {
   id: string
   tenantId: string
+  sourceOrganizationId: string | null
+  targetOrganizationId: string | null
   movementType: string
   sourceBatchId: string | null
   targetBatchId: string | null
@@ -116,11 +145,34 @@ export interface WmsMovement {
   occurredAt: string
   remark: string | null
   material?: { materialCode: string; materialName: string } | null
+  salesReturn?: { id: string } | null
+}
+
+export interface WmsDirectTransfer extends WmsMovement {
+  referenceNo: string
+  sourceBatch: {
+    batchNo: string
+    warehouseId: string
+    binId: string | null
+    warehouse: { warehouseCode: string; warehouseName: string } | null
+    bin: { binCode: string; binName: string } | null
+  } | null
+  targetBatch: {
+    batchNo: string
+    warehouseId: string
+    binId: string | null
+    warehouse: { warehouseCode: string; warehouseName: string } | null
+    bin: { binCode: string; binName: string } | null
+  } | null
+  sourceOrganization: { organizationName: string } | null
+  targetOrganization: { organizationName: string } | null
+  serialMovements: Array<{ serialId: string; serial: { serialNo: string } | null }>
 }
 
 export interface WmsSerial {
   id: string
   tenantId: string
+  organizationId: string
   serialNo: string
   workOrderId: string | null
   materialId: string
@@ -192,8 +244,10 @@ export interface WmsStockOperationInput {
   batchNo?: string | null
   batchId?: string | null
   targetWarehouseId?: string | null
+  targetOrganizationId?: string | null
   targetBinId?: string | null
   workOrderId?: string | null
+  packId?: string | null
   projectId?: string | null
   constructionNo?: string | null
   referenceNo?: string | null
@@ -205,11 +259,150 @@ export interface WmsStockOperationInput {
   unitCost?: number | null
   serialNos?: string[]
   serialIds?: string[]
+  shippingNoticeId?: string | null
+  shippingLineId?: string | null
+}
+
+export interface WmsShippingNoticeLine {
+  lineId: string
+  materialId: string
+  materialCode: string
+  materialDescription: string
+  quantity: number
+  outboundQuantity?: number
+}
+
+export interface WmsShippingNotice {
+  id: string
+  tenantId: string
+  documentNo: string
+  projectId: string | null
+  status: string
+  details: { constructionNo?: string | null }
+  lines: WmsShippingNoticeLine[]
+}
+
+export interface WmsSalesReturnAllocation {
+  id: string
+  tenantId: string
+  shippingNoticeId: string
+  shippingLineId: string
+  batchId: string
+  materialId: string
+  quantity: number
+  serialIds: string[]
+  createdAt: string
+  shippingNotice: {
+    documentNo: string
+    projectId: string | null
+    details: Record<string, unknown>
+  } | null
+  batch: {
+    batchNo: string
+    projectId: string | null
+    constructionNo: string | null
+    material: {
+      materialCode: string
+      materialName: string
+      serialManagementEnabled: boolean
+    } | null
+  } | null
+  returns: Array<{ quantity: number; serialIds: string[] }>
+}
+
+export interface WmsSalesReturnSerial {
+  id: string
+  serialNo: string
+  status: string
+  projectId: string | null
+  constructionNo: string | null
+}
+
+export interface WmsSalesReturnInput {
+  outboundAllocationId: string
+  warehouseId: string
+  binId?: string | null
+  quantity: number
+  referenceNo: string
+  serialIds: string[]
+  remark?: string | null
+}
+
+export type WmsIssueRequestStatus =
+  'submitted' | 'approved' | 'partially_issued' | 'fulfilled' | 'rejected' | 'cancelled'
+
+export interface WmsIssueRequest {
+  id: string
+  tenantId: string
+  documentNo: string
+  warehouseId: string
+  organizationId: string
+  workOrderId: string
+  projectId: string | null
+  constructionNo: string | null
+  status: WmsIssueRequestStatus
+  remark: string | null
+  createdBy: string
+  createdAt: string
+  approvedAt: string | null
+  closedAt: string | null
+  warehouse?: Pick<WmsWarehouse, 'warehouseCode' | 'warehouseName'> | null
+  workOrder?: { workOrderNo: string } | null
+}
+
+export interface WmsIssueRequestAllocation {
+  id: string
+  requestId: string
+  requestLineId: string
+  movementId: string
+  batchId: string
+  quantity: number
+  serialIds: string[]
+  createdAt: string
+  batch?: Pick<WmsStockBatch, 'batchNo'> | null
+  movement?: Pick<WmsMovement, 'referenceNo' | 'occurredAt'> | null
+}
+
+export interface WmsIssueRequestLine {
+  id: string
+  requestId: string
+  materialId: string
+  requestedQuantity: number
+  issuedQuantity: number
+  material?: Pick<
+    WmsMaterialOption,
+    'materialCode' | 'materialName' | 'serialManagementEnabled'
+  > | null
+  allocations?: WmsIssueRequestAllocation[]
+}
+
+export interface WmsIssueReservationLine {
+  materialId: string
+  reservedQuantity: number
+  material?: Pick<WmsMaterialOption, 'materialCode' | 'materialName'> | null
+}
+
+export interface WmsIssueRequestInput {
+  warehouseId: string
+  workOrderId: string
+  documentNo?: string | null
+  remark?: string | null
+  lines: Array<{ materialId: string; quantity: number }>
+}
+
+export interface WmsIssuePostInput {
+  lineId: string
+  batchId: string
+  quantity: number
+  serialIds: string[]
+  remark?: string | null
 }
 
 export interface WmsTransferDocument {
   id: string
   tenantId: string
+  sourceOrganizationId: string
+  targetOrganizationId: string
   documentNo: string
   sourceBatchId: string
   sourceWarehouseId: string
@@ -231,15 +424,210 @@ export interface WmsTransferDocument {
   material?: { materialCode: string; materialName: string } | null
   sourceWarehouse?: Pick<WmsWarehouse, 'warehouseCode' | 'warehouseName'> | null
   targetWarehouse?: Pick<WmsWarehouse, 'warehouseCode' | 'warehouseName' | 'enableLocations'> | null
+  sourceOrganization?: { organizationName: string } | null
+  targetOrganization?: { organizationName: string } | null
 }
 
 export interface WmsTransferInput {
   documentNo: string
   sourceBatchId: string
   targetWarehouseId: string
+  targetOrganizationId: string
   quantity: number
   serialIds: string[]
   remark: string | null
+}
+
+export interface WmsCountPlan {
+  id: string
+  tenantId: string
+  documentNo: string
+  warehouseId: string
+  scopeProjectId: string | null
+  scopeConstructionNo: string | null
+  status: 'counting' | 'posted' | 'cancelled'
+  snapshotAt: string
+  postedAt: string | null
+  remark: string | null
+  createdAt: string
+  warehouse?: Pick<WmsWarehouse, 'warehouseCode' | 'warehouseName'> | null
+}
+
+export interface WmsCountLine {
+  id: string
+  tenantId: string
+  planId: string
+  batchId: string
+  materialId: string
+  projectId: string | null
+  constructionNo: string | null
+  expectedQuantity: number
+  expectedAreaSqm: number | null
+  expectedSerialIds: string[]
+  countedQuantity: number | null
+  countedSerialIds: string[]
+  newSerialNos: string[]
+  lossMovementId: string | null
+  gainMovementId: string | null
+  countedAt: string | null
+  batch?: Pick<WmsStockBatch, 'batchNo' | 'warehouseId' | 'binId' | 'packId'> | null
+  material?: {
+    materialCode: string
+    materialName: string
+    serialManagementEnabled: boolean
+  } | null
+}
+
+export interface WmsCountPlanInput {
+  documentNo: string
+  warehouseId: string
+  projectId: string | null
+  constructionNo: string | null
+  remark: string | null
+}
+
+export interface WmsCountLineInput {
+  lineId: string
+  countedQuantity: number
+  countedSerialIds: string[]
+  newSerialNos: string[]
+}
+
+export type WmsAdjustmentType =
+  | 'bin_move'
+  | 'material_convert'
+  | 'batch_convert'
+  | 'status_convert'
+  | 'unit_convert'
+  | 'attribute_convert'
+
+export interface WmsAdjustmentDocument {
+  id: string
+  tenantId: string
+  documentNo: string
+  adjustmentType: WmsAdjustmentType
+  sourceBatchId: string
+  targetBatchId: string
+  sourceMaterialId: string
+  targetMaterialId: string
+  sourceQuantity: number
+  targetQuantity: number
+  projectId: string | null
+  constructionNo: string | null
+  sourceMovementId: string
+  targetMovementId: string
+  remark: string | null
+  createdAt: string
+  sourceBatch?:
+    | (Pick<
+        WmsStockBatch,
+        | 'batchNo'
+        | 'warehouseId'
+        | 'binId'
+        | 'status'
+        | 'productionDate'
+        | 'expiryDate'
+        | 'trackingNo'
+      > & { bin?: Pick<WmsBin, 'binCode' | 'binName'> | null })
+    | null
+  targetBatch?:
+    | (Pick<
+        WmsStockBatch,
+        | 'batchNo'
+        | 'warehouseId'
+        | 'binId'
+        | 'status'
+        | 'displayQuantity'
+        | 'productionDate'
+        | 'expiryDate'
+        | 'trackingNo'
+      > & {
+        bin?: Pick<WmsBin, 'binCode' | 'binName'> | null
+        displayUnit?: { unitCode: string; unitName: string } | null
+      })
+    | null
+  sourceMaterial?: { materialCode: string; materialName: string } | null
+  targetMaterial?: { materialCode: string; materialName: string } | null
+}
+
+export interface WmsAdjustmentInput {
+  documentNo: string
+  adjustmentType: WmsAdjustmentType
+  sourceBatchId: string
+  quantity: number
+  targetQuantity?: number
+  targetMaterialId?: string
+  targetBinId?: string
+  targetBatchNo?: string
+  targetStatus?: string
+  targetDisplayUnitId?: string
+  productionDate?: string | null
+  expiryDate?: string | null
+  auxiliaryAttributes?: Record<string, unknown>
+  trackingNo?: string | null
+  serialIds: string[]
+  remark: string | null
+}
+
+export interface WmsAssemblyComponent {
+  id: string
+  assemblyId: string
+  sourceBatchId: string
+  materialId: string
+  quantity: number
+  areaSqm: number | null
+  unitCost: number | null
+  movementId: string
+  sourceBatch?: { batchNo: string; bin?: Pick<WmsBin, 'binCode' | 'binName'> | null } | null
+  material?: { materialCode: string; materialName: string } | null
+}
+
+export interface WmsAssemblyDocument {
+  id: string
+  tenantId: string
+  documentNo: string
+  warehouseId: string
+  organizationId: string
+  projectId: string | null
+  constructionNo: string | null
+  targetMaterialId: string
+  targetBatchId: string
+  targetQuantity: number
+  targetAreaSqm: number | null
+  totalCost: number | null
+  remark: string | null
+  createdAt: string
+  warehouse?: Pick<WmsWarehouse, 'warehouseCode' | 'warehouseName'> | null
+  targetMaterial?: { materialCode: string; materialName: string } | null
+  targetBatch?: {
+    batchNo: string
+    lengthMm: number | null
+    widthMm: number | null
+    thicknessMm: number | null
+    bin?: Pick<WmsBin, 'binCode' | 'binName'> | null
+  } | null
+  components?: WmsAssemblyComponent[]
+}
+
+export interface WmsAssemblyInput {
+  documentNo?: string | null
+  targetMaterialId: string
+  targetBinId?: string | null
+  targetBatchNo?: string | null
+  targetQuantity: number
+  targetAreaSqm?: number | null
+  lengthMm?: number | null
+  widthMm?: number | null
+  thicknessMm?: number | null
+  remark?: string | null
+  components: Array<{ batchId: string; quantity: number }>
+}
+
+export interface WmsUnitOption {
+  id: string
+  tenantId: string
+  unitCode: string
+  unitName: string
 }
 
 export interface WmsSectionInput {
@@ -281,6 +669,8 @@ export interface WmsProjectSummary {
   wipQuantity: number
   issuedQuantity: number
   shippedQuantity: number
+  returnedQuantity: number
+  netShippedQuantity: number
   serialCount: number
   movementCount: number
 }

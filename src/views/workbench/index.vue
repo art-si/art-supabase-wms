@@ -153,56 +153,91 @@
       title: '收料入库',
       description: '核对收料通知并确认采购入库。',
       icon: 'ri:inbox-archive-line',
-      path: '/wms/receipt-inbound',
+      path: '/wms/receipt-issue/receipt-inbound',
       permission: 'WmsReceiptInbound:View'
     },
     {
       title: '即时库存',
       description: '查批次、垛包、库位及项目占用。',
       icon: 'ri:archive-stack-line',
-      path: '/wms/stock',
+      path: '/wms/inventory-trace/stock',
       permission: 'WmsStock:View'
     },
     {
       title: '库存作业',
-      description: '办理入库、出库、工单领料及直接调拨。',
+      description: '办理扫码入库、出库、工单领料及直接调拨。',
       icon: 'ri:swap-box-line',
-      path: '/wms/stock-operation',
+      path: '/wms/receipt-issue/stock-operation',
       permission: 'WmsStockOperation:View'
+    },
+    {
+      title: '销售退货入库',
+      description: '按原发货记录办理板材或 SN 主机退货。',
+      icon: 'ri:arrow-go-back-line',
+      path: '/wms/receipt-issue/sales-return',
+      permission: 'WmsSalesReturn:View'
+    },
+    {
+      title: '直接调拨',
+      description: '同仓库存组织与库位一步变更，追溯直接调拨单。',
+      icon: 'ri:swap-box-line',
+      path: '/wms/transfer-adjustment/direct-transfer',
+      permission: 'WmsDirectTransfer:View'
     },
     {
       title: '分步调拨',
       description: '异地仓库调出、在途跟踪和入库确认。',
       icon: 'ri:truck-line',
-      path: '/wms/transfer',
+      path: '/wms/transfer-adjustment/transfer',
       permission: 'WmsTransfer:View'
+    },
+    {
+      title: '库存盘点',
+      description: '按仓库、项目和施工号盘点批次与 SN。',
+      icon: 'ri:survey-line',
+      path: '/wms/transfer-adjustment/count',
+      permission: 'WmsCount:View'
+    },
+    {
+      title: '库存调整',
+      description: '办理仓位、物料、批次、状态、单位与属性转换。',
+      icon: 'ri:exchange-box-line',
+      path: '/wms/transfer-adjustment/adjustment',
+      permission: 'WmsAdjustment:View'
+    },
+    {
+      title: '库存组装',
+      description: '多批次组件领用与成品批次入库追溯。',
+      icon: 'ri:apps-2-add-line',
+      path: '/wms/transfer-adjustment/assembly',
+      permission: 'WmsAssembly:View'
     },
     {
       title: '项目施工号',
       description: '维护标段和交付范围的库存归属。',
       icon: 'ri:building-2-line',
-      path: '/wms/project-section',
+      path: '/wms/project-warehouse/project-section',
       permission: 'WmsProjectSection:View'
     },
     {
       title: '序列号追溯',
       description: '查看主机与关键件 SN 父子关系。',
       icon: 'ri:qr-scan-2-line',
-      path: '/wms/serial-trace',
+      path: '/wms/inventory-trace/serial-trace',
       permission: 'WmsSerialTrace:View'
     },
     {
       title: '库存流水',
       description: '追溯收、发、调拨与项目变更。',
       icon: 'ri:file-list-3-line',
-      path: '/wms/inventory-ledger',
+      path: '/wms/inventory-trace/inventory-ledger',
       permission: 'WmsInventoryLedger:View'
     },
     {
       title: '项目仓储复盘',
       description: '按施工号查看库存、工单与供货。',
       icon: 'ri:bar-chart-box-line',
-      path: '/wms/project-report',
+      path: '/wms/project-warehouse/project-report',
       permission: 'WmsProjectReport:View'
     }
   ]
