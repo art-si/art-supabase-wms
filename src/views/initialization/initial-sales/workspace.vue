@@ -3,13 +3,13 @@
     <div class="business-workspace-page art-full-height min-w-0">
       <BusinessWorkspaceHeader
         class="wms-initialization-header"
-        eyebrow="OPENING SALES DOCUMENT"
+        :eyebrow="isInitial ? 'OPENING SALES DOCUMENT' : 'SALES INVENTORY DOCUMENT'"
         :title="title"
         :description="description"
         :icon="isReturn ? 'ri:arrow-go-back-line' : 'ri:logout-box-r-line'"
         density="compact"
         :tags="[
-          { label: '初始化单据', type: 'primary' },
+          { label: isInitial ? '初始化单据' : '出库业务', type: 'primary' },
           { label: '税价联动', type: 'success' },
           { label: '物料与项目', type: 'info' }
         ]"
@@ -28,11 +28,12 @@
         :table-props="{
           rowKey: 'lineId',
           tableLayout: 'fixed',
-          rowClassName: isReturn ? 'initial-sales-return-row' : undefined,
+          cellClassName: salesCellClassName,
           emptyText: `当前范围暂无${title}`,
           emptyDescription: '新建单据并选择物料，填写数量、价格与仓储信息。'
         }"
         focusable
+        @selection-change="onSelectionChange"
       />
       <InitialSalesDrawer
         ref="drawerRef"
@@ -40,6 +41,33 @@
         :import-permission="permission.Import"
         @success="refresh"
       />
+      <InitialSalesDrawer
+        v-if="kind === 'other_outbound'"
+        ref="otherReturnDrawerRef"
+        kind="other_return"
+        :import-permission="permission.Import"
+        @success="refresh"
+      />
+      <ArtDialog ref="sourceDialogRef" size="sm" :show-footer="false">
+        <ArtEntitySummary
+          icon="ri:file-search-line"
+          eyebrow="SOURCE DOCUMENT"
+          title="选择来源单据"
+          description="选择业务来源后建立其他出库草稿，并在明细中保留来源单据与源行号。"
+        />
+        <div class="mt-5 grid gap-3">
+          <ElSelect v-model="sourceDocumentType" class="w-full" placeholder="选择来源业务">
+            <ElOption label="出库申请单" value="outbound_request" />
+            <ElOption label="销售签收单" value="sales_receipt" />
+            <ElOption label="项目任务" value="project_task" />
+            <ElOption label="返利结算单" value="rebate_settlement" />
+            <ElOption label="营销费用申请单" value="marketing_expense" />
+          </ElSelect>
+          <ElButton type="primary" :disabled="!sourceDocumentType" @click="createFromSource">
+            建立出库草稿
+          </ElButton>
+        </div>
+      </ArtDialog>
       <ArtDialog ref="pushDialogRef" size="sm" :show-footer="false">
         <ArtEntitySummary
           icon="ri:file-transfer-line"
@@ -95,14 +123,30 @@
   void userStore.ensureDictLoaded('wmsInitialStockCondition')
   const tableRef = ref<ArtTableQueryExpose>()
   const drawerRef = ref<InstanceType<typeof InitialSalesDrawer>>()
+  const otherReturnDrawerRef = ref<InstanceType<typeof InitialSalesDrawer>>()
   const pushDialogRef = ref<ArtDialogExpose>()
+  const sourceDialogRef = ref<ArtDialogExpose>()
+  const sourceDocumentType = ref('')
   const workingId = ref<string>()
-  const isReturn = computed(() => props.kind === 'initial_return')
-  const title = computed(() => (isReturn.value ? '期初销售退货单' : '期初销售出库单'))
+  const selectedRows = ref<WmsInitialSalesListRow[]>([])
+  const returnKinds: WmsInitialSalesKind[] = ['initial_return', 'return', 'other_return']
+  const isReturn = computed(() => returnKinds.includes(props.kind))
+  const isInitial = computed(() => props.kind.startsWith('initial_'))
+  const title = computed(
+    () =>
+      ({
+        initial_outbound: '期初销售出库单',
+        initial_return: '期初销售退货单',
+        outbound: '销售出库单',
+        return: '销售退货单',
+        other_outbound: '其他出库单',
+        other_return: '其他出库退回单'
+      })[props.kind]
+  )
   const description = computed(() =>
     isReturn.value
-      ? '登记库存初始化前的销售退货。退货数量以负数呈现，税价和折扣随数量同步计算。'
-      : '登记库存初始化前的销售出库。支持客户、项目与物料组合筛选，以及税价联动。'
+      ? `登记${isInitial.value ? '库存初始化前' : '日常'}的销售退货。退货数量以负数呈现，税价和折扣随数量同步计算。`
+      : `登记${isInitial.value ? '库存初始化前' : '日常'}的销售出库。支持客户、项目与物料组合筛选，以及税价联动。`
   )
   const permissionCodes = {
     initial_outbound: {
@@ -128,6 +172,54 @@
       Push: 'WmsInitialSalesReturn:Push',
       Submit: 'WmsInitialSalesReturn:Submit',
       Approve: 'WmsInitialSalesReturn:Approve'
+    },
+    outbound: {
+      View: 'WmsSalesOutbound:View',
+      Add: 'WmsSalesOutbound:Add',
+      Copy: 'WmsSalesOutbound:Copy',
+      Edit: 'WmsSalesOutbound:Edit',
+      Delete: 'WmsSalesOutbound:Delete',
+      Import: 'WmsSalesOutbound:Import',
+      Export: 'WmsSalesOutbound:Export',
+      Push: 'WmsSalesOutbound:Push',
+      Submit: 'WmsSalesOutbound:Submit',
+      Approve: 'WmsSalesOutbound:Approve'
+    },
+    return: {
+      View: 'WmsSalesReturnDocument:View',
+      Add: 'WmsSalesReturnDocument:Add',
+      Copy: 'WmsSalesReturnDocument:Copy',
+      Edit: 'WmsSalesReturnDocument:Edit',
+      Delete: 'WmsSalesReturnDocument:Delete',
+      Import: 'WmsSalesReturnDocument:Import',
+      Export: 'WmsSalesReturnDocument:Export',
+      Push: 'WmsSalesReturnDocument:Push',
+      Submit: 'WmsSalesReturnDocument:Submit',
+      Approve: 'WmsSalesReturnDocument:Approve'
+    },
+    other_outbound: {
+      View: 'WmsOtherOutbound:View',
+      Add: 'WmsOtherOutbound:Add',
+      Copy: 'WmsOtherOutbound:Copy',
+      Edit: 'WmsOtherOutbound:Edit',
+      Delete: 'WmsOtherOutbound:Delete',
+      Import: 'WmsOtherOutbound:Import',
+      Export: 'WmsOtherOutbound:Export',
+      Push: 'WmsOtherOutbound:Push',
+      Submit: 'WmsOtherOutbound:Submit',
+      Approve: 'WmsOtherOutbound:Approve'
+    },
+    other_return: {
+      View: 'WmsOtherOutbound:View',
+      Add: 'WmsOtherOutbound:Add',
+      Copy: 'WmsOtherOutbound:Copy',
+      Edit: 'WmsOtherOutbound:Edit',
+      Delete: 'WmsOtherOutbound:Delete',
+      Import: 'WmsOtherOutbound:Import',
+      Export: 'WmsOtherOutbound:Export',
+      Push: 'WmsOtherOutbound:Push',
+      Submit: 'WmsOtherOutbound:Submit',
+      Approve: 'WmsOtherOutbound:Approve'
     }
   } as const
   const permission = computed(() => permissionCodes[props.kind])
@@ -196,6 +288,39 @@
   async function refresh(): Promise<void> {
     await tableRef.value?.refreshUpdate()
   }
+  function salesCellClassName({
+    row,
+    column
+  }: {
+    row: Record<string, unknown>
+    column: { property?: string }
+  }): string {
+    return column.property === 'quantity' &&
+      returnKinds.includes((row as unknown as WmsInitialSalesListRow).kind)
+      ? 'initial-sales-negative-cell'
+      : ''
+  }
+  function onSelectionChange(rows: Record<string, unknown>[]): void {
+    selectedRows.value = rows as unknown as WmsInitialSalesListRow[]
+  }
+  async function createFromSource(): Promise<void> {
+    if (!sourceDocumentType.value) return
+    await sourceDialogRef.value?.handleClose()
+    await drawerRef.value?.handleOpen({ mode: 'create' })
+  }
+  async function pushOtherReturn(): Promise<void> {
+    const documents = new Map(selectedRows.value.map((row) => [row.documentId, row]))
+    if (documents.size !== 1) {
+      ElMessage.warning('请先勾选一张已审核的其他出库单')
+      return
+    }
+    const source = [...documents.values()][0]
+    if (source.kind !== 'other_outbound' || source.status !== 'approved') {
+      ElMessage.warning('仅支持下推已审核的其他出库单')
+      return
+    }
+    await otherReturnDrawerRef.value?.handleOpen({ mode: 'copy', documentId: source.documentId })
+  }
   async function openDocument(mode: 'view' | 'edit' | 'copy', documentId: string): Promise<void> {
     try {
       await drawerRef.value?.handleOpen({ mode, documentId })
@@ -224,6 +349,21 @@
     }
   }
   const headerActions = computed<ArtTableQueryHeaderAction[]>(() => [
+    ...(props.kind === 'other_outbound'
+      ? [
+          {
+            key: 'select-source',
+            label: '选单',
+            icon: 'ri:link-m',
+            permission: 'WmsOtherOutbound:Select',
+            buttonProps: { type: 'primary' as const, plain: true },
+            onClick: () => {
+              sourceDocumentType.value = ''
+              return sourceDialogRef.value?.handleOpen(undefined, { title: '选择来源单据' })
+            }
+          }
+        ]
+      : []),
     {
       type: 'add',
       label: `新增${title.value}`,
@@ -271,7 +411,10 @@
       icon: 'ri:file-transfer-line',
       permission: permission.value.Push,
       buttonProps: { type: 'info', plain: true },
-      onClick: () => pushDialogRef.value?.handleOpen(undefined, { title: '下推发票' })
+      onClick: () =>
+        props.kind === 'other_outbound'
+          ? pushOtherReturn()
+          : pushDialogRef.value?.handleOpen(undefined, { title: '下推发票' })
     }
   ])
   function statusLabel(value: WmsInitialSalesListRow['status']): string {
@@ -322,6 +465,9 @@
   }
   function columnsFactory(): ColumnOption<WmsInitialSalesListRow>[] {
     return [
+      ...(props.kind === 'other_outbound'
+        ? [{ type: 'selection' as const, width: 48, fixed: 'left' as const }]
+        : []),
       {
         prop: 'documentNo',
         label: '单据编号',
@@ -331,7 +477,7 @@
           <BusinessTableIdentityCell
             primary={row.documentNo}
             secondary={`第 ${row.lineNo} 行 · ${row.customerName}`}
-            icon={isReturn.value ? 'ri:arrow-go-back-line' : 'ri:logout-box-r-line'}
+            icon={returnKinds.includes(row.kind) ? 'ri:arrow-go-back-line' : 'ri:logout-box-r-line'}
           />
         )
       },
@@ -356,7 +502,7 @@
         )
       },
       { prop: 'customerName', label: '客户', minWidth: 170, showOverflowTooltip: true },
-      ...(isReturn.value
+      ...(props.kind !== 'other_outbound' && isReturn.value
         ? ([
             {
               prop: 'returnType',
@@ -380,7 +526,13 @@
         minWidth: 115,
         align: 'right',
         formatter: (row) => (
-          <span class={isReturn.value ? 'initial-sales-negative' : 'font-semibold tabular-nums'}>
+          <span
+            class={
+              returnKinds.includes(row.kind)
+                ? 'initial-sales-negative'
+                : 'font-semibold tabular-nums'
+            }
+          >
             {Number(row.quantity).toFixed(4)}
           </span>
         )
@@ -456,7 +608,7 @@
     }
   }
 
-  :deep(.initial-sales-return-row > td.el-table__cell) {
+  :deep(td.el-table__cell.initial-sales-negative-cell) {
     background-color: var(--el-color-warning-light-9) !important;
   }
 

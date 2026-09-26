@@ -181,7 +181,7 @@
       title: '领料申请',
       description: '按 MES 工单申请物料，审核后分批领料并核销余额。',
       icon: 'ri:file-list-3-line',
-      path: '/wms/receipt-issue/issue-request',
+      path: '/wms/outbound-business/outbound-request',
       permission: 'WmsIssueRequest:View'
     },
     {
@@ -195,35 +195,35 @@
       title: '直接调拨',
       description: '同仓库存组织与库位一步变更，追溯直接调拨单。',
       icon: 'ri:swap-box-line',
-      path: '/wms/transfer-adjustment/direct-transfer',
+      path: '/wms/transfer-business/direct-transfer',
       permission: 'WmsDirectTransfer:View'
     },
     {
       title: '分步调拨',
       description: '异地仓库调出、在途跟踪和入库确认。',
       icon: 'ri:truck-line',
-      path: '/wms/transfer-adjustment/transfer',
+      path: '/wms/transfer-business/step-transfer',
       permission: 'WmsTransfer:View'
     },
     {
       title: '库存盘点',
       description: '按仓库、项目和施工号盘点批次与 SN。',
       icon: 'ri:survey-line',
-      path: '/wms/transfer-adjustment/count',
+      path: '/wms/count-business/count',
       permission: 'WmsCount:View'
     },
     {
       title: '库存调整',
       description: '办理仓位、物料、批次、状态、单位与属性转换。',
       icon: 'ri:exchange-box-line',
-      path: '/wms/transfer-adjustment/adjustment',
+      path: '/wms/adjustment-business/adjustment',
       permission: 'WmsAdjustment:View'
     },
     {
       title: '库存组装',
       description: '多批次组件领用与成品批次入库追溯。',
       icon: 'ri:apps-2-add-line',
-      path: '/wms/transfer-adjustment/assembly',
+      path: '/wms/adjustment-business/assembly',
       permission: 'WmsAssembly:View'
     },
     {

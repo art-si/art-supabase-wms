@@ -18,7 +18,7 @@
         v-model="form"
         :items="items"
         :rules="rules"
-        :span="12"
+        :span="isNarrowScreen ? 24 : 12"
         :gutter="20"
         label-position="top"
         :show-reset="false"
@@ -38,6 +38,7 @@
 <script setup lang="ts">
   import { normalizeNullableText } from '@/utils/form/normalize'
   import { ElMessage } from 'element-plus'
+  import { useMediaQuery } from '@vueuse/core'
   import dayjs from 'dayjs'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
@@ -59,6 +60,7 @@
   const context = shallowRef<Context>()
   const serials = ref<WmsBatchSerial[]>([])
   const serialLoadError = ref(false)
+  const isNarrowScreen = useMediaQuery('(max-width: 767px)')
   const form = reactive({
     referenceNo: '',
     quantity: 1,
@@ -86,14 +88,14 @@
       key: 'referenceNo',
       label: '项目调拨单号',
       type: 'input',
-      span: 12,
+      span: isNarrowScreen.value ? 24 : 12,
       props: { maxlength: 80, placeholder: '用于幂等校验与审计追溯' }
     },
     {
       key: 'quantity',
       label: '调拨数量',
       type: 'number',
-      span: 12,
+      span: isNarrowScreen.value ? 24 : 12,
       props: {
         min: context.value?.batch.packId ? context.value.batch.quantity : 0.001,
         max: context.value?.batch.quantity ?? 1,
@@ -101,7 +103,7 @@
         class: 'w-full!',
         disabled: Boolean(context.value?.batch.packId)
       },
-      help: context.value?.batch.packId ? '垛包库存必须整包调拨；目标项目需重新排包。' : undefined
+      help: context.value?.batch.packId ? '垛包库存必须整包调拨；目标项目沿用原包号。' : undefined
     },
     {
       key: 'targetProjectId',

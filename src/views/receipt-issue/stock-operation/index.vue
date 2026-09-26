@@ -267,7 +267,7 @@
   } from '@/components/core/forms/art-data-select/types'
   import { useUserStore } from '@/store/modules/user'
   import { useTenantScopeStore } from '@/store/modules/tenantScope'
-  import { fetchGetEnableOrganizationOptionsList } from '@/api/system-manage'
+  import { fetchGetEnableOrganizationTree } from '@/api/system-manage'
   import {
     fetchWmsBatchSerials,
     fetchWmsBins,
@@ -309,9 +309,7 @@
   void userStore.ensureDictLoaded('mdmInventoryMovementType')
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const warehouses = ref<WmsWarehouse[]>([])
-  const organizations = ref<
-    Array<{ id: string; organizationName: string; organizationCode: string }>
-  >([])
+  const organizationTree = ref<Api.SystemManage.OrganizationListItem[]>([])
   const sourceBins = ref<WmsBin[]>([])
   const targetBins = ref<WmsBin[]>([])
   const projects = ref<WmsProject[]>([])
@@ -762,13 +760,18 @@
                 {
                   key: 'targetOrganizationId',
                   label: '目标库存组织',
-                  type: 'select' as const,
-                  options: organizations.value.map((row) => ({
-                    label: `${row.organizationName} · ${row.organizationCode}`,
-                    value: row.id
-                  })),
+                  type: 'treeSelect' as const,
+                  options: organizationTree.value,
+                  valueField: 'id',
+                  labelField: 'organizationName',
+                  childrenField: 'children',
+                  labelFn: (row: Record<string, unknown>) =>
+                    `${String(row.organizationName ?? '')} · ${String(row.organizationCode ?? '')}`,
                   props: {
                     filterable: true,
+                    checkStrictly: true,
+                    defaultExpandAll: true,
+                    renderAfterExpand: false,
                     disabled: !form.targetWarehouseId,
                     placeholder: '选择调入后的物料归属'
                   },
@@ -1134,7 +1137,9 @@
               ? fetchWmsShippingNotices(selectedWarehouse.value?.tenantId || '')
               : [],
             form.movementType === 'transfer'
-              ? fetchGetEnableOrganizationOptionsList(selectedWarehouse.value?.tenantId || '')
+              ? fetchGetEnableOrganizationTree({
+                  tenantId: selectedWarehouse.value?.tenantId || ''
+                })
               : { data: [] }
           ])
         : [[], [], [], { data: [] }]
@@ -1142,17 +1147,7 @@
       targetBins.value = form.movementType === 'transfer' ? binRows : []
       workOrders.value = orderRows
       shippingNotices.value = noticeRows
-      organizations.value = organizationResult.data.flatMap((item) =>
-        item.id
-          ? [
-              {
-                id: item.id,
-                organizationName: item.organizationName,
-                organizationCode: item.organizationCode
-              }
-            ]
-          : []
-      )
+      organizationTree.value = organizationResult.data ?? []
       loadError.value = false
       if (id && form.movementType === 'sales_out' && requestedShippingNoticeId.value) {
         const requestedNotice =
@@ -1196,7 +1191,7 @@
       targetBins.value = []
       workOrders.value = []
       shippingNotices.value = []
-      organizations.value = []
+      organizationTree.value = []
       loadError.value = true
     }
   }

@@ -1,6 +1,7 @@
 import type { WmsInitialMaterial, WmsInitializationOption } from './initialization.types'
 
-export type WmsInitialSalesKind = 'initial_outbound' | 'initial_return'
+export type WmsInitialSalesKind =
+  'initial_outbound' | 'initial_return' | 'outbound' | 'return' | 'other_outbound' | 'other_return'
 export type WmsInitialSalesStatus = 'draft' | 'submitted' | 'approved'
 
 export interface WmsInitialSalesLine {

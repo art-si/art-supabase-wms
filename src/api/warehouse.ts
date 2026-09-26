@@ -13,6 +13,9 @@ import type {
   WmsBinRecommendationInput,
   WmsCountLine,
   WmsCountLineInput,
+  WmsCountAdjustmentInput,
+  WmsCountAdjustmentKind,
+  WmsCountAdjustmentRow,
   WmsCountPlan,
   WmsCountPlanInput,
   WmsCountVarianceDocument,
@@ -50,6 +53,8 @@ import type {
   WmsStockQuery,
   WmsTransferDocument,
   WmsTransferInput,
+  WmsTransferRequestInput,
+  WmsTransferRequestRow,
   WmsUnitOption,
   WmsWarehouse,
   WmsWorkOrderOption,
@@ -133,7 +138,7 @@ export async function fetchWmsMaterialOptions(
   let query = supabase
     .from('mdm_material')
     .select(
-      'id,material_code,material_name,specification_model,description,serial_management_enabled',
+      'id,material_code,material_name,specification_model,description,serial_management_enabled,inventory_unit_id,base_unit_id,auxiliary_unit_id,auxiliary_unit_2_id,unit_conversions',
       { count: 'exact' }
     )
     .eq('tenant_id', tenantId)
@@ -647,19 +652,187 @@ export async function createWmsTransfer(payload: WmsTransferInput): Promise<void
   )
 }
 
+export async function fetchWmsTransferRequestPage(params: WmsStockQuery) {
+  let query = supabase
+    .from('wms_transfer_request_list')
+    .select('*', { count: 'exact' })
+    .order('created_at', { ascending: false })
+    .order('line_no')
+  if (params.tenantId) query = query.eq('tenant_id', params.tenantId)
+  if (params.status) query = query.eq('status', params.status)
+  if (params.documentTypeId) query = query.eq('document_type_id', params.documentTypeId)
+  if (params.applicationDateStart)
+    query = query.gte('application_date', params.applicationDateStart)
+  if (params.applicationDateEnd) query = query.lte('application_date', params.applicationDateEnd)
+  if (params.projectName?.trim())
+    query = query.ilike('project_name', `%${params.projectName.trim()}%`)
+  if (params.materialDescription?.trim())
+    query = query.ilike('material_description', `%${params.materialDescription.trim()}%`)
+  if (params.materialCode?.trim())
+    query = query.ilike('material_code', `%${params.materialCode.trim()}%`)
+  if (params.keyword?.trim()) query = query.ilike('document_no', `%${params.keyword.trim()}%`)
+  const { data, total } = await responseHandle<WmsTransferRequestRow[]>(
+    () => query.range((params.current - 1) * params.size, params.current * params.size - 1),
+    readOptions
+  )
+  return { data: data ?? [], total: total ?? 0 }
+}
+
+export async function fetchWmsTransferRequest(id: string): Promise<WmsTransferRequestRow[]> {
+  const { data } = await responseHandle<WmsTransferRequestRow[]>(
+    () =>
+      supabase.from('wms_transfer_request_list').select('*').eq('document_id', id).order('line_no'),
+    readOptions
+  )
+  return data ?? []
+}
+
+export async function saveWmsTransferRequest(payload: WmsTransferRequestInput): Promise<string> {
+  const { data } = await responseHandle<string>(
+    () => supabase.rpc('wms_save_transfer_request_secure', { p_payload: keysToSnakeDeep(payload) }),
+    { ...writeOptions, showMessage: true, message: '调拨申请已暂存' }
+  )
+  if (!data) throw new Error('调拨申请保存失败')
+  return data
+}
+
+export async function changeWmsTransferRequestStatus(
+  id: string,
+  action: 'submit' | 'approve' | 'delete'
+): Promise<void> {
+  await responseHandle(
+    () =>
+      supabase.rpc('wms_change_transfer_request_status_secure', {
+        p_document_id: id,
+        p_action: action
+      }),
+    {
+      ...writeOptions,
+      showMessage: true,
+      message:
+        action === 'submit'
+          ? '调拨申请已提交'
+          : action === 'approve'
+            ? '调拨申请已审核'
+            : '调拨申请已删除'
+    }
+  )
+}
+
+export async function pushWmsTransferRequest(
+  id: string,
+  mode: 'direct' | 'in_transit'
+): Promise<void> {
+  await responseHandle(
+    () =>
+      supabase.rpc('wms_push_transfer_request_secure', {
+        p_document_id: id,
+        p_mode: mode
+      }),
+    {
+      ...writeOptions,
+      showMessage: true,
+      message: mode === 'direct' ? '已下推直接调拨' : '已下推调出在途'
+    }
+  )
+}
+
+export async function fetchWmsCountAdjustmentPage(
+  kind: WmsCountAdjustmentKind,
+  params: WmsStockQuery
+) {
+  let query = supabase
+    .from('wms_count_adjustment_list')
+    .select('*', { count: 'exact' })
+    .eq('kind', kind)
+    .order('created_at', { ascending: false })
+    .order('line_no')
+  if (params.tenantId) query = query.eq('tenant_id', params.tenantId)
+  if (params.status) query = query.eq('status', params.status)
+  if (params.projectName?.trim())
+    query = query.ilike('project_name', `%${params.projectName.trim()}%`)
+  if (params.materialDescription?.trim())
+    query = query.ilike('material_description', `%${params.materialDescription.trim()}%`)
+  if (params.materialCode?.trim())
+    query = query.ilike('material_code', `%${params.materialCode.trim()}%`)
+  if (params.keyword?.trim()) query = query.ilike('document_no', `%${params.keyword.trim()}%`)
+  const { data, total } = await responseHandle<WmsCountAdjustmentRow[]>(
+    () => query.range((params.current - 1) * params.size, params.current * params.size - 1),
+    readOptions
+  )
+  return { data: data ?? [], total: total ?? 0 }
+}
+
+export async function fetchWmsCountAdjustment(id: string): Promise<WmsCountAdjustmentRow[]> {
+  const { data } = await responseHandle<WmsCountAdjustmentRow[]>(
+    () =>
+      supabase.from('wms_count_adjustment_list').select('*').eq('document_id', id).order('line_no'),
+    readOptions
+  )
+  return data ?? []
+}
+
+export async function saveWmsCountAdjustment(payload: WmsCountAdjustmentInput): Promise<string> {
+  const { data } = await responseHandle<string>(
+    () => supabase.rpc('wms_save_count_adjustment_secure', { p_payload: keysToSnakeDeep(payload) }),
+    {
+      ...writeOptions,
+      showMessage: true,
+      message: payload.kind === 'gain' ? '盘盈单已暂存' : '盘亏单已暂存'
+    }
+  )
+  if (!data) throw new Error('盘点单保存失败')
+  return data
+}
+
+export async function changeWmsCountAdjustmentStatus(
+  id: string,
+  action: 'submit' | 'approve' | 'delete'
+): Promise<void> {
+  await responseHandle(
+    () =>
+      supabase.rpc('wms_change_count_adjustment_status_secure', {
+        p_document_id: id,
+        p_action: action
+      }),
+    {
+      ...writeOptions,
+      showMessage: true,
+      message:
+        action === 'submit'
+          ? '盘点单已提交'
+          : action === 'approve'
+            ? '盘点单已审核'
+            : '盘点单已删除'
+    }
+  )
+}
+
 export async function fetchWmsIssueRequestPage(params: WmsStockQuery) {
   let query = supabase
-    .from('wms_issue_request')
-    .select(
-      '*,warehouse:mdm_warehouse!wms_issue_request_warehouse_fk(warehouse_code,warehouse_name),workOrder:mes_work_order!wms_issue_request_order_fk(work_order_no)',
-      { count: 'exact' }
-    )
+    .from('wms_issue_request_list')
+    .select('*', { count: 'exact' })
     .order('created_at', { ascending: false })
   if (params.tenantId) query = query.eq('tenant_id', params.tenantId)
   if (params.warehouseId) query = query.eq('warehouse_id', params.warehouseId)
   if (params.projectId) query = query.eq('project_id', params.projectId)
   if (params.constructionNo) query = query.eq('construction_no', params.constructionNo)
   if (params.status) query = query.eq('status', params.status)
+  if (params.requestType) query = query.eq('request_type', params.requestType)
+  if (params.documentTypeId) query = query.eq('document_type_id', params.documentTypeId)
+  if (params.applicationDateStart)
+    query = query.gte('application_date', params.applicationDateStart)
+  if (params.applicationDateEnd) query = query.lte('application_date', params.applicationDateEnd)
+  if (params.projectName?.trim())
+    query = query.ilike('project_name', `%${params.projectName.trim()}%`)
+  if (params.materialDescription?.trim())
+    query = query.ilike('material_descriptions', `%${params.materialDescription.trim()}%`)
+  if (params.materialCode?.trim())
+    query = query.ilike('material_codes', `%${params.materialCode.trim()}%`)
+  if (params.applicantKeyword?.trim())
+    query = query.or(
+      `applicant_name.ilike.%${params.applicantKeyword.trim()}%,applicant_code.ilike.%${params.applicantKeyword.trim()}%`
+    )
   if (params.keyword?.trim()) query = query.ilike('document_no', `%${params.keyword.trim()}%`)
   const { data, total } = await responseHandle<WmsIssueRequest[]>(
     () => query.range((params.current - 1) * params.size, params.current * params.size - 1),
@@ -703,7 +876,29 @@ export async function fetchWmsIssueRequestAllocations(
 export async function createWmsIssueRequest(payload: WmsIssueRequestInput): Promise<void> {
   await responseHandle(
     () => supabase.rpc('wms_create_issue_request_secure', { p_payload: keysToSnakeDeep(payload) }),
-    { ...writeOptions, showMessage: true, message: '领料申请已提交' }
+    { ...writeOptions, showMessage: true, message: '出库申请已暂存' }
+  )
+}
+
+export async function submitWmsIssueRequest(id: string): Promise<void> {
+  await responseHandle(
+    () => supabase.rpc('wms_submit_issue_request_secure', { p_request_id: id }),
+    { ...writeOptions, showMessage: true, message: '出库申请已提交' }
+  )
+}
+
+export async function copyWmsIssueRequest(id: string): Promise<void> {
+  await responseHandle(() => supabase.rpc('wms_copy_issue_request_secure', { p_request_id: id }), {
+    ...writeOptions,
+    showMessage: true,
+    message: '出库申请已复制为暂存单'
+  })
+}
+
+export async function deleteWmsIssueRequest(id: string): Promise<void> {
+  await responseHandle(
+    () => supabase.rpc('wms_delete_issue_request_secure', { p_request_id: id }),
+    { ...writeOptions, showMessage: true, message: '出库申请已删除' }
   )
 }
 

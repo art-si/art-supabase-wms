@@ -142,6 +142,7 @@
             :data="lines"
             :columns="lineColumns"
             :pagination="false"
+            :cell-class-name="salesLineCellClassName"
             row-key="lineNo"
             table-layout="fixed"
           >
@@ -379,6 +380,7 @@
     DataSelectFetchParams
   } from '@/components/core/forms/art-data-select/types'
   import type { EmployeeIntegrationItem } from '@/api/integration/employees'
+  import { fetchGetEnableOrganizationTree } from '@/api/system-manage'
   import type { ColumnOption } from '@/types'
   import {
     fetchWmsBins,
@@ -421,6 +423,7 @@
   const currentDocument = shallowRef<WmsInitialSalesDocument | null>(null)
   const optionError = ref(false)
   const organizations = ref<WmsInventoryOrganization[]>([])
+  const organizationTree = ref<Api.SystemManage.OrganizationListItem[]>([])
   const warehouses = ref<WmsWarehouse[]>([])
   const units = ref<WmsUnitOption[]>([])
   const documentTypes = ref<WmsInitializationOption[]>([])
@@ -430,8 +433,36 @@
   const projects = ref<WmsInitializationOption[]>([])
   const bins = ref<WmsBin[]>([])
   const lines = ref<WmsInitialSalesLine[]>([])
-  const permissionPrefix = computed(() =>
-    props.kind === 'initial_return' ? 'WmsInitialSalesReturn' : 'WmsInitialSalesOutbound'
+  const selectableOrganizationTree = computed(() => {
+    const selectableIds = new Set(
+      organizations.value
+        .filter(
+          (item) =>
+            item.enabledOn &&
+            (isInitial.value ? !item.initializationClosedAt : item.initializationClosedAt)
+        )
+        .map((item) => item.id)
+    )
+    const decorate = (
+      nodes: Api.SystemManage.OrganizationListItem[]
+    ): Array<Api.SystemManage.OrganizationListItem & { disabled: boolean }> =>
+      nodes.map((node) => ({
+        ...node,
+        disabled: !node.id || !selectableIds.has(node.id),
+        children: node.children ? decorate(node.children) : undefined
+      }))
+    return decorate(organizationTree.value)
+  })
+  const permissionPrefix = computed(
+    () =>
+      ({
+        initial_outbound: 'WmsInitialSalesOutbound',
+        initial_return: 'WmsInitialSalesReturn',
+        outbound: 'WmsSalesOutbound',
+        return: 'WmsSalesReturnDocument',
+        other_outbound: 'WmsOtherOutbound',
+        other_return: 'WmsOtherOutbound'
+      })[props.kind]
   )
   const viewPermission = computed(() => `${permissionPrefix.value}:View`)
   const lineEditPermission = computed(
@@ -515,13 +546,32 @@
   const returnTypes = computed(() => userStore.getDictMap['wmsInitialSalesReturnType'] ?? [])
   const ownerTypes = computed(() => userStore.getDictMap['mdmBusinessOwnerType'] ?? [])
   const taxRates = [0, 1, 3, 6, 9, 13]
-  const isReturn = computed(() => props.kind === 'initial_return')
-  const title = computed(() => (isReturn.value ? '期初销售退货单' : '期初销售出库单'))
+  const isReturn = computed(() => ['initial_return', 'return', 'other_return'].includes(props.kind))
+  const isInitial = computed(() => props.kind.startsWith('initial_'))
+  const title = computed(
+    () =>
+      ({
+        initial_outbound: '期初销售出库单',
+        initial_return: '期初销售退货单',
+        outbound: '销售出库单',
+        return: '销售退货单',
+        other_outbound: '其他出库单',
+        other_return: '其他出库退回单'
+      })[props.kind]
+  )
   const statusLabel = computed(
     () => ({ draft: '暂存', submitted: '已提交', approved: '已审核' })[form.status]
   )
-  const typeCode = computed(() =>
-    isReturn.value ? 'WMS_INITIAL_SALES_RETURN' : 'WMS_INITIAL_SALES_OUTBOUND'
+  const typeCode = computed(
+    () =>
+      ({
+        initial_outbound: 'WMS_INITIAL_SALES_OUTBOUND',
+        initial_return: 'WMS_INITIAL_SALES_RETURN',
+        outbound: 'WMS_SALES_OUTBOUND',
+        return: 'WMS_SALES_RETURN',
+        other_outbound: 'WMS_OTHER_OUTBOUND',
+        other_return: 'WMS_OTHER_RETURN'
+      })[props.kind]
   )
   const selectedOrganization = computed(() =>
     organizations.value.find((item) => item.id === form.organizationId)
@@ -584,6 +634,9 @@
   const totalAmount = computed(() =>
     lines.value.reduce((sum, item) => sum + lineFinancial(item).total, 0)
   )
+  function salesLineCellClassName({ column }: { column: { property?: string } }): string {
+    return isReturn.value && column.property === 'quantity' ? 'sales-return-quantity-cell' : ''
+  }
   const salesUnitOptions = computed(() =>
     units.value.map((item) => ({ label: `${item.unitName} · ${item.unitCode}`, value: item.id }))
   )
@@ -1008,14 +1061,20 @@
     {
       key: 'organizationId',
       label: '库存组织',
-      type: 'select',
-      options: organizations.value
-        .filter((item) => item.enabledOn && !item.initializationClosedAt)
-        .map((item) => ({
-          label: `${item.organizationName} · ${item.organizationCode}`,
-          value: item.id
-        })),
-      props: { filterable: true, disabled: mode.value === 'view', onChange: onOrganizationChange }
+      type: 'treeSelect',
+      options: selectableOrganizationTree.value,
+      valueField: 'id',
+      labelField: 'organizationName',
+      childrenField: 'children',
+      labelFn: (item) => `${item.organizationName ?? ''} · ${item.organizationCode ?? ''}`,
+      props: {
+        filterable: true,
+        checkStrictly: true,
+        defaultExpandAll: true,
+        renderAfterExpand: false,
+        disabled: mode.value === 'view',
+        onChange: onOrganizationChange
+      }
     },
     {
       key: 'documentTypeId',
@@ -1398,12 +1457,14 @@
   async function onOrganizationChange(): Promise<void> {
     const org = selectedOrganization.value
     form.tenantId = org?.tenantId || ''
-    form.businessDate = org?.enabledOn
-      ? (dayjs().isAfter(org.enabledOn, 'day')
-          ? dayjs(org.enabledOn).subtract(1, 'day')
-          : dayjs()
-        ).format('YYYY-MM-DD')
-      : ''
+    form.businessDate = isInitial.value
+      ? org?.enabledOn
+        ? (dayjs().isAfter(org.enabledOn, 'day')
+            ? dayjs(org.enabledOn).subtract(1, 'day')
+            : dayjs()
+          ).format('YYYY-MM-DD')
+        : ''
+      : dayjs().format('YYYY-MM-DD')
     form.documentTypeId = ''
     form.businessTypeId = ''
     form.customerId = ''
@@ -1417,12 +1478,14 @@
   async function loadOptions(): Promise<void> {
     optionError.value = false
     try {
-      const [orgPage, warehouseRows] = await Promise.all([
+      const [orgPage, warehouseRows, organizationResult] = await Promise.all([
         fetchWmsInventoryOrganizations({ current: 1, size: 2000 }),
-        fetchWmsWarehouses()
+        fetchWmsWarehouses(),
+        fetchGetEnableOrganizationTree({ tenantId: form.tenantId })
       ])
       organizations.value = orgPage.data
       warehouses.value = warehouseRows
+      organizationTree.value = organizationResult.data ?? []
       if (form.tenantId) await loadTenantOptions(form.tenantId)
     } catch {
       optionError.value = true
@@ -1466,8 +1529,9 @@
     try {
       await formRef.value?.validate()
       if (
-        !selectedOrganization.value?.enabledOn ||
-        form.businessDate > selectedOrganization.value.enabledOn
+        isInitial.value &&
+        (!selectedOrganization.value?.enabledOn ||
+          form.businessDate > selectedOrganization.value.enabledOn)
       ) {
         ElMessage.warning('业务日期不得晚于库存组织启用日期')
         return false
@@ -1495,7 +1559,7 @@
         salespersonId: form.salespersonId,
         salesDepartmentId: form.salesDepartmentId,
         keeperId: form.keeperId,
-        isInitialization: true,
+        isInitialization: props.kind === 'return' ? true : isInitial.value,
         remark: normalizeNullableText(form.remark),
         lines: lines.value
       })
@@ -1543,9 +1607,13 @@
         salesDepartmentId: source?.salesDepartmentId || null,
         keeperId: source?.keeperId || null,
         status: data.mode === 'copy' ? 'draft' : source?.status || 'draft',
-        isInitialization: true,
+        isInitialization: props.kind === 'return' ? true : isInitial.value,
         remark: source?.remark || ''
       })
+      if (data.mode === 'copy' && source?.kind !== props.kind) {
+        form.documentTypeId = ''
+        form.businessTypeId = ''
+      }
       lines.value = source ? cloneDeep(source.lines) : []
       selectedCustomer.value = []
       selectedSalesperson.value = []
@@ -1567,11 +1635,12 @@
   }
 
   .sales-return-quantity {
-    padding: 4px 7px;
     font-weight: 800;
     font-variant-numeric: tabular-nums;
     color: var(--el-color-danger);
-    background: var(--el-color-warning-light-9);
-    border-radius: 5px;
+  }
+
+  :deep(td.el-table__cell.sales-return-quantity-cell) {
+    background-color: var(--el-color-warning-light-9) !important;
   }
 </style>

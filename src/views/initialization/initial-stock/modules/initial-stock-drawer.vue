@@ -301,6 +301,7 @@
     DataSelectFetchParams
   } from '@/components/core/forms/art-data-select/types'
   import type { EmployeeIntegrationItem } from '@/api/integration/employees'
+  import { fetchGetEnableOrganizationTree } from '@/api/system-manage'
   import type { ColumnOption } from '@/types'
   import {
     fetchWmsBins,
@@ -334,6 +335,7 @@
   const currentDocument = shallowRef<WmsInitialStockDocument | null>(null)
   const optionError = ref(false)
   const organizations = ref<WmsInventoryOrganization[]>([])
+  const organizationTree = ref<Api.SystemManage.OrganizationListItem[]>([])
   const warehouses = ref<WmsWarehouse[]>([])
   const units = ref<WmsUnitOption[]>([])
   const documentTypes = ref<WmsInitializationOption[]>([])
@@ -343,6 +345,22 @@
   const customers = ref<WmsInitializationOption[]>([])
   const bins = ref<WmsBin[]>([])
   const lines = ref<WmsInitialStockLine[]>([])
+  const selectableOrganizationTree = computed(() => {
+    const selectableIds = new Set(
+      organizations.value
+        .filter((item) => item.enabledOn && !item.initializationClosedAt)
+        .map((item) => item.id)
+    )
+    const decorate = (
+      nodes: Api.SystemManage.OrganizationListItem[]
+    ): Array<Api.SystemManage.OrganizationListItem & { disabled: boolean }> =>
+      nodes.map((node) => ({
+        ...node,
+        disabled: !node.id || !selectableIds.has(node.id),
+        children: node.children ? decorate(node.children) : undefined
+      }))
+    return decorate(organizationTree.value)
+  })
   const lineEditPermission = computed(() =>
     mode.value === 'create'
       ? 'WmsInitialStock:Add'
@@ -755,14 +773,20 @@
     {
       key: 'organizationId',
       label: '库存组织',
-      type: 'select',
-      options: organizations.value
-        .filter((item) => item.enabledOn && !item.initializationClosedAt)
-        .map((item) => ({
-          label: `${item.organizationName} · ${item.organizationCode}`,
-          value: item.id
-        })),
-      props: { filterable: true, disabled: mode.value === 'view', onChange: onOrganizationChange }
+      type: 'treeSelect',
+      options: selectableOrganizationTree.value,
+      valueField: 'id',
+      labelField: 'organizationName',
+      childrenField: 'children',
+      labelFn: (item) => `${item.organizationName ?? ''} · ${item.organizationCode ?? ''}`,
+      props: {
+        filterable: true,
+        checkStrictly: true,
+        defaultExpandAll: true,
+        renderAfterExpand: false,
+        disabled: mode.value === 'view',
+        onChange: onOrganizationChange
+      }
     },
     {
       key: 'documentTypeId',
@@ -1104,12 +1128,14 @@
   async function loadOptions(): Promise<void> {
     optionError.value = false
     try {
-      const [orgPage, warehouseRows] = await Promise.all([
+      const [orgPage, warehouseRows, organizationResult] = await Promise.all([
         fetchWmsInventoryOrganizations({ current: 1, size: 2000 }),
-        fetchWmsWarehouses()
+        fetchWmsWarehouses(),
+        fetchGetEnableOrganizationTree({ tenantId: form.tenantId })
       ])
       organizations.value = orgPage.data
       warehouses.value = warehouseRows
+      organizationTree.value = organizationResult.data ?? []
       if (form.tenantId) await loadTenantOptions(form.tenantId)
     } catch {
       optionError.value = true

@@ -12,14 +12,14 @@ const { supabase, responseHandle, keysToSnakeDeep } = useSupabase()
 const readOptions = {
   breakReturn: true,
   showErrorMessage: false,
-  errorMessage: '期初销售单据加载失败，请重试'
+  errorMessage: '销售单据加载失败，请重试'
 }
 const writeOptions = {
   breakReturn: true,
   showMessage: true,
   showErrorMessage: true,
   requireAffected: false,
-  errorMessage: '期初销售单据操作失败，请检查数据与权限'
+  errorMessage: '销售单据操作失败，请检查数据与权限'
 }
 
 const documentSelect = `*,
@@ -43,9 +43,12 @@ export async function fetchWmsInitialSalesPage(query: {
   let request = supabase
     .from('wms_sales_document_list')
     .select('*', { count: 'exact' })
-    .eq('kind', query.kind)
     .order('created_at', { ascending: false })
     .order('line_no')
+  request =
+    query.kind === 'other_outbound'
+      ? request.in('kind', ['other_outbound', 'other_return'])
+      : request.eq('kind', query.kind)
   if (query.tenantId) request = request.eq('tenant_id', query.tenantId)
   if (query.status) request = request.eq('status', query.status)
   if (query.customer?.trim()) request = request.ilike('customer_name', `%${query.customer.trim()}%`)
@@ -67,7 +70,7 @@ export async function fetchWmsInitialSalesDocument(id: string): Promise<WmsIniti
     () => supabase.from('wms_sales_document').select(documentSelect).eq('id', id).single(),
     readOptions
   )
-  if (!data) throw new Error('期初销售单据不存在或无权查看')
+  if (!data) throw new Error('销售单据不存在或无权查看')
   return data
 }
 
@@ -76,9 +79,9 @@ export async function saveWmsInitialSalesDocument(
 ): Promise<string> {
   const { data } = await responseHandle<string>(
     () => supabase.rpc('wms_save_sales_document_secure', { p_payload: keysToSnakeDeep(payload) }),
-    { ...writeOptions, message: '期初销售单据已暂存' }
+    { ...writeOptions, message: '销售单据已暂存' }
   )
-  if (!data) throw new Error('期初销售单据保存失败')
+  if (!data) throw new Error('销售单据保存失败')
   return data
 }
 

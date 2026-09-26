@@ -1,0 +1,1 @@
+import{Di as e,On as t,_n as n,pr as r}from"./useApi-s_02lHjl-DoQoJyzC.js";import{t as i}from"./wms-purchase-document-workspace-J4nb-g8j.js";import{a}from"./permissions-Sz_iM0GD.js";var o=t({name:`WmsPurchaseReturn`,__name:`index`,setup(t){let o=a;return(t,a)=>(r(),n(i,{kind:`purchase_return`,permissions:e(o)},null,8,[`permissions`]))}});export{o as default};

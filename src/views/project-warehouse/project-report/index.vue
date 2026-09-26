@@ -86,7 +86,7 @@
       <ArtSectionCard
         v-if="selectedProjectId"
         title="项目完工复盘明细"
-        subtitle="六类明细使用同一项目和施工号范围；垛包履历保留已出库记录。"
+        subtitle="六类明细使用同一项目和施工号范围；垛包履历保留跨项目调拨与已出库记录。"
         class="mt-4"
         preserve-content-structure
       >
@@ -478,37 +478,90 @@
     ]
   }
   function packColumns(): ColumnOption<WmsProjectPack>[] {
+    const originCell = (row: WmsProjectPack) => {
+      const project = projects.value.find((item) => item.id === row.originProjectId)
+      const sameProject = row.originProjectId === selectedProjectId.value
+      return (
+        <BusinessTableIdentityCell
+          primary={
+            sameProject
+              ? row.originConstructionNo || '本项目'
+              : row.originProjectId
+                ? project?.projectName || '已归档项目'
+                : '公共生产'
+          }
+          secondary={sameProject ? '本项目生产' : row.originConstructionNo || '无施工号'}
+        />
+      )
+    }
     return [
       {
         prop: 'packNo',
         label: '垛包 / 工单',
-        minWidth: 230,
+        minWidth: 220,
         fixed: 'left',
         formatter: (row) => (
           <BusinessTableIdentityCell
             primary={row.packNo}
             secondary={row.workOrderNo}
             tertiary={
-              row.shippedQuantity > 0
-                ? `已出 ${formatNumberValue(row.shippedQuantity)} 块 · ${formatNumberValue(row.shippedAreaSqm)} ㎡`
-                : `排包 ${formatNumberValue(row.plannedQuantity)} 块 · ${formatNumberValue(row.plannedAreaSqm)} ㎡`
+              row.netShippedQuantity > 0
+                ? `净供 ${formatNumberValue(row.netShippedQuantity)} 块 · ${formatNumberValue(row.netShippedAreaSqm)} ㎡`
+                : row.returnedQuantity > 0
+                  ? `已退回 ${formatNumberValue(row.returnedQuantity)} 块`
+                  : `排包 ${formatNumberValue(row.plannedQuantity)} 块 · ${formatNumberValue(row.plannedAreaSqm)} ㎡`
             }
             icon="ri:stack-line"
           />
         )
       },
-      { prop: 'materialName', label: '产品', minWidth: 180 },
-      { prop: 'constructionNo', label: '施工号', minWidth: 145 },
+      { prop: 'materialName', label: '产品', minWidth: 165 },
+      { prop: 'constructionNo', label: '当前施工号', minWidth: 130 },
+      {
+        prop: 'originProjectId',
+        label: '原生产归属',
+        minWidth: 170,
+        formatter: originCell
+      },
       {
         prop: 'confirmed',
         label: '业务状态',
-        minWidth: 105,
+        minWidth: 100,
         formatter: (row) => {
-          if (!row.confirmed) return '待确认'
-          if (!row.receivedQuantity) return '待入库'
-          if (row.stockQuantity > 0) return row.shippedQuantity > 0 ? '部分出库' : '在库'
-          return row.shippedQuantity > 0 ? '已出库' : '无在库'
+          if (!row.confirmed && !row.receivedQuantity && !row.transferredInQuantity) return '待确认'
+          if (row.stockQuantity > 0) {
+            if (row.netShippedQuantity > 0) return '部分供货'
+            if (row.returnedQuantity > 0) return '退货在库'
+            if (row.transferredInQuantity > 0) return '调入在库'
+            return row.transferredOutQuantity > 0 ? '部分调出' : '在库'
+          }
+          if (row.netShippedQuantity > 0) return '已供货'
+          if (row.transferredOutQuantity > 0) return '已调出'
+          if (row.returnedQuantity > 0) return '已退回'
+          if (row.transferredInQuantity > 0) return '已调入'
+          return row.receivedQuantity > 0 ? '无在库' : '待入库'
         }
+      },
+      {
+        prop: 'stockQuantity',
+        label: '在库块数',
+        minWidth: 105,
+        align: 'right',
+        formatter: (row) => formatNumberValue(row.stockQuantity)
+      },
+      {
+        prop: 'transferredInQuantity',
+        label: '项目调入',
+        minWidth: 100,
+        align: 'right',
+        formatter: (row) => formatNumberValue(row.transferredInQuantity)
+      },
+      {
+        prop: 'transferredOutQuantity',
+        label: '项目调出',
+        minWidth: 100,
+        align: 'right',
+        formatter: (row) => formatNumberValue(row.transferredOutQuantity)
       },
       {
         prop: 'plannedQuantity',
@@ -525,18 +578,25 @@
         formatter: (row) => formatNumberValue(row.receivedQuantity)
       },
       {
-        prop: 'stockQuantity',
-        label: '在库块数',
-        minWidth: 105,
-        align: 'right',
-        formatter: (row) => formatNumberValue(row.stockQuantity)
-      },
-      {
         prop: 'shippedQuantity',
         label: '出库块数',
         minWidth: 105,
         align: 'right',
         formatter: (row) => formatNumberValue(row.shippedQuantity)
+      },
+      {
+        prop: 'returnedQuantity',
+        label: '退回块数',
+        minWidth: 105,
+        align: 'right',
+        formatter: (row) => formatNumberValue(row.returnedQuantity)
+      },
+      {
+        prop: 'netShippedQuantity',
+        label: '净供货块数',
+        minWidth: 115,
+        align: 'right',
+        formatter: (row) => formatNumberValue(row.netShippedQuantity)
       },
       {
         prop: 'plannedAreaSqm',
@@ -551,6 +611,20 @@
         minWidth: 120,
         align: 'right',
         formatter: (row) => formatNumberValue(row.shippedAreaSqm)
+      },
+      {
+        prop: 'returnedAreaSqm',
+        label: '退回面积 ㎡',
+        minWidth: 120,
+        align: 'right',
+        formatter: (row) => formatNumberValue(row.returnedAreaSqm)
+      },
+      {
+        prop: 'netShippedAreaSqm',
+        label: '净供货面积 ㎡',
+        minWidth: 130,
+        align: 'right',
+        formatter: (row) => formatNumberValue(row.netShippedAreaSqm)
       },
       {
         prop: 'size',

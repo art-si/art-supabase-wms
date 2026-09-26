@@ -47,7 +47,8 @@
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type { ColumnOption } from '@/types'
   import { useTenantScopeStore } from '@/store/modules/tenantScope'
-  import { fetchGetEnableOrganizationOptionsList } from '@/api/system-manage'
+  import { fetchGetEnableOrganizationTree } from '@/api/system-manage'
+  import TreeUtils from '@/utils/tree'
   import {
     fetchWmsMovementPage,
     fetchWmsProjectSections,
@@ -62,9 +63,13 @@
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const tableRef = ref<ArtTableQueryExpose>()
   const projects = ref<WmsProject[]>([])
-  const organizations = ref<
-    Array<{ id: string; tenantId?: string; organizationCode: string; organizationName: string }>
-  >([])
+  const organizationTree = ref<Api.SystemManage.OrganizationListItem[]>([])
+  const organizationTreeUtils = new TreeUtils({
+    idKey: 'id',
+    parentKey: 'parentId',
+    childrenKey: 'children'
+  })
+  const organizations = computed(() => organizationTreeUtils.treeToList(organizationTree.value))
   const sections = ref<WmsProjectSection[]>([])
   const optionError = ref(false)
   const search = reactive({ organizationId: '', projectId: '', constructionNo: '', keyword: '' })
@@ -73,17 +78,17 @@
     {
       label: '库存组织',
       key: 'organizationId',
-      type: 'select',
+      type: 'treeSelect',
       props: {
         clearable: true,
         filterable: true,
+        checkStrictly: true,
+        defaultExpandAll: true,
+        renderAfterExpand: false,
         placeholder: '来源或目标组织',
-        options: organizations.value
-          .filter((item) => !filterTenantId.value || item.tenantId === filterTenantId.value)
-          .map((item) => ({
-            label: `${item.organizationName} · ${item.organizationCode}`,
-            value: item.id
-          }))
+        data: organizationTree.value,
+        nodeKey: 'id',
+        props: { label: 'organizationName', children: 'children' }
       }
     },
     {
@@ -161,13 +166,11 @@
       const [projectRows, sectionRows, organizationResult] = await Promise.all([
         fetchWmsProjects(),
         fetchWmsProjectSections(),
-        fetchGetEnableOrganizationOptionsList(filterTenantId.value)
+        fetchGetEnableOrganizationTree({ tenantId: filterTenantId.value })
       ])
       projects.value = projectRows
       sections.value = sectionRows
-      organizations.value = (organizationResult.data ?? []).filter(
-        (item): item is typeof item & { id: string } => Boolean(item.id)
-      )
+      organizationTree.value = organizationResult.data ?? []
     } catch {
       optionError.value = true
     }

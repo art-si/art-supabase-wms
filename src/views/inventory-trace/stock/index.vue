@@ -56,7 +56,8 @@
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type { ColumnOption } from '@/types'
   import { useTenantScopeStore } from '@/store/modules/tenantScope'
-  import { fetchGetEnableOrganizationOptionsList } from '@/api/system-manage'
+  import { fetchGetEnableOrganizationTree } from '@/api/system-manage'
+  import TreeUtils from '@/utils/tree'
   import { formatCurrencyValue } from '@/utils/ui/format'
   import {
     fetchWmsProjectSections,
@@ -76,9 +77,13 @@
   const tableRef = ref<ArtTableQueryExpose>()
   const transferRef = ref<InstanceType<typeof ProjectTransferDialog>>()
   const warehouses = ref<WmsWarehouse[]>([])
-  const organizations = ref<
-    Array<{ id: string; tenantId?: string; organizationCode: string; organizationName: string }>
-  >([])
+  const organizationTree = ref<Api.SystemManage.OrganizationListItem[]>([])
+  const organizationTreeUtils = new TreeUtils({
+    idKey: 'id',
+    parentKey: 'parentId',
+    childrenKey: 'children'
+  })
+  const organizations = computed(() => organizationTreeUtils.treeToList(organizationTree.value))
   const projects = ref<WmsProject[]>([])
   const sections = ref<WmsProjectSection[]>([])
   const optionError = ref(false)
@@ -100,23 +105,17 @@
     {
       label: '库存组织',
       key: 'organizationId',
-      type: 'select',
+      type: 'treeSelect',
       props: {
         clearable: true,
         filterable: true,
+        checkStrictly: true,
+        defaultExpandAll: true,
+        renderAfterExpand: false,
         placeholder: '全部组织',
-        options: organizations.value
-          .filter(
-            (item) =>
-              (!filterTenantId.value || item.tenantId === filterTenantId.value) &&
-              (!search.warehouseId ||
-                item.tenantId ===
-                  warehouses.value.find((row) => row.id === search.warehouseId)?.tenantId)
-          )
-          .map((item) => ({
-            label: `${item.organizationName} · ${item.organizationCode}`,
-            value: item.id
-          }))
+        data: organizationTree.value,
+        nodeKey: 'id',
+        props: { label: 'organizationName', children: 'children' }
       }
     },
     {
@@ -203,14 +202,12 @@
         fetchWmsWarehouses(),
         fetchWmsProjects(),
         fetchWmsProjectSections(),
-        fetchGetEnableOrganizationOptionsList(filterTenantId.value)
+        fetchGetEnableOrganizationTree({ tenantId: filterTenantId.value })
       ])
       warehouses.value = warehouseRows
       projects.value = projectRows
       sections.value = sectionRows
-      organizations.value = (organizationResult.data ?? []).filter(
-        (item): item is typeof item & { id: string } => Boolean(item.id)
-      )
+      organizationTree.value = organizationResult.data ?? []
     } catch {
       optionError.value = true
     }

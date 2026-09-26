@@ -1,0 +1,65 @@
+export const WMS_PURCHASE_INBOUND_PERMISSIONS = {
+  View: 'WmsPurchaseInbound:View',
+  Add: 'WmsPurchaseInbound:Add',
+  Copy: 'WmsPurchaseInbound:Copy',
+  Edit: 'WmsPurchaseInbound:Edit',
+  Delete: 'WmsPurchaseInbound:Delete',
+  Import: 'WmsPurchaseInbound:Import',
+  Export: 'WmsPurchaseInbound:Export',
+  Push: 'WmsPurchaseInbound:Push',
+  Submit: 'WmsPurchaseInbound:Submit',
+  Approve: 'WmsPurchaseInbound:Approve'
+}
+
+export const WMS_PURCHASE_RETURN_PERMISSIONS = {
+  View: 'WmsPurchaseReturn:View',
+  Add: 'WmsPurchaseReturn:Add',
+  Copy: 'WmsPurchaseReturn:Copy',
+  Edit: 'WmsPurchaseReturn:Edit',
+  Delete: 'WmsPurchaseReturn:Delete',
+  Import: 'WmsPurchaseReturn:Import',
+  Export: 'WmsPurchaseReturn:Export',
+  Push: 'WmsPurchaseReturn:Push',
+  Submit: 'WmsPurchaseReturn:Submit',
+  Approve: 'WmsPurchaseReturn:Approve'
+}
+
+export const WMS_OTHER_INBOUND_PERMISSIONS = {
+  View: 'WmsOtherInbound:View',
+  Add: 'WmsOtherInbound:Add',
+  Copy: 'WmsOtherInbound:Copy',
+  Edit: 'WmsOtherInbound:Edit',
+  Delete: 'WmsOtherInbound:Delete',
+  Import: 'WmsOtherInbound:Import',
+  Export: 'WmsOtherInbound:Export',
+  Select: 'WmsOtherInbound:Select',
+  Push: 'WmsOtherInbound:Push',
+  Submit: 'WmsOtherInbound:Submit',
+  Approve: 'WmsOtherInbound:Approve'
+}
+
+export const WMS_ENTRUSTED_PROCESSING_INBOUND_PERMISSIONS = {
+  View: 'WmsEntrustedProcessingInbound:View',
+  Add: 'WmsEntrustedProcessingInbound:Add',
+  Copy: 'WmsEntrustedProcessingInbound:Copy',
+  Edit: 'WmsEntrustedProcessingInbound:Edit',
+  Delete: 'WmsEntrustedProcessingInbound:Delete',
+  Import: 'WmsEntrustedProcessingInbound:Import',
+  Export: 'WmsEntrustedProcessingInbound:Export',
+  Push: 'WmsEntrustedProcessingInbound:Push',
+  Submit: 'WmsEntrustedProcessingInbound:Submit',
+  Approve: 'WmsEntrustedProcessingInbound:Approve'
+}
+
+export const WMS_ENTRUSTED_PROCESSING_RETURN_PERMISSIONS = {
+  View: 'WmsEntrustedProcessingReturn:View',
+  Add: 'WmsEntrustedProcessingReturn:Add',
+  Copy: 'WmsEntrustedProcessingReturn:Copy',
+  Edit: 'WmsEntrustedProcessingReturn:Edit',
+  Delete: 'WmsEntrustedProcessingReturn:Delete',
+  Import: 'WmsEntrustedProcessingReturn:Import',
+  Export: 'WmsEntrustedProcessingReturn:Export',
+  Push: 'WmsEntrustedProcessingReturn:Push',
+  Submit: 'WmsEntrustedProcessingReturn:Submit',
+  Approve: 'WmsEntrustedProcessingReturn:Approve'
+}
