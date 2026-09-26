@@ -41,7 +41,8 @@
 </template>
 
 <script setup lang="tsx">
-  import { ElMessageBox, ElTag } from 'element-plus'
+  import { ElTag } from 'element-plus'
+  import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import ArtTableQuery, {
     type ArtTableQueryExpose,
@@ -70,6 +71,7 @@
   import TransferReceiveDialog from './modules/transfer-receive-dialog.vue'
 
   defineOptions({ name: 'WmsTransfer' })
+  const { confirmAction } = useArtFeedback()
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const tableRef = ref<ArtTableQueryExpose>()
   const createRef = ref<InstanceType<typeof TransferCreateDialog>>()
@@ -180,7 +182,7 @@
   async function dispatch(row: WmsTransferDocument): Promise<void> {
     if (workingId.value) return
     try {
-      await ElMessageBox.confirm(
+      await confirmAction(
         `确认调出 ${row.quantity} 件至 ${row.targetWarehouse?.warehouseName || '目标仓库'}？确认后库存转为在途。`,
         '确认调拨出库',
         { type: 'warning', confirmButtonText: '确认调出', cancelButtonText: '返回' }
@@ -197,7 +199,7 @@
   async function cancel(row: WmsTransferDocument): Promise<void> {
     if (workingId.value) return
     try {
-      await ElMessageBox.confirm(`确定取消调拨单 ${row.documentNo}？`, '取消申请', {
+      await confirmAction(`确定取消调拨单 ${row.documentNo}？`, '取消申请', {
         type: 'warning',
         confirmButtonText: '确定取消',
         cancelButtonText: '返回'

@@ -32,7 +32,7 @@
         }"
         focusable
       />
-      <ArtDrawer ref="detailRef" :show-footer="false">
+      <ArtDrawer ref="detailRef" size="lg" :show-footer="false">
         <div v-if="activeSerial" class="space-y-5">
           <ArtEntitySummary
             icon="ri:qr-scan-2-line"
@@ -49,8 +49,18 @@
             </div>
             <div class="rounded-xl bg-[var(--el-fill-color-light)] p-4">
               <small class="text-[var(--el-text-color-secondary)]">项目 / 施工号</small>
-              <strong class="mt-1 block">{{ projectName(activeSerial.projectId) }}</strong>
-              <span class="text-sm">{{ activeSerial.constructionNo || '非项目业务' }}</span>
+              <strong class="mt-1 block">{{
+                projectName(effectiveProjectId(activeSerial))
+              }}</strong>
+              <span class="text-sm">{{
+                effectiveConstructionNo(activeSerial) || '非项目业务'
+              }}</span>
+              <span
+                v-if="!activeSerial.projectId && effectiveProjectId(activeSerial)"
+                class="block text-xs text-[var(--el-text-color-secondary)]"
+              >
+                来源为公共库存，按工单归集
+              </span>
             </div>
             <div class="rounded-xl bg-[var(--el-fill-color-light)] p-4">
               <small class="text-[var(--el-text-color-secondary)]">库存状态</small>
@@ -148,7 +158,7 @@
   import BusinessTableIdentityCell from '@/components/business/business-table-identity-cell/index.vue'
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
-  import { ElMessageBox } from 'element-plus'
+  import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { useUserStore } from '@/store/modules/user'
   import ArtTableQuery, {
     type ArtTableQueryExpose
@@ -174,6 +184,7 @@
   import SerialActionDialog from './modules/serial-action-dialog.vue'
 
   defineOptions({ name: 'WmsSerialTrace' })
+  const { confirmAction } = useArtFeedback()
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const tableRef = ref<ArtTableQueryExpose>()
   const detailRef = ref<ArtDrawerExpose<WmsSerial>>()
@@ -273,6 +284,18 @@
     id
       ? projects.value.find((project) => project.id === id)?.projectName || '已归档项目'
       : '非项目业务'
+  const effectiveProjectId = (row: WmsSerial): string | null =>
+    row.effectiveProjectId ??
+    row.projectId ??
+    row.reservedOrder?.projectId ??
+    row.consumedOrder?.projectId ??
+    null
+  const effectiveConstructionNo = (row: WmsSerial): string | null =>
+    row.effectiveConstructionNo ??
+    row.constructionNo ??
+    row.reservedOrder?.constructionNo ??
+    row.consumedOrder?.constructionNo ??
+    null
   const organizationName = (id: string | null) =>
     organizations.value.find((item) => item.id === id)?.organizationName || '历史组织'
   const statusLabel = (status: string) =>
@@ -318,7 +341,7 @@
   async function releaseReservation(row: WmsSerial): Promise<void> {
     if (!row.reservedWorkOrderId) return
     try {
-      await ElMessageBox.confirm(`释放 ${row.serialNo} 的工单预留？`, '释放 SN 预留', {
+      await confirmAction(`释放 ${row.serialNo} 的工单预留？`, '释放 SN 预留', {
         type: 'warning'
       })
       await releaseWmsSerial(row.reservedWorkOrderId, row.id)
@@ -379,13 +402,13 @@
         prop: 'projectId',
         label: '项目',
         minWidth: 170,
-        formatter: (row) => projectName(row.projectId)
+        formatter: (row) => projectName(effectiveProjectId(row))
       },
       {
         prop: 'constructionNo',
         label: '施工号',
         minWidth: 145,
-        formatter: (row) => row.constructionNo || '—'
+        formatter: (row) => effectiveConstructionNo(row) || '—'
       },
       {
         prop: 'parent',

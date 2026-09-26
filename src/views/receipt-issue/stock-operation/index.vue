@@ -19,6 +19,15 @@
         作业基础数据加载失败，请重试后再办理。
         <ElButton link type="primary" @click="loadOptions">重新加载</ElButton>
       </ElAlert>
+      <ElAlert
+        v-if="requestedShippingNoticeUnavailable"
+        type="warning"
+        :closable="false"
+        show-icon
+        class="mb-3"
+      >
+        当前仓库所属租户没有这张待出库发货通知单，请选择匹配的仓库，或检查 SCM 单据状态。
+      </ElAlert>
       <div class="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
         <ArtSectionCard
           title="登记库存业务"
@@ -275,6 +284,10 @@
   const requestedWorkOrderId = ref(
     typeof route.query.workOrderId === 'string' ? route.query.workOrderId : ''
   )
+  const requestedShippingNoticeId = ref(
+    typeof route.query.shippingNoticeId === 'string' ? route.query.shippingNoticeId : ''
+  )
+  const requestedShippingNoticeUnavailable = ref(false)
   const userStore = useUserStore()
   const { getDictMap } = storeToRefs(userStore)
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
@@ -1073,12 +1086,15 @@
     resetDependent()
     form.shippingLineId = null
     form.referenceNo = selectedShippingNotice.value?.documentNo || null
+    requestedShippingNoticeId.value = ''
+    requestedShippingNoticeUnavailable.value = false
   }
   function onShippingLineChange(): void {
     resetDependent()
     form.quantity = Math.min(1, shippingRemaining.value)
   }
   async function onWarehouseChange(): Promise<void> {
+    requestedShippingNoticeUnavailable.value = false
     workOrderSearchRevision++
     resetDependent()
     form.binId = null
@@ -1130,6 +1146,24 @@
           : []
       )
       loadError.value = false
+      if (id && form.movementType === 'sales_out' && requestedShippingNoticeId.value) {
+        const requestedNotice =
+          noticeRows.find((row) => row.id === requestedShippingNoticeId.value) ||
+          (
+            await fetchWmsShippingNotices(
+              selectedWarehouse.value?.tenantId || '',
+              requestedShippingNoticeId.value
+            )
+          )[0]
+        if (requestedNotice) {
+          if (!noticeRows.some((row) => row.id === requestedNotice.id))
+            shippingNotices.value = [requestedNotice, ...noticeRows]
+          form.shippingNoticeId = requestedNotice.id
+          onShippingNoticeChange()
+        } else {
+          requestedShippingNoticeUnavailable.value = true
+        }
+      }
       if (
         id &&
         form.movementType === 'production_in' &&

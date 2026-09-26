@@ -95,7 +95,7 @@
 </template>
 
 <script setup lang="ts">
-  import { ElMessageBox } from 'element-plus'
+  import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
   import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
@@ -114,6 +114,7 @@
     projects: WmsProject[]
   }
   const emit = defineEmits<{ success: [] }>()
+  const { confirmAction } = useArtFeedback()
   const drawerRef = ref<ArtDrawerExpose<Context>>()
   const lineRef = ref<InstanceType<typeof CountLineDialog>>()
   const plan = shallowRef<WmsCountPlan>()
@@ -153,7 +154,7 @@
   async function post(): Promise<void> {
     if (!plan.value || posting.value) return
     try {
-      await ElMessageBox.confirm(
+      await confirmAction(
         `确认盘点单 ${plan.value.documentNo} 的全部差异？确认后将生成盘盈盘亏流水，实盘结果不可再改。`,
         '确认盘点差异',
         { type: 'warning', confirmButtonText: '确认记账', cancelButtonText: '继续复核' }

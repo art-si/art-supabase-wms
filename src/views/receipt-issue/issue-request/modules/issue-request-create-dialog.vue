@@ -13,6 +13,17 @@
       <ElAlert v-if="loadError" type="error" :closable="false" show-icon>
         工单或预留物料加载失败，请重新选择仓库与工单。
       </ElAlert>
+      <ElAlert v-if="!eligibleWarehouses.length" type="warning" :closable="false" show-icon>
+        当前租户没有可领料仓库。请先在 MDM「仓库定义」启用仓库，并将业务应用范围包含「拣货」。
+      </ElAlert>
+      <ElAlert
+        v-else-if="selectedWarehouse && ordersLoaded && !orders.length"
+        type="info"
+        :closable="false"
+        show-icon
+      >
+        该仓库暂无可领料工单。请检查 MES 工单是否已下达，以及工单组织和允许的领料仓库类型。
+      </ElAlert>
       <ArtForm
         ref="formRef"
         v-model="form"
@@ -93,6 +104,7 @@
 </template>
 
 <script setup lang="ts">
+  import { useMediaQuery } from '@vueuse/core'
   import { ElMessage } from 'element-plus'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
@@ -121,6 +133,7 @@
     tenantId?: string
     warehouses: WmsWarehouse[]
     projects: WmsProject[]
+    workOrderId?: string
   }
   interface DraftLine {
     key: string
@@ -133,11 +146,21 @@
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const context = shallowRef<Context>()
   const orders = ref<WmsWorkOrderOption[]>([])
+  const ordersLoaded = ref(false)
   const lines = ref<DraftLine[]>([])
   const loadError = ref(false)
+  const isNarrowViewport = useMediaQuery('(max-width: 767px)')
   const form = reactive({ warehouseId: '', workOrderId: '', documentNo: '', remark: '' })
   const selectedWarehouse = computed(() =>
     context.value?.warehouses.find((row) => row.id === form.warehouseId)
+  )
+  const eligibleWarehouses = computed(() =>
+    (context.value?.warehouses || []).filter(
+      (row) =>
+        row.status === 'enabled' &&
+        row.businessScopes.includes('picking') &&
+        (!context.value?.tenantId || row.tenantId === context.value.tenantId)
+    )
   )
   const selectedOrder = computed(() => orders.value.find((row) => row.id === form.workOrderId))
   const scopeLabel = computed(() => {
@@ -158,19 +181,18 @@
       key: 'warehouseId',
       label: '领料仓库',
       type: 'select',
-      options: (context.value?.warehouses || [])
-        .filter(
-          (row) =>
-            row.status === 'enabled' &&
-            (!context.value?.tenantId || row.tenantId === context.value.tenantId)
-        )
-        .map((row) => ({ label: `${row.warehouseName} · ${row.warehouseCode}`, value: row.id })),
+      span: isNarrowViewport.value ? 24 : 12,
+      options: eligibleWarehouses.value.map((row) => ({
+        label: `${row.warehouseName} · ${row.warehouseCode}`,
+        value: row.id
+      })),
       props: { filterable: true, placeholder: '选择工单领料仓库', onChange: onWarehouseChange }
     },
     {
       key: 'workOrderId',
       label: 'MES 工单',
       type: 'select',
+      span: isNarrowViewport.value ? 24 : 12,
       options: orders.value.map((row) => ({
         label: `${row.workOrderNo}${row.constructionNo ? ` · ${row.constructionNo}` : ''}`,
         value: row.id
@@ -188,12 +210,14 @@
       key: 'documentNo',
       label: '申请单号',
       type: 'input',
+      span: isNarrowViewport.value ? 24 : 12,
       props: { maxlength: 80, placeholder: '留空自动生成' }
     },
     {
       key: 'scope',
       label: '项目 / 施工号',
-      type: 'slot'
+      type: 'slot',
+      span: isNarrowViewport.value ? 24 : 12
     },
     {
       key: 'remark',
@@ -210,17 +234,32 @@
   async function searchOrders(keyword = ''): Promise<void> {
     if (!form.warehouseId) return
     loadError.value = false
+    ordersLoaded.value = false
     try {
-      orders.value = await fetchWmsWorkOrderOptions(form.warehouseId, keyword)
+      const warehouse = selectedWarehouse.value
+      orders.value = warehouse
+        ? (await fetchWmsWorkOrderOptions(form.warehouseId, keyword)).filter(
+            (row) =>
+              row.organizationId === warehouse.organizationId &&
+              row.allowedIssueWarehouseTypes.includes(warehouse.warehouseType)
+          )
+        : []
+      ordersLoaded.value = true
     } catch {
       loadError.value = true
     }
   }
-  function onWarehouseChange(): void {
+  async function onWarehouseChange(): Promise<void> {
     form.workOrderId = ''
     orders.value = []
+    ordersLoaded.value = false
     lines.value = []
-    void searchOrders()
+    await searchOrders(context.value?.workOrderId)
+    const requestedId = context.value?.workOrderId
+    if (requestedId && orders.value.some((row) => row.id === requestedId)) {
+      form.workOrderId = requestedId
+      await onOrderChange()
+    }
   }
   async function onOrderChange(): Promise<void> {
     lines.value = []
@@ -290,6 +329,7 @@
   async function handleOpen(data: Context): Promise<void> {
     context.value = data
     orders.value = []
+    ordersLoaded.value = false
     lines.value = []
     loadError.value = false
     Object.assign(form, { warehouseId: '', workOrderId: '', documentNo: '', remark: '' })

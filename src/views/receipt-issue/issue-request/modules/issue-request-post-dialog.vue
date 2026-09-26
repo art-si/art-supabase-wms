@@ -8,11 +8,25 @@
         :description="`${line?.material?.materialName || '物料'} · 待领 ${remaining}`"
       />
       <ElAlert type="info" :closable="false" show-icon>
-        仓库、工单、项目与施工号沿用已审核申请；同一物料可从不同批次分次领用。
+        仓库、工单、项目与施工号沿用已审核申请；优先领用本项目库存，也可领用未被其他工单占用的公共库存。
       </ElAlert>
       <ElAlert v-if="loadError" type="error" :closable="false" show-icon>
         来源序列号加载失败，请重新选择批次。
       </ElAlert>
+      <div v-if="request?.projectId" class="flex flex-wrap items-center gap-3">
+        <span class="text-sm font-medium">库存来源</span>
+        <ElSegmented
+          v-model="stockScope"
+          :options="[
+            { label: '本项目库存', value: 'project' },
+            { label: '公共库存', value: 'public' }
+          ]"
+          @change="clearSelectedBatch"
+        />
+        <span class="text-xs text-[var(--el-text-color-secondary)]">
+          公共库存领用后，流水仍关联当前工单与施工号。
+        </span>
+      </div>
       <ArtForm
         ref="formRef"
         v-model="form"
@@ -26,12 +40,17 @@
       >
         <template #batchId>
           <ArtTableSingleSelect
+            :key="`${request?.id}-${line?.id}-${stockScope}`"
             :model-value="form.batchId || undefined"
             :api-fn="batchApi"
             :selected-data="selectedBatch ? [selectedBatch] : []"
             :columns="batchColumns"
             title="选择领料批次"
-            subtitle="仅显示申请仓库与同一项目施工号的在库物料"
+            :subtitle="
+              stockScope === 'project'
+                ? '仅显示当前项目施工号的在库物料'
+                : '仅显示申请仓库内未归属项目的在库物料'
+            "
             placeholder="选择来源库存批次"
             search-placeholder="输入批号或备注"
             label-key="batchLabel"
@@ -86,6 +105,7 @@
   const selectedBatch = shallowRef<BatchOption | null>(null)
   const serials = ref<WmsBatchSerial[]>([])
   const loadError = ref(false)
+  const stockScope = ref<'project' | 'public'>('project')
   const form = reactive({ batchId: '', quantity: 1, serialIds: [] as string[], remark: '' })
   const remaining = computed(() =>
     Math.max(0, (line.value?.requestedQuantity || 0) - (line.value?.issuedQuantity || 0))
@@ -160,9 +180,12 @@
       warehouseId: doc.warehouseId,
       organizationId: doc.organizationId,
       materialId: item.materialId,
-      projectId: doc.projectId || undefined,
-      publicOnly: !doc.projectId,
-      constructionNo: doc.constructionNo || undefined,
+      projectId: doc.projectId && stockScope.value === 'project' ? doc.projectId : undefined,
+      publicOnly: !doc.projectId || stockScope.value === 'public',
+      constructionNo:
+        doc.projectId && stockScope.value === 'project'
+          ? doc.constructionNo || undefined
+          : undefined,
       positiveOnly: true,
       status: 'normal',
       keyword: params.keyword,
@@ -177,6 +200,14 @@
       })),
       total: result.total
     }
+  }
+  function clearSelectedBatch(): void {
+    selectedBatch.value = null
+    form.batchId = ''
+    form.quantity = 1
+    form.serialIds = []
+    serials.value = []
+    loadError.value = false
   }
   async function onBatchSelected(rows: DataSelectRecord[]): Promise<void> {
     const row = rows[0]
@@ -202,15 +233,17 @@
       const item = line.value
       const batch = selectedBatch.value
       if (!doc || !item || !batch || loadError.value) return false
+      const matchingProject =
+        batch.projectId === doc.projectId && batch.constructionNo === doc.constructionNo
+      const publicStock = batch.projectId === null && batch.constructionNo === null
       if (
         batch.tenantId !== doc.tenantId ||
         batch.warehouseId !== doc.warehouseId ||
         batch.organizationId !== doc.organizationId ||
         batch.materialId !== item.materialId ||
-        batch.projectId !== doc.projectId ||
-        batch.constructionNo !== doc.constructionNo
+        !(matchingProject || (doc.projectId && publicStock))
       ) {
-        ElMessage.warning('来源库存与申请的仓库、物料或项目归属不一致')
+        ElMessage.warning('来源库存须属于本项目施工号或公共库存，且仓库与物料须一致')
         return false
       }
       if (form.quantity > remaining.value || form.quantity > batch.quantity) {
@@ -244,9 +277,8 @@
   async function handleOpen(data: Context): Promise<void> {
     request.value = data.request
     line.value = data.line
-    selectedBatch.value = null
-    serials.value = []
-    loadError.value = false
+    stockScope.value = 'project'
+    clearSelectedBatch()
     Object.assign(form, { batchId: '', quantity: 1, serialIds: [], remark: '' })
     await dialogRef.value?.handleOpen(data, {
       title: '办理领料出库',

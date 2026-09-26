@@ -44,7 +44,8 @@
 </template>
 
 <script setup lang="tsx">
-  import { ElMessageBox, ElTag } from 'element-plus'
+  import { ElTag } from 'element-plus'
+  import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import ArtTableQuery, {
     type ArtTableQueryExpose,
@@ -74,6 +75,7 @@
   import CountDetailDrawer from './modules/count-detail-drawer.vue'
 
   defineOptions({ name: 'WmsCount' })
+  const { confirmAction } = useArtFeedback()
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const tableRef = ref<ArtTableQueryExpose>()
   const createRef = ref<InstanceType<typeof CountCreateDialog>>()
@@ -210,7 +212,7 @@
   async function cancel(row: WmsCountPlan): Promise<void> {
     if (workingId.value) return
     try {
-      await ElMessageBox.confirm(
+      await confirmAction(
         `确定取消盘点方案 ${row.documentNo}？已录入的实盘记录会保留供审计。`,
         '取消盘点',
         {

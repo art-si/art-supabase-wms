@@ -123,8 +123,12 @@
           <ArtSectionCard title="后续查询" subtitle="通过原 SN 或项目施工号追溯回库记录。">
             <div class="flex flex-wrap gap-2">
               <RouterLink to="/wms/inventory-trace/stock"><ElButton>即时库存</ElButton></RouterLink>
-              <RouterLink to="/wms/inventory-trace/inventory-ledger"><ElButton>库存流水</ElButton></RouterLink>
-              <RouterLink to="/wms/inventory-trace/serial-trace"><ElButton>SN 追溯</ElButton></RouterLink>
+              <RouterLink to="/wms/inventory-trace/inventory-ledger"
+                ><ElButton>库存流水</ElButton></RouterLink
+              >
+              <RouterLink to="/wms/inventory-trace/serial-trace"
+                ><ElButton>SN 追溯</ElButton></RouterLink
+              >
             </div>
           </ArtSectionCard>
         </div>

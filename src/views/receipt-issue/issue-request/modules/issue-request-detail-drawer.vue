@@ -106,6 +106,7 @@
   import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
+  import { useAuth } from '@/hooks/core/useAuth'
   import {
     fetchWmsIssueRequestAllocations,
     fetchWmsIssueRequestLines,
@@ -116,6 +117,7 @@
   import IssueRequestPostDialog from './issue-request-post-dialog.vue'
 
   const emit = defineEmits<{ success: [] }>()
+  const { hasAnyAuth } = useAuth()
   const drawerRef = ref<ArtDrawerExpose<WmsIssueRequest>>()
   const postRef = ref<InstanceType<typeof IssueRequestPostDialog>>()
   const request = shallowRef<WmsIssueRequest>()
@@ -125,7 +127,10 @@
   const loading = ref(false)
   const loadError = ref(false)
   const canIssue = computed(() =>
-    request.value ? ['approved', 'partially_issued'].includes(request.value.status) : false
+    request.value
+      ? ['approved', 'partially_issued'].includes(request.value.status) &&
+        hasAnyAuth(['WmsStockOperation:Issue', 'MdmInventoryBatch:Issue'])
+      : false
   )
   const requestedQuantity = computed(() =>
     lines.value.reduce((sum, item) => sum + item.requestedQuantity, 0)

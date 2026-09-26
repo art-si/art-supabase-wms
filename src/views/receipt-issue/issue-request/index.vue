@@ -41,7 +41,10 @@
 </template>
 
 <script setup lang="tsx">
-  import { ElMessageBox, ElTag } from 'element-plus'
+  import { ElTag } from 'element-plus'
+  import { useRoute, useRouter } from 'vue-router'
+  import { useAuth } from '@/hooks/core/useAuth'
+  import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import ArtTableQuery, {
     type ArtTableQueryExpose,
@@ -73,6 +76,11 @@
   import IssueRequestDetailDrawer from './modules/issue-request-detail-drawer.vue'
 
   defineOptions({ name: 'WmsIssueRequest' })
+  const { confirmAction } = useArtFeedback()
+  const { hasAnyAuth, hasAuth } = useAuth()
+  const canPostStock = () => hasAnyAuth(['WmsStockOperation:Issue', 'MdmInventoryBatch:Issue'])
+  const route = useRoute()
+  const router = useRouter()
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const tableRef = ref<ArtTableQueryExpose>()
   const createRef = ref<InstanceType<typeof IssueRequestCreateDialog>>()
@@ -202,7 +210,7 @@
   async function review(row: WmsIssueRequest, decision: 'approve' | 'reject'): Promise<void> {
     if (workingId.value) return
     try {
-      await ElMessageBox.confirm(
+      await confirmAction(
         decision === 'approve'
           ? `确认审核通过领料申请 ${row.documentNo}？通过后可按批次分次领料。`
           : `确认驳回领料申请 ${row.documentNo}？`,
@@ -221,7 +229,7 @@
   async function cancel(row: WmsIssueRequest): Promise<void> {
     if (workingId.value) return
     try {
-      await ElMessageBox.confirm(`确定取消领料申请 ${row.documentNo}？`, '取消领料申请', {
+      await confirmAction(`确定取消领料申请 ${row.documentNo}？`, '取消领料申请', {
         type: 'warning',
         confirmButtonText: '确定取消'
       })
@@ -334,7 +342,7 @@
                 />
               </>
             )}
-            {['approved', 'partially_issued'].includes(row.status) && (
+            {['approved', 'partially_issued'].includes(row.status) && canPostStock() && (
               <ArtButtonTable
                 type="edit"
                 icon="ri:logout-box-r-line"
@@ -348,5 +356,24 @@
       }
     ]
   }
-  onMounted(() => void loadOptions())
+  onMounted(async () => {
+    await loadOptions()
+    const requestedWorkOrderId = route.query.workOrderId
+    if (
+      typeof requestedWorkOrderId !== 'string' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        requestedWorkOrderId
+      ) ||
+      optionError.value ||
+      !hasAuth('WmsIssueRequest:Create')
+    )
+      return
+    await createRef.value?.handleOpen({
+      tenantId: filterTenantId.value,
+      warehouses: warehouses.value,
+      projects: projects.value,
+      workOrderId: requestedWorkOrderId
+    })
+    await router.replace({ path: route.path, query: { ...route.query, workOrderId: undefined } })
+  })
 </script>

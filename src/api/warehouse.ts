@@ -26,6 +26,7 @@ import type {
   WmsMaterialControl,
   WmsPackOption,
   WmsProject,
+  WmsProjectPack,
   WmsProjectSection,
   WmsProjectSummary,
   WmsProjectWorkOrder,
@@ -70,7 +71,7 @@ export async function fetchWmsWarehouses(tenantId?: string): Promise<WmsWarehous
   let query = supabase
     .from('mdm_warehouse')
     .select(
-      'id,tenant_id,organization_id,warehouse_code,warehouse_name,warehouse_type,status,enable_locations'
+      'id,tenant_id,organization_id,warehouse_code,warehouse_name,warehouse_type,status,enable_locations,business_scopes'
     )
     .order('warehouse_code')
   if (tenantId) query = query.eq('tenant_id', tenantId)
@@ -295,19 +296,20 @@ export async function fetchWmsStockPage(params: WmsStockQuery) {
   return { data: data ?? [], total: total ?? 0 }
 }
 
-export async function fetchWmsShippingNotices(tenantId: string): Promise<WmsShippingNotice[]> {
-  const { data } = await responseHandle<WmsShippingNotice[]>(
-    () =>
-      supabase
-        .from('scm_sales_document')
-        .select('id,tenant_id,document_no,project_id,status,details,lines')
-        .eq('tenant_id', tenantId)
-        .eq('kind', 'shipping_notice')
-        .eq('status', 'submitted')
-        .order('updated_at', { ascending: false })
-        .limit(200),
-    readOptions
-  )
+export async function fetchWmsShippingNotices(
+  tenantId: string,
+  noticeId?: string
+): Promise<WmsShippingNotice[]> {
+  const { data } = await responseHandle<WmsShippingNotice[]>(() => {
+    let query = supabase
+      .from('scm_sales_document')
+      .select('id,tenant_id,document_no,project_id,status,details,lines')
+      .eq('tenant_id', tenantId)
+      .eq('kind', 'shipping_notice')
+      .eq('status', 'submitted')
+    if (noticeId) query = query.eq('id', noticeId)
+    return query.order('updated_at', { ascending: false }).limit(noticeId ? 1 : 200)
+  }, readOptions)
   return data ?? []
 }
 
@@ -417,10 +419,27 @@ export async function fetchWmsDirectTransferPage(params: WmsStockQuery) {
 }
 
 export async function fetchWmsSerialPage(params: WmsStockQuery) {
+  if (params.projectId) {
+    const { data } = await responseHandle<{ data: WmsSerial[]; total: number }>(
+      () =>
+        supabase.rpc('wms_project_serial_page_secure', {
+          p_project_id: params.projectId,
+          p_construction_no: params.constructionNo || null,
+          p_organization_id: params.organizationId || null,
+          p_warehouse_id: params.warehouseId || null,
+          p_status: params.status || null,
+          p_keyword: normalizeNullableText(params.keyword),
+          p_offset: (params.current - 1) * params.size,
+          p_limit: params.size
+        }),
+      readOptions
+    )
+    return { data: data?.data ?? [], total: data?.total ?? 0 }
+  }
   let query = supabase
     .from('wms_serial_number')
     .select(
-      '*,material:mdm_material(material_code,material_name),parent:wms_serial_number!wms_serial_parent_fk(serial_no),reservedOrder:mes_work_order!wms_serial_reserve_work_order_fk(work_order_no),consumedOrder:mes_work_order!wms_serial_consumed_order_fk(work_order_no)',
+      '*,material:mdm_material(material_code,material_name),parent:wms_serial_number!wms_serial_parent_fk(serial_no),reservedOrder:mes_work_order!wms_serial_reserve_work_order_fk(work_order_no,project_id,construction_no),consumedOrder:mes_work_order!wms_serial_consumed_order_fk(work_order_no,project_id,construction_no)',
       { count: 'exact' }
     )
     .order('create_time', { ascending: false })
@@ -908,6 +927,22 @@ export async function fetchWmsProjectWorkOrderPage(params: WmsStockQuery) {
     readOptions
   )
   return { data: data ?? [], total: total ?? 0 }
+}
+
+export async function fetchWmsProjectPackPage(params: WmsStockQuery) {
+  if (!params.projectId) return { data: [] as WmsProjectPack[], total: 0 }
+  const { data } = await responseHandle<{ data: WmsProjectPack[]; total: number }>(
+    () =>
+      supabase.rpc('wms_project_pack_page_secure', {
+        p_project_id: params.projectId,
+        p_construction_no: params.constructionNo || null,
+        p_keyword: normalizeNullableText(params.keyword),
+        p_offset: (params.current - 1) * params.size,
+        p_limit: params.size
+      }),
+    readOptions
+  )
+  return { data: data?.data ?? [], total: data?.total ?? 0 }
 }
 
 export async function fetchWmsProjectMovementPage(params: WmsStockQuery) {

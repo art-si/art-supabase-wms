@@ -7,6 +7,7 @@ export interface WmsWarehouse {
   warehouseType: string
   status: string
   enableLocations: boolean
+  businessScopes: string[]
 }
 
 export interface WmsBin {
@@ -29,6 +30,7 @@ export interface WmsMaterialOption {
 export interface WmsWorkOrderOption {
   id: string
   tenantId: string
+  organizationId: string
   workOrderNo: string
   materialId: string | null
   materialName: string
@@ -36,6 +38,7 @@ export interface WmsWorkOrderOption {
   constructionNo: string | null
   completedQuantity: number
   warehousedQuantity: number
+  allowedIssueWarehouseTypes: string[]
 }
 
 export interface WmsPackOption {
@@ -142,6 +145,8 @@ export interface WmsMovement {
   constructionNo: string | null
   targetProjectId: string | null
   targetConstructionNo: string | null
+  consumptionProjectId?: string | null
+  consumptionConstructionNo?: string | null
   occurredAt: string
   remark: string | null
   material?: { materialCode: string; materialName: string } | null
@@ -179,6 +184,8 @@ export interface WmsSerial {
   batchId: string | null
   projectId: string | null
   constructionNo: string | null
+  effectiveProjectId?: string | null
+  effectiveConstructionNo?: string | null
   parentSerialId: string | null
   reservedWorkOrderId: string | null
   consumedWorkOrderId: string | null
@@ -188,8 +195,16 @@ export interface WmsSerial {
   createTime: string
   material?: { materialCode: string; materialName: string } | null
   parent?: { serialNo: string } | null
-  reservedOrder?: { workOrderNo: string } | null
-  consumedOrder?: { workOrderNo: string } | null
+  reservedOrder?: {
+    workOrderNo: string
+    projectId: string | null
+    constructionNo: string | null
+  } | null
+  consumedOrder?: {
+    workOrderNo: string
+    projectId: string | null
+    constructionNo: string | null
+  } | null
 }
 
 export interface WmsSerialReservationOrder {
@@ -673,6 +688,30 @@ export interface WmsProjectSummary {
   netShippedQuantity: number
   serialCount: number
   movementCount: number
+}
+
+export interface WmsProjectPack {
+  id: string
+  packNo: string
+  confirmed: boolean
+  workOrderId: string
+  workOrderNo: string
+  materialId: string
+  materialName: string | null
+  constructionNo: string | null
+  createTime: string
+  plannedQuantity: number
+  plannedAreaSqm: number
+  specCount: number
+  lengthMm: number | null
+  widthMm: number | null
+  thicknessMm: number | null
+  receivedQuantity: number
+  receivedAreaSqm: number
+  stockQuantity: number
+  stockAreaSqm: number
+  shippedQuantity: number
+  shippedAreaSqm: number
 }
 
 export interface WmsProjectWorkOrder {

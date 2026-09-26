@@ -23,7 +23,13 @@
 
     <div class="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.8fr)]">
       <ArtSectionCard title="仓内作业" subtitle="根据当前任务进入收料、库存、追溯或项目复盘。">
-        <div class="grid gap-3 sm:grid-cols-2">
+        <ArtEmptyState
+          v-if="!visibleEntries.length"
+          title="暂无可用作业入口"
+          description="请联系管理员为当前角色配置仓储作业权限。"
+          size="compact"
+        />
+        <div v-else class="grid gap-3 sm:grid-cols-2">
           <RouterLink
             v-for="entry in visibleEntries"
             :key="entry.path"
@@ -102,6 +108,7 @@
     type BusinessWorkspaceMetric
   } from '@/components/business/business-workspace-header/index.vue'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
+  import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import { useAuth } from '@/hooks/core/useAuth'
   import { useTenantScopeStore } from '@/store/modules/tenantScope'
@@ -169,6 +176,13 @@
       icon: 'ri:swap-box-line',
       path: '/wms/receipt-issue/stock-operation',
       permission: 'WmsStockOperation:View'
+    },
+    {
+      title: '领料申请',
+      description: '按 MES 工单申请物料，审核后分批领料并核销余额。',
+      icon: 'ri:file-list-3-line',
+      path: '/wms/receipt-issue/issue-request',
+      permission: 'WmsIssueRequest:View'
     },
     {
       title: '销售退货入库',

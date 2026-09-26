@@ -86,12 +86,13 @@
       <ArtSectionCard
         v-if="selectedProjectId"
         title="项目完工复盘明细"
-        subtitle="四类明细使用同一项目和施工号范围，支持进一步按单号或 SN 筛选。"
+        subtitle="五类明细使用同一项目和施工号范围；垛包履历保留已出库记录。"
         class="mt-4"
         preserve-content-structure
       >
         <ElTabs v-model="activeTab" class="min-w-0">
           <ElTabPane name="stock" label="库存与垛包" />
+          <ElTabPane name="packs" label="垛包履历" />
           <ElTabPane name="orders" label="生产工单" />
           <ElTabPane name="movements" label="收发存记录" />
           <ElTabPane name="serials" label="序列号" />
@@ -105,6 +106,16 @@
           :columns-factory="stockColumns"
           :search-bar-props="{ span: 8, labelWidth: 82, showExpand: false }"
           :table-props="{ rowKey: 'id', tableLayout: 'fixed', emptyText: '该范围暂无库存' }"
+        />
+        <ArtTableQuery
+          v-if="activeTab === 'packs'"
+          :key="`packs-${selectedProjectId}-${selectedConstructionNo}`"
+          v-model="packSearch"
+          :api-fn="fetchPackRows"
+          :search-items="packSearchItems"
+          :columns-factory="packColumns"
+          :search-bar-props="{ span: 8, labelWidth: 82, showExpand: false }"
+          :table-props="{ rowKey: 'id', tableLayout: 'fixed', emptyText: '该范围暂无排包记录' }"
         />
         <ArtTableQuery
           v-if="activeTab === 'orders'"
@@ -153,6 +164,7 @@
   import { useTenantScopeStore } from '@/store/modules/tenantScope'
   import {
     fetchWmsProjectMovementPage,
+    fetchWmsProjectPackPage,
     fetchWmsProjectSections,
     fetchWmsProjectSummary,
     fetchWmsProjectWorkOrderPage,
@@ -161,6 +173,7 @@
     fetchWmsStockPage,
     type WmsMovement,
     type WmsProject,
+    type WmsProjectPack,
     type WmsProjectSection,
     type WmsProjectSummary,
     type WmsProjectWorkOrder,
@@ -170,7 +183,7 @@
   } from '@wms/api'
 
   defineOptions({ name: 'WmsProjectReport' })
-  type ReportTab = 'stock' | 'orders' | 'movements' | 'serials'
+  type ReportTab = 'stock' | 'packs' | 'orders' | 'movements' | 'serials'
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const projects = ref<WmsProject[]>([])
   const sections = ref<WmsProjectSection[]>([])
@@ -183,6 +196,7 @@
   const optionError = ref(false)
   let summaryRequestId = 0
   const stockSearch = reactive({ keyword: '', positiveOnly: true })
+  const packSearch = reactive({ keyword: '' })
   const orderSearch = reactive({ keyword: '' })
   const movementSearch = reactive({ keyword: '' })
   const serialSearch = reactive({ keyword: '' })
@@ -243,6 +257,9 @@
     { label: '批号 / 备注', key: 'keyword', type: 'input', props: { clearable: true } },
     { label: '仅看在库', key: 'positiveOnly', type: 'switch' }
   ]
+  const packSearchItems: SearchFormItem[] = [
+    { label: '包号 / 工单', key: 'keyword', type: 'input', props: { clearable: true } }
+  ]
   const orderSearchItems: SearchFormItem[] = [
     { label: '工单编号', key: 'keyword', type: 'input', props: { clearable: true } }
   ]
@@ -266,6 +283,9 @@
   }
   function fetchOrderRows(query: WmsStockQuery) {
     return fetchWmsProjectWorkOrderPage(scopedQuery(query))
+  }
+  function fetchPackRows(query: WmsStockQuery) {
+    return fetchWmsProjectPackPage(scopedQuery(query))
   }
   function fetchMovementRows(query: WmsStockQuery) {
     return fetchWmsProjectMovementPage(scopedQuery(query))
@@ -352,6 +372,92 @@
       { prop: 'plannedEndDate', label: '计划完工', minWidth: 130 }
     ]
   }
+  function packColumns(): ColumnOption<WmsProjectPack>[] {
+    return [
+      {
+        prop: 'packNo',
+        label: '垛包 / 工单',
+        minWidth: 230,
+        fixed: 'left',
+        formatter: (row) => (
+          <BusinessTableIdentityCell
+            primary={row.packNo}
+            secondary={row.workOrderNo}
+            tertiary={
+              row.shippedQuantity > 0
+                ? `已出 ${formatNumberValue(row.shippedQuantity)} 块 · ${formatNumberValue(row.shippedAreaSqm)} ㎡`
+                : `排包 ${formatNumberValue(row.plannedQuantity)} 块 · ${formatNumberValue(row.plannedAreaSqm)} ㎡`
+            }
+            icon="ri:stack-line"
+          />
+        )
+      },
+      { prop: 'materialName', label: '产品', minWidth: 180 },
+      { prop: 'constructionNo', label: '施工号', minWidth: 145 },
+      {
+        prop: 'confirmed',
+        label: '业务状态',
+        minWidth: 105,
+        formatter: (row) => {
+          if (!row.confirmed) return '待确认'
+          if (!row.receivedQuantity) return '待入库'
+          if (row.stockQuantity > 0) return row.shippedQuantity > 0 ? '部分出库' : '在库'
+          return row.shippedQuantity > 0 ? '已出库' : '无在库'
+        }
+      },
+      {
+        prop: 'plannedQuantity',
+        label: '排包块数',
+        minWidth: 105,
+        align: 'right',
+        formatter: (row) => formatNumberValue(row.plannedQuantity)
+      },
+      {
+        prop: 'receivedQuantity',
+        label: '入库块数',
+        minWidth: 105,
+        align: 'right',
+        formatter: (row) => formatNumberValue(row.receivedQuantity)
+      },
+      {
+        prop: 'stockQuantity',
+        label: '在库块数',
+        minWidth: 105,
+        align: 'right',
+        formatter: (row) => formatNumberValue(row.stockQuantity)
+      },
+      {
+        prop: 'shippedQuantity',
+        label: '出库块数',
+        minWidth: 105,
+        align: 'right',
+        formatter: (row) => formatNumberValue(row.shippedQuantity)
+      },
+      {
+        prop: 'plannedAreaSqm',
+        label: '排包面积 ㎡',
+        minWidth: 120,
+        align: 'right',
+        formatter: (row) => formatNumberValue(row.plannedAreaSqm)
+      },
+      {
+        prop: 'shippedAreaSqm',
+        label: '出库面积 ㎡',
+        minWidth: 120,
+        align: 'right',
+        formatter: (row) => formatNumberValue(row.shippedAreaSqm)
+      },
+      {
+        prop: 'size',
+        label: '长 × 宽 × 厚 mm',
+        minWidth: 170,
+        formatter: (row) =>
+          row.specCount === 1 && row.lengthMm && row.widthMm
+            ? `${row.lengthMm} × ${row.widthMm}${row.thicknessMm ? ` × ${row.thicknessMm}` : ''}`
+            : `${row.specCount} 种规格`
+      }
+    ]
+  }
   function movementColumns(): ColumnOption<WmsMovement>[] {
     return [
       { prop: 'referenceNo', label: '业务单号', minWidth: 175, fixed: 'left' },
@@ -364,6 +470,12 @@
       },
       { prop: 'constructionNo', label: '来源施工号', minWidth: 145 },
       { prop: 'targetConstructionNo', label: '目标施工号', minWidth: 145 },
+      {
+        prop: 'consumptionConstructionNo',
+        label: '领用施工号',
+        minWidth: 145,
+        formatter: (row) => row.consumptionConstructionNo || '—'
+      },
       { prop: 'quantity', label: '数量', minWidth: 100, align: 'right' },
       {
         prop: 'areaSqm',
@@ -389,7 +501,12 @@
         minWidth: 190,
         formatter: (row) => row.material?.materialName || row.materialId
       },
-      { prop: 'constructionNo', label: '施工号', minWidth: 145 },
+      {
+        prop: 'constructionNo',
+        label: '施工号',
+        minWidth: 145,
+        formatter: (row) => row.effectiveConstructionNo || row.constructionNo || '—'
+      },
       {
         prop: 'parent',
         label: '父件 SN',

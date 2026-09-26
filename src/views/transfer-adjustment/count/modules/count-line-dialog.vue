@@ -33,10 +33,7 @@
           />
         </template>
       </ArtForm>
-      <p
-        v-if="isSerial"
-        class="text-xs text-[var(--el-text-color-secondary)]"
-      >
+      <p v-if="isSerial" class="text-xs text-[var(--el-text-color-secondary)]">
         SN 实盘件数 = 已选择原 SN {{ form.countedSerialIds.length }} 件 + 新增
         {{ newSerialNos.length }} 件。
       </p>
@@ -63,7 +60,9 @@
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const line = shallowRef<WmsCountLine>()
   const isSerial = computed(
-    () => Boolean(line.value?.material?.serialManagementEnabled) || Boolean(line.value?.expectedSerialIds.length)
+    () =>
+      Boolean(line.value?.material?.serialManagementEnabled) ||
+      Boolean(line.value?.expectedSerialIds.length)
   )
   const serials = ref<WmsBatchSerial[]>([])
   const loadError = ref(false)
