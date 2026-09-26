@@ -58,7 +58,24 @@
               :show-reset="false"
               :show-submit="false"
               root-class="wms-sales-return-form"
-            />
+            >
+              <template #binId>
+                <WmsBinPicker
+                  v-model="form.binId"
+                  :bins="bins"
+                  :warehouse-id="form.warehouseId"
+                  :material-id="selectedAllocation?.materialId"
+                  :quantity="form.quantity"
+                  :enabled="Boolean(selectedWarehouse?.enableLocations)"
+                  :serial-managed="
+                    Boolean(selectedAllocation?.batch?.material?.serialManagementEnabled)
+                  "
+                  :disabled="loadError || serialLoadError"
+                  label="退货入库库位"
+                  @bins-loaded="bins = $event"
+                />
+              </template>
+            </ArtForm>
             <div v-if="selectedAllocation?.serialIds.length" class="mt-3">
               <label class="mb-2 block text-sm font-medium" for="wms-return-scan"
                 >PDA 扫描退回 SN</label
@@ -118,6 +135,22 @@
                 <dt class="text-[var(--el-text-color-secondary)]">本次入库</dt>
                 <dd class="tabular-nums font-medium">{{ form.quantity }}</dd>
               </div>
+              <template v-if="remainingDisplayQuantity !== null">
+                <div class="flex justify-between gap-3">
+                  <dt class="text-[var(--el-text-color-secondary)]">换算可退</dt>
+                  <dd class="min-w-0 text-right tabular-nums font-medium">
+                    {{ formatDisplayQuantity(remainingDisplayQuantity) }}
+                    {{ selectedAllocation?.displayUnit?.unitName || '' }}
+                  </dd>
+                </div>
+                <div class="flex justify-between gap-3">
+                  <dt class="text-[var(--el-text-color-secondary)]">本次换算入库</dt>
+                  <dd class="min-w-0 text-right tabular-nums font-medium">
+                    {{ formatDisplayQuantity(currentDisplayQuantity ?? 0) }}
+                    {{ selectedAllocation?.displayUnit?.unitName || '' }}
+                  </dd>
+                </div>
+              </template>
             </dl>
           </ArtSectionCard>
           <ArtSectionCard title="后续查询" subtitle="通过原 SN 或项目施工号追溯回库记录。">
@@ -143,6 +176,7 @@
   import BusinessWorkspaceHeader from '@/components/business/business-workspace-header/index.vue'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
+  import WmsBinPicker from '@wms/views/shared/wms-bin-picker.vue'
   import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
   import type {
     DataSelectColumn,
@@ -194,6 +228,25 @@
     () => selectedAllocation.value?.returns.flatMap((row) => row.serialIds) ?? []
   )
   const remainingQuantity = computed(() => selectedAllocation.value?.remaining ?? 0)
+  const remainingDisplayQuantity = computed(() => {
+    const allocation = selectedAllocation.value
+    if (allocation?.outboundDisplayQuantity == null) return null
+    const returned = allocation.returns.reduce(
+      (sum, row) => sum + (row.returnDisplayQuantity ?? 0),
+      0
+    )
+    return Math.max(0, Math.round((allocation.outboundDisplayQuantity - returned) * 1e6) / 1e6)
+  })
+  const currentDisplayQuantity = computed(() => {
+    const allocation = selectedAllocation.value
+    const outboundDisplayQuantity = allocation?.outboundDisplayQuantity
+    if (!allocation || outboundDisplayQuantity == null || remainingDisplayQuantity.value === null)
+      return null
+    if (form.quantity >= remainingQuantity.value) return remainingDisplayQuantity.value
+    return Math.round((outboundDisplayQuantity * form.quantity * 1e6) / allocation.quantity) / 1e6
+  })
+  const formatDisplayQuantity = (value: number): string =>
+    new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 6 }).format(value)
   const availableSerials = computed(() =>
     serials.value.filter((row) => row.status === 'out' && !returnedSerialIds.value.includes(row.id))
   )
@@ -226,16 +279,8 @@
     {
       key: 'binId',
       label: '退货入库库位',
-      type: 'select',
-      options: bins.value
-        .filter((row) => row.status === 'available')
-        .map((row) => ({ label: `${row.binCode} · ${row.binName}`, value: row.id })),
-      props: {
-        clearable: true,
-        filterable: true,
-        disabled: !selectedWarehouse.value?.enableLocations,
-        placeholder: selectedWarehouse.value?.enableLocations ? '请选择库位' : '仓库直存'
-      }
+      type: 'slot',
+      help: '自动选位按物料、库区、容量、混放与 SN 约束推荐；也可手动选择。'
     },
     {
       key: 'referenceNo',

@@ -7,6 +7,10 @@
         :title="request?.documentNo || '办理领料'"
         :description="`${line?.material?.materialName || '物料'} · 待领 ${remaining}`"
       />
+      <p class="text-sm text-[var(--el-text-color-secondary)]">
+        归属：{{ projectName }}{{ request?.constructionNo ? ` / ${request.constructionNo}` : '' }} ·
+        {{ request?.workOrder?.workOrderNo || 'MES 工单' }}
+      </p>
       <ElAlert type="info" :closable="false" show-icon>
         仓库、工单、项目与施工号沿用已审核申请；优先领用本项目库存，也可领用未被其他工单占用的公共库存。
       </ElAlert>
@@ -65,6 +69,36 @@
         {{ selectedBatch.material?.materialName }} · {{ selectedBatch.batchNo }} · 在库
         {{ selectedBatch.quantity }} · {{ selectedBatch.bin?.binCode || '仓库直存' }}
       </ElAlert>
+      <form
+        v-if="serialManaged"
+        class="rounded-xl border border-[var(--el-border-color-light)] bg-[var(--el-fill-color-lighter)] p-3"
+        @submit.prevent="scanSerial"
+      >
+        <label for="issue-serial-scan" class="mb-2 block text-sm font-medium"
+          >PDA 扫描领用 SN</label
+        >
+        <div class="flex flex-col gap-2 sm:flex-row">
+          <ElInput
+            id="issue-serial-scan"
+            v-model="scanText"
+            autocomplete="off"
+            clearable
+            placeholder="扫描当前批次的 SN，回车带入"
+            class="min-w-0 flex-1"
+          />
+          <ElButton
+            native-type="submit"
+            type="primary"
+            plain
+            :disabled="!selectedBatch || loadError || !scanText.trim()"
+          >
+            带入 SN
+          </ElButton>
+        </div>
+        <p class="mt-2 text-xs text-[var(--el-text-color-secondary)]">
+          已选 {{ form.serialIds.length }} / {{ form.quantity }} 件；仅接受当前批次可领用的 SN。
+        </p>
+      </form>
     </div>
   </ArtDialog>
 </template>
@@ -95,6 +129,7 @@
   interface Context {
     request: WmsIssueRequest
     line: WmsIssueRequestLine
+    projectName: string
   }
   type BatchOption = WmsStockBatch & { batchLabel: string }
   const emit = defineEmits<{ success: [] }>()
@@ -102,13 +137,25 @@
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const request = shallowRef<WmsIssueRequest>()
   const line = shallowRef<WmsIssueRequestLine>()
+  const projectName = ref('公共库存')
   const selectedBatch = shallowRef<BatchOption | null>(null)
   const serials = ref<WmsBatchSerial[]>([])
+  const scanText = ref('')
   const loadError = ref(false)
   const stockScope = ref<'project' | 'public'>('project')
   const form = reactive({ batchId: '', quantity: 1, serialIds: [] as string[], remark: '' })
   const remaining = computed(() =>
     Math.max(0, (line.value?.requestedQuantity || 0) - (line.value?.issuedQuantity || 0))
+  )
+  const serialManaged = computed(
+    () => Boolean(line.value?.material?.serialManagementEnabled) || serials.value.length > 0
+  )
+  const eligibleSerials = computed(() =>
+    serials.value.filter(
+      (row) =>
+        row.status === 'in_stock' &&
+        (!row.reservedWorkOrderId || row.reservedWorkOrderId === request.value?.workOrderId)
+    )
   )
   const batchColumns: DataSelectColumn[] = [
     { prop: 'batchLabel', label: '物料 / 批号', minWidth: 260 },
@@ -131,21 +178,14 @@
       },
       help: `申请尚需 ${remaining.value}；已被其他工单预留的库存不可领用。`
     },
-    ...(line.value?.material?.serialManagementEnabled || serials.value.length
+    ...(serialManaged.value
       ? [
           {
             key: 'serialIds',
             label: '领用 SN',
             type: 'select' as const,
             span: 24,
-            options: serials.value
-              .filter(
-                (row) =>
-                  row.status === 'in_stock' &&
-                  (!row.reservedWorkOrderId ||
-                    row.reservedWorkOrderId === request.value?.workOrderId)
-              )
-              .map((row) => ({ label: row.serialNo, value: row.id })),
+            options: eligibleSerials.value.map((row) => ({ label: row.serialNo, value: row.id })),
             props: { multiple: true, filterable: true, collapseTags: true },
             help: '逐件选择；SN 数量须等于本次领料数量。'
           }
@@ -207,6 +247,7 @@
     form.quantity = 1
     form.serialIds = []
     serials.value = []
+    scanText.value = ''
     loadError.value = false
   }
   async function onBatchSelected(rows: DataSelectRecord[]): Promise<void> {
@@ -215,6 +256,7 @@
     form.batchId = selectedBatch.value?.id || ''
     form.serialIds = []
     serials.value = []
+    scanText.value = ''
     if (!selectedBatch.value) return
     form.quantity = selectedBatch.value.packId
       ? selectedBatch.value.quantity
@@ -225,6 +267,19 @@
     } catch {
       loadError.value = true
     }
+  }
+  function scanSerial(): void {
+    const code = scanText.value.trim()
+    if (!code || !selectedBatch.value || loadError.value) return
+    const serial = eligibleSerials.value.find(
+      (row) => row.serialNo.toLocaleUpperCase() === code.toLocaleUpperCase()
+    )
+    if (!serial) return void ElMessage.warning('当前批次没有可领用的这个 SN')
+    if (form.serialIds.includes(serial.id)) return void ElMessage.warning('这个 SN 已带入')
+    if (form.serialIds.length >= form.quantity)
+      return void ElMessage.warning('已达到本次领料数量，请先调整数量或 SN 清单')
+    form.serialIds.push(serial.id)
+    scanText.value = ''
   }
   async function submit(): Promise<boolean> {
     try {
@@ -254,10 +309,7 @@
         ElMessage.warning('垛包只能整包领用')
         return false
       }
-      if (
-        (item.material?.serialManagementEnabled || serials.value.length) &&
-        form.serialIds.length !== form.quantity
-      ) {
+      if (serialManaged.value && form.serialIds.length !== form.quantity) {
         ElMessage.warning('SN 件数必须与本次领料数量一致')
         return false
       }
@@ -277,6 +329,7 @@
   async function handleOpen(data: Context): Promise<void> {
     request.value = data.request
     line.value = data.line
+    projectName.value = data.projectName
     stockScope.value = 'project'
     clearSelectedBatch()
     Object.assign(form, { batchId: '', quantity: 1, serialIds: [], remark: '' })

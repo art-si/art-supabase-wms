@@ -5,6 +5,7 @@
     action-permission="WmsReceiptInbound:Confirm"
     scope-permission="WmsReceiptInbound:AssignScope"
     serial-permission="WmsReceiptInbound:CaptureSN"
+    bin-permission="WmsReceiptInbound:AssignBin"
   />
 </template>
 

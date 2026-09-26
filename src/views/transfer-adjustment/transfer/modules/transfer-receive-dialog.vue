@@ -10,7 +10,7 @@
       <ElAlert type="info" :closable="false" show-icon>
         确认后将在
         {{ document?.targetOrganization?.organizationName || '目标组织' }}
-        的目标仓库生成新批次，并将 {{ document?.quantity || 0 }} 件在途库存结清。
+        的目标仓库生成新批次，并将数量 {{ document?.quantity || 0 }} 的在途库存结清。
       </ElAlert>
       <ElAlert v-if="loadError" type="error" :closable="false" show-icon>
         库位加载失败，请关闭后重试。
@@ -23,7 +23,23 @@
         label-position="top"
         :show-reset="false"
         :show-submit="false"
-      />
+      >
+        <template #targetBinId>
+          <WmsBinPicker
+            v-model="form.targetBinId"
+            :bins="bins"
+            :warehouse-id="document?.targetWarehouseId"
+            :material-id="document?.materialId"
+            :quantity="document?.quantity"
+            :area-sqm="document?.areaSqm"
+            :enabled="Boolean(document?.targetWarehouse?.enableLocations)"
+            :serial-managed="Boolean(document?.serialIds.length)"
+            :disabled="loadError"
+            label="目标库位"
+            @bins-loaded="bins = $event"
+          />
+        </template>
+      </ArtForm>
     </div>
   </ArtDialog>
 </template>
@@ -33,6 +49,7 @@
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
+  import WmsBinPicker from '@wms/views/shared/wms-bin-picker.vue'
   import { fetchWmsBins, receiveWmsTransfer, type WmsBin, type WmsTransferDocument } from '@wms/api'
 
   const emit = defineEmits<{ success: [] }>()
@@ -41,24 +58,14 @@
   const document = shallowRef<WmsTransferDocument>()
   const bins = ref<WmsBin[]>([])
   const loadError = ref(false)
-  const form = reactive({ targetBinId: '' })
+  const form = reactive<{ targetBinId: string | null }>({ targetBinId: null })
   const items = computed<FormItem[]>(() => [
     {
       key: 'targetBinId',
       label: '目标库位',
-      type: 'select',
-      options: bins.value
-        .filter((row) => row.status === 'enabled')
-        .map((row) => ({ label: `${row.binName} · ${row.binCode}`, value: row.id })),
-      props: {
-        clearable: !document.value?.targetWarehouse?.enableLocations,
-        filterable: true,
-        placeholder: document.value?.targetWarehouse?.enableLocations
-          ? '请选择入库库位'
-          : '仓库直存，无需库位'
-      },
+      type: 'slot',
       help: document.value?.targetWarehouse?.enableLocations
-        ? '目标仓库启用库位管理，入库时必须指定库位。'
+        ? '自动推荐会校验容量与物料规则；也可手动选择，记账时再次复核。'
         : undefined
     }
   ])
@@ -81,7 +88,7 @@
   async function handleOpen(row: WmsTransferDocument): Promise<void> {
     document.value = row
     bins.value = []
-    form.targetBinId = ''
+    form.targetBinId = null
     loadError.value = false
     await dialogRef.value?.handleOpen(row, {
       title: '确认调拨入库',

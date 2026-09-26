@@ -81,6 +81,20 @@
               :show-submit="false"
               root-class="wms-stock-operation-form"
             >
+              <template #binId>
+                <WmsBinPicker
+                  v-model="form.binId"
+                  :bins="sourceBins"
+                  :warehouse-id="form.warehouseId"
+                  :material-id="form.materialId"
+                  :quantity="form.quantity"
+                  :area-sqm="form.areaSqm"
+                  :enabled="Boolean(selectedWarehouse?.enableLocations)"
+                  :serial-managed="materialSerialEnabled"
+                  :disabled="loadError"
+                  @bins-loaded="sourceBins = $event"
+                />
+              </template>
               <template #materialId>
                 <ElInput
                   v-if="form.movementType === 'production_in'"
@@ -242,6 +256,7 @@
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import ArtMaterialSelect from '@/components/business/art-material-select/index.vue'
+  import WmsBinPicker from '@wms/views/shared/wms-bin-picker.vue'
   import { normalizeNullableText } from '@/utils/form/normalize'
   import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
   import type { MaterialSelectRecord } from '@/components/business/art-material-select/index.vue'
@@ -571,16 +586,8 @@
           {
             key: 'binId',
             label: '入库库位',
-            type: 'select' as const,
-            options: sourceBins.value
-              .filter((row) => row.status === 'available')
-              .map((row) => ({ label: `${row.binCode} · ${row.binName}`, value: row.id })),
-            props: {
-              filterable: true,
-              clearable: true,
-              disabled: !selectedWarehouse.value?.enableLocations,
-              placeholder: selectedWarehouse.value?.enableLocations ? '选择库位' : '仓库直存'
-            }
+            type: 'slot' as const,
+            help: '自动选位按物料、库区、容量、混放与 SN 约束推荐；也可手动选择。'
           },
           { key: 'materialId', label: '入库物料', type: 'slot' as const, span: 24 },
           {
@@ -1059,6 +1066,7 @@
   async function onProductionOrderChange(): Promise<void> {
     const order = selectedProductionOrder.value
     form.packId = null
+    form.binId = null
     packs.value = []
     form.materialId = order?.materialId || null
     form.projectId = order?.projectId || null
@@ -1231,18 +1239,23 @@
     formRef.value?.clearValidate()
   }
   const serialText = ref('')
+  let materialControlRevision = 0
   watch(
     () => form.materialId,
     async (id) => {
+      const revision = ++materialControlRevision
+      form.binId = null
+      serialText.value = ''
+      materialSerialEnabled.value = false
       try {
-        materialSerialEnabled.value = id
-          ? Boolean((await fetchWmsMaterialControl(id))?.serialManagementEnabled)
-          : false
+        const control = id ? await fetchWmsMaterialControl(id) : null
+        if (revision !== materialControlRevision) return
+        materialSerialEnabled.value = Boolean(control?.serialManagementEnabled)
       } catch {
+        if (revision !== materialControlRevision) return
         materialSerialEnabled.value = false
         loadError.value = true
       }
-      serialText.value = ''
     }
   )
   watch(effectiveTenantId, () => {

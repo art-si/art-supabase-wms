@@ -10,10 +10,13 @@ import type {
   WmsBatchSerial,
   WmsAssemblyChildCandidate,
   WmsBin,
+  WmsBinRecommendationInput,
   WmsCountLine,
   WmsCountLineInput,
   WmsCountPlan,
   WmsCountPlanInput,
+  WmsCountVarianceDocument,
+  WmsCountVarianceMovement,
   WmsDirectTransfer,
   WmsIssuePostInput,
   WmsIssueRequest,
@@ -27,6 +30,7 @@ import type {
   WmsPackOption,
   WmsProject,
   WmsProjectPack,
+  WmsProjectMaterial,
   WmsProjectSection,
   WmsProjectSummary,
   WmsProjectWorkOrder,
@@ -84,12 +88,26 @@ export async function fetchWmsBins(warehouseId: string): Promise<WmsBin[]> {
     () =>
       supabase
         .from('mdm_warehouse_bin')
-        .select('id,warehouse_id,bin_code,bin_name,status')
+        .select('id,warehouse_id,bin_code,bin_name,status,supports_serial')
         .eq('warehouse_id', warehouseId)
         .order('bin_code'),
     readOptions
   )
   return data ?? []
+}
+
+export async function recommendWmsBin(input: WmsBinRecommendationInput): Promise<string | null> {
+  const { data } = await responseHandle<string | null>(
+    () =>
+      supabase.rpc('wms_recommend_bin_secure', {
+        p_warehouse_id: input.warehouseId,
+        p_material_id: input.materialId,
+        p_quantity: input.quantity,
+        p_area_sqm: input.areaSqm ?? null
+      }),
+    readOptions
+  )
+  return data ?? null
 }
 
 export async function fetchWmsUnitOptions(tenantId: string): Promise<WmsUnitOption[]> {
@@ -337,7 +355,7 @@ export async function fetchWmsSalesReturnAllocationPage(params: {
   let query = supabase
     .from('wms_sales_outbound_allocation')
     .select(
-      'id,tenant_id,shipping_notice_id,shipping_line_id,batch_id,material_id,quantity,serial_ids,created_at,shippingNotice:scm_sales_document!wms_sales_outbound_allocation_shipping_notice_id_fkey(document_no,project_id,details),batch:wms_inventory_batch!wms_sales_outbound_batch_fk(batch_no,project_id,construction_no,material:mdm_material!wms_inventory_batch_material_fk(material_code,material_name,serial_management_enabled)),returns:wms_sales_return_document!wms_sales_return_document_outbound_allocation_id_fkey(quantity,serial_ids)',
+      'id,tenant_id,shipping_notice_id,shipping_line_id,batch_id,material_id,quantity,display_unit_id,outbound_display_quantity,serial_ids,created_at,shippingNotice:scm_sales_document!wms_sales_outbound_allocation_shipping_notice_id_fkey(document_no,project_id,details),batch:wms_inventory_batch!wms_sales_outbound_batch_fk(batch_no,project_id,construction_no,material:mdm_material!wms_inventory_batch_material_fk(material_code,material_name,serial_management_enabled)),displayUnit:mdm_unit_of_measure!wms_sales_outbound_display_unit_fk(unit_code,unit_name),returns:wms_sales_return_document!wms_sales_return_document_outbound_allocation_id_fkey(quantity,serial_ids,return_display_quantity)',
       { count: 'exact' }
     )
     .order('created_at', { ascending: false })
@@ -656,7 +674,7 @@ export async function fetchWmsIssueRequestLines(id: string): Promise<WmsIssueReq
       supabase
         .from('wms_issue_request_line')
         .select(
-          '*,material:mdm_material!wms_issue_request_line_material_fk(material_code,material_name,serial_management_enabled)'
+          '*,material:mdm_material!wms_issue_request_line_material_fk(material_code,material_name,serial_management_enabled,baseUnit:mdm_unit_of_measure!mdm_material_base_unit_fkey(unit_name))'
         )
         .eq('request_id', id)
         .order('id'),
@@ -781,6 +799,29 @@ export async function fetchWmsCountLines(planId: string): Promise<WmsCountLine[]
         )
         .eq('plan_id', planId)
         .order('id'),
+    readOptions
+  )
+  return data ?? []
+}
+
+export async function fetchWmsCountVarianceDocuments(
+  planId: string
+): Promise<WmsCountVarianceDocument[]> {
+  const { data } = await responseHandle<WmsCountVarianceDocument[]>(
+    () =>
+      supabase.from('wms_count_variance_document').select('*').eq('plan_id', planId).order('kind'),
+    readOptions
+  )
+  return data ?? []
+}
+
+export async function fetchWmsCountVarianceMovements(
+  movementIds: string[]
+): Promise<WmsCountVarianceMovement[]> {
+  if (!movementIds.length) return []
+  const { data } = await responseHandle<WmsCountVarianceMovement[]>(
+    () =>
+      supabase.from('wms_inventory_movement').select('id,quantity,area_sqm').in('id', movementIds),
     readOptions
   )
   return data ?? []
@@ -934,6 +975,22 @@ export async function fetchWmsProjectPackPage(params: WmsStockQuery) {
   const { data } = await responseHandle<{ data: WmsProjectPack[]; total: number }>(
     () =>
       supabase.rpc('wms_project_pack_page_secure', {
+        p_project_id: params.projectId,
+        p_construction_no: params.constructionNo || null,
+        p_keyword: normalizeNullableText(params.keyword),
+        p_offset: (params.current - 1) * params.size,
+        p_limit: params.size
+      }),
+    readOptions
+  )
+  return { data: data?.data ?? [], total: data?.total ?? 0 }
+}
+
+export async function fetchWmsProjectMaterialPage(params: WmsStockQuery) {
+  if (!params.projectId) return { data: [] as WmsProjectMaterial[], total: 0 }
+  const { data } = await responseHandle<{ data: WmsProjectMaterial[]; total: number }>(
+    () =>
+      supabase.rpc('wms_project_material_page_secure', {
         p_project_id: params.projectId,
         p_construction_no: params.constructionNo || null,
         p_keyword: normalizeNullableText(params.keyword),

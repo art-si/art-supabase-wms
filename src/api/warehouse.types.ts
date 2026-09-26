@@ -16,6 +16,14 @@ export interface WmsBin {
   binCode: string
   binName: string
   status: string
+  supportsSerial: boolean
+}
+
+export interface WmsBinRecommendationInput {
+  warehouseId: string
+  materialId: string
+  quantity: number
+  areaSqm?: number | null
 }
 
 export interface WmsMaterialOption {
@@ -186,6 +194,7 @@ export interface WmsSerial {
   constructionNo: string | null
   effectiveProjectId?: string | null
   effectiveConstructionNo?: string | null
+  childSerialNos?: string[]
   parentSerialId: string | null
   reservedWorkOrderId: string | null
   consumedWorkOrderId: string | null
@@ -305,6 +314,8 @@ export interface WmsSalesReturnAllocation {
   batchId: string
   materialId: string
   quantity: number
+  displayUnitId: string | null
+  outboundDisplayQuantity: number | null
   serialIds: string[]
   createdAt: string
   shippingNotice: {
@@ -322,7 +333,8 @@ export interface WmsSalesReturnAllocation {
       serialManagementEnabled: boolean
     } | null
   } | null
-  returns: Array<{ quantity: number; serialIds: string[] }>
+  displayUnit: { unitCode: string; unitName: string } | null
+  returns: Array<{ quantity: number; serialIds: string[]; returnDisplayQuantity: number | null }>
 }
 
 export interface WmsSalesReturnSerial {
@@ -384,10 +396,11 @@ export interface WmsIssueRequestLine {
   materialId: string
   requestedQuantity: number
   issuedQuantity: number
-  material?: Pick<
-    WmsMaterialOption,
-    'materialCode' | 'materialName' | 'serialManagementEnabled'
-  > | null
+  material?:
+    | (Pick<WmsMaterialOption, 'materialCode' | 'materialName' | 'serialManagementEnabled'> & {
+        baseUnit?: { unitName: string } | null
+      })
+    | null
   allocations?: WmsIssueRequestAllocation[]
 }
 
@@ -492,6 +505,17 @@ export interface WmsCountLine {
     serialManagementEnabled: boolean
   } | null
 }
+
+export interface WmsCountVarianceDocument {
+  id: string
+  tenantId: string
+  planId: string
+  kind: 'gain' | 'loss'
+  documentNo: string
+  postedAt: string
+}
+
+export type WmsCountVarianceMovement = Pick<WmsMovement, 'id' | 'quantity' | 'areaSqm'>
 
 export interface WmsCountPlanInput {
   documentNo: string
@@ -676,18 +700,41 @@ export interface WmsProjectTransferInput {
 export interface WmsProjectSummary {
   stockQuantity: number
   finishedStockQuantity: number
+  finishedStockMaterialCount: number
   boardAreaSqm: number
   packCount: number
   materialCount: number
   reservedQuantity: number
+  reservedMaterialCount: number
   workOrderCount: number
   wipQuantity: number
   issuedQuantity: number
+  issuedMaterialCount: number
   shippedQuantity: number
+  shippedMaterialCount: number
   returnedQuantity: number
   netShippedQuantity: number
   serialCount: number
   movementCount: number
+}
+
+export interface WmsProjectMaterial {
+  id: string
+  materialId: string
+  materialCode: string
+  materialName: string
+  materialType: string
+  baseUnitName: string
+  quantityUnitName: string
+  stockQuantity: number
+  stockAreaSqm: number
+  reservedQuantity: number
+  issuedQuantity: number
+  wipQuantity: number
+  shippedQuantity: number
+  returnedQuantity: number
+  netShippedQuantity: number
+  serialCount: number
 }
 
 export interface WmsProjectPack {

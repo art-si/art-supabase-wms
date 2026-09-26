@@ -10,15 +10,15 @@
       <div class="grid gap-3 sm:grid-cols-3">
         <div class="rounded-xl bg-[var(--el-fill-color-light)] p-4">
           <small class="text-[var(--el-text-color-secondary)]">申请物料</small>
-          <strong class="mt-1 block text-xl tabular-nums">{{ lines.length }}</strong>
+          <strong class="mt-1 block text-xl tabular-nums">{{ lines.length }} 种</strong>
         </div>
         <div class="rounded-xl bg-[var(--el-fill-color-light)] p-4">
-          <small class="text-[var(--el-text-color-secondary)]">申请数量</small>
-          <strong class="mt-1 block text-xl tabular-nums">{{ requestedQuantity }}</strong>
+          <small class="text-[var(--el-text-color-secondary)]">待领物料</small>
+          <strong class="mt-1 block text-xl tabular-nums">{{ pendingMaterialCount }} 种</strong>
         </div>
         <div class="rounded-xl bg-[var(--el-fill-color-light)] p-4">
-          <small class="text-[var(--el-text-color-secondary)]">已领数量</small>
-          <strong class="mt-1 block text-xl tabular-nums">{{ issuedQuantity }}</strong>
+          <small class="text-[var(--el-text-color-secondary)]">已领完物料</small>
+          <strong class="mt-1 block text-xl tabular-nums">{{ fulfilledMaterialCount }} 种</strong>
         </div>
       </div>
       <ArtSectionCard
@@ -42,7 +42,7 @@
               }}</strong>
               <p class="mt-1 text-xs text-[var(--el-text-color-secondary)]">
                 {{ item.material?.materialCode }} · 已领 {{ item.issuedQuantity }} / 申请
-                {{ item.requestedQuantity }}
+                {{ item.requestedQuantity }} {{ item.material?.baseUnit?.unitName || '' }}
               </p>
             </div>
             <ElTag
@@ -50,6 +50,7 @@
               size="small"
             >
               待领 {{ Math.max(0, item.requestedQuantity - item.issuedQuantity) }}
+              {{ item.material?.baseUnit?.unitName || '' }}
             </ElTag>
             <ElButton
               v-if="canIssue && item.issuedQuantity < item.requestedQuantity"
@@ -132,11 +133,11 @@
         hasAnyAuth(['WmsStockOperation:Issue', 'MdmInventoryBatch:Issue'])
       : false
   )
-  const requestedQuantity = computed(() =>
-    lines.value.reduce((sum, item) => sum + item.requestedQuantity, 0)
+  const pendingMaterialCount = computed(
+    () => lines.value.filter((item) => item.issuedQuantity < item.requestedQuantity).length
   )
-  const issuedQuantity = computed(() =>
-    lines.value.reduce((sum, item) => sum + item.issuedQuantity, 0)
+  const fulfilledMaterialCount = computed(
+    () => lines.value.filter((item) => item.issuedQuantity >= item.requestedQuantity).length
   )
   async function loadDetail(): Promise<void> {
     if (!request.value) return
@@ -164,7 +165,12 @@
     }
   }
   function openIssue(line: WmsIssueRequestLine): void {
-    if (request.value) void postRef.value?.handleOpen({ request: request.value, line })
+    if (request.value)
+      void postRef.value?.handleOpen({
+        request: request.value,
+        line,
+        projectName: projectName.value
+      })
   }
   async function handleIssueSuccess(): Promise<void> {
     await loadDetail()

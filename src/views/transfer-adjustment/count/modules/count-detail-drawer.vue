@@ -17,8 +17,8 @@
           <strong class="mt-1 block text-xl tabular-nums">{{ countedCount }}</strong>
         </div>
         <div class="rounded-xl bg-[var(--el-fill-color-light)] p-4">
-          <small class="text-[var(--el-text-color-secondary)]">净差异</small>
-          <strong class="mt-1 block text-xl tabular-nums">{{ varianceLabel }}</strong>
+          <small class="text-[var(--el-text-color-secondary)]">差异批次</small>
+          <strong class="mt-1 block text-xl tabular-nums">{{ varianceCount }}</strong>
         </div>
       </div>
       <ElAlert v-if="plan.status === 'counting'" type="info" :closable="false" show-icon>
@@ -35,6 +35,84 @@
           确认盘盈盘亏
         </ElButton>
       </div>
+      <ArtSectionCard
+        v-if="plan.status === 'posted'"
+        title="盘盈盘亏单"
+        subtitle="按盘点差异自动生成；每条明细关联实际库存流水，保留项目施工号。"
+        :loading="loading || documentsLoading"
+        :error="
+          loadError ? '盘点表加载失败，请重试' : documentsError ? '差异单据加载失败，请重试' : null
+        "
+        :empty="!loading && !documentsLoading && !documentsError && documents.length === 0"
+        empty-title="账实相符，无盘盈盘亏单"
+        empty-description="本次实盘没有数量或 SN 差异。"
+        @retry="loadError ? loadLines() : loadDocuments(lines)"
+      >
+        <div class="space-y-4">
+          <div
+            v-for="document in documents"
+            :key="document.id"
+            class="min-w-0 rounded-xl border border-[var(--el-border-color-light)] p-4"
+          >
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div class="min-w-0">
+                <strong class="block break-all text-sm"
+                  >{{ document.kind === 'gain' ? '盘盈单' : '盘亏单' }} ·
+                  {{ document.documentNo }}</strong
+                >
+                <p class="mt-1 text-xs text-[var(--el-text-color-secondary)]">
+                  {{ document.postedAt.replace('T', ' ').slice(0, 19) }} ·
+                  {{ documentLines(document.kind).length }} 条差异
+                </p>
+              </div>
+              <ElTag :type="document.kind === 'gain' ? 'success' : 'warning'" size="small">
+                已记账
+              </ElTag>
+            </div>
+            <ul class="mt-3 divide-y divide-[var(--el-border-color-light)]">
+              <li
+                v-for="item in documentLines(document.kind)"
+                :key="item.id"
+                class="flex min-w-0 flex-wrap items-center justify-between gap-2 py-2 text-sm"
+              >
+                <div class="min-w-0">
+                  <strong class="block truncate">{{
+                    item.material?.materialName || '物料'
+                  }}</strong>
+                  <p class="mt-0.5 break-all text-xs text-[var(--el-text-color-secondary)]">
+                    {{ item.batch?.batchNo || item.batchId }} · {{ projectName(item.projectId)
+                    }}{{ item.constructionNo ? ` / ${item.constructionNo}` : '' }}
+                  </p>
+                  <p
+                    v-if="document.kind === 'gain' && item.newSerialNos.length"
+                    class="mt-0.5 break-all text-xs text-[var(--el-text-color-secondary)]"
+                  >
+                    新增 SN：{{ item.newSerialNos.join('、') }}
+                  </p>
+                </div>
+                <div class="shrink-0 text-right tabular-nums">
+                  <strong
+                    :class="
+                      document.kind === 'gain'
+                        ? 'text-[var(--el-color-success)]'
+                        : 'text-[var(--el-color-warning)]'
+                    "
+                    >{{ document.kind === 'gain' ? '+' : '−'
+                    }}{{ movementQuantity(item, document.kind) }}</strong
+                  >
+                  <small
+                    v-if="movementArea(item, document.kind) !== null"
+                    class="mt-0.5 block text-[var(--el-text-color-secondary)]"
+                  >
+                    {{ document.kind === 'gain' ? '+' : '−'
+                    }}{{ movementArea(item, document.kind) }}㎡
+                  </small>
+                </div>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </ArtSectionCard>
       <ArtSectionCard
         title="盘点表"
         subtitle="一个库存批次对应一行；项目施工号随来源库存保留。"
@@ -79,12 +157,8 @@
             >
               {{ item.countedQuantity === null ? '录入' : '复核' }}
             </ElButton>
-            <ElTag
-              v-else
-              size="small"
-              :type="item.countedQuantity === item.expectedQuantity ? 'info' : 'warning'"
-            >
-              {{ item.countedQuantity === item.expectedQuantity ? '相符' : '已记差异' }}
+            <ElTag v-else size="small" :type="hasVariance(item) ? 'warning' : 'info'">
+              {{ hasVariance(item) ? '已记差异' : '相符' }}
             </ElTag>
           </li>
         </ul>
@@ -102,9 +176,13 @@
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import {
     fetchWmsCountLines,
+    fetchWmsCountVarianceDocuments,
+    fetchWmsCountVarianceMovements,
     postWmsCountPlan,
     type WmsCountLine,
     type WmsCountPlan,
+    type WmsCountVarianceDocument,
+    type WmsCountVarianceMovement,
     type WmsProject
   } from '@wms/api'
   import CountLineDialog from './count-line-dialog.vue'
@@ -120,32 +198,87 @@
   const plan = shallowRef<WmsCountPlan>()
   const projects = ref<WmsProject[]>([])
   const lines = ref<WmsCountLine[]>([])
+  const documents = ref<WmsCountVarianceDocument[]>([])
+  const movements = ref<WmsCountVarianceMovement[]>([])
   const loading = ref(false)
   const loadError = ref(false)
+  const documentsLoading = ref(false)
+  const documentsError = ref(false)
   const posting = ref(false)
   const countedCount = computed(
     () => lines.value.filter((row) => row.countedQuantity !== null).length
   )
-  const varianceLabel = computed(() => {
-    const difference = lines.value.reduce(
-      (total, row) => total + (row.countedQuantity ?? row.expectedQuantity) - row.expectedQuantity,
-      0
+  const varianceCount = computed(() => lines.value.filter(hasVariance).length)
+  const movementById = computed(() => new Map(movements.value.map((row) => [row.id, row])))
+  function hasVariance(row: WmsCountLine): boolean {
+    if (plan.value?.status === 'posted') return Boolean(row.lossMovementId || row.gainMovementId)
+    if (row.countedQuantity === null) return false
+    if (row.countedQuantity !== row.expectedQuantity || row.newSerialNos.length > 0) return true
+    const countedIds = new Set(row.countedSerialIds)
+    return row.expectedSerialIds.some((id) => !countedIds.has(id))
+  }
+  function documentLines(kind: WmsCountVarianceDocument['kind']): WmsCountLine[] {
+    return lines.value.filter((row) =>
+      Boolean(kind === 'gain' ? row.gainMovementId : row.lossMovementId)
     )
-    return difference > 0 ? `+${difference}` : String(difference)
-  })
+  }
+  function movementQuantity(
+    row: WmsCountLine,
+    kind: WmsCountVarianceDocument['kind']
+  ): number | string {
+    const id = kind === 'gain' ? row.gainMovementId : row.lossMovementId
+    return id ? (movementById.value.get(id)?.quantity ?? '—') : '—'
+  }
+  function movementArea(row: WmsCountLine, kind: WmsCountVarianceDocument['kind']): number | null {
+    const id = kind === 'gain' ? row.gainMovementId : row.lossMovementId
+    return id ? (movementById.value.get(id)?.areaSqm ?? null) : null
+  }
   function projectName(id: string | null): string {
     return id ? projects.value.find((row) => row.id === id)?.projectName || '历史项目' : '公共库存'
   }
   async function loadLines(): Promise<void> {
     if (!plan.value) return
+    const planId = plan.value.id
     loading.value = true
     loadError.value = false
     try {
-      lines.value = await fetchWmsCountLines(plan.value.id)
+      const loaded = await fetchWmsCountLines(planId)
+      if (plan.value?.id !== planId) return
+      lines.value = loaded
+      if (plan.value.status === 'posted') await loadDocuments(loaded)
     } catch {
-      loadError.value = true
+      if (plan.value?.id === planId) loadError.value = true
     } finally {
-      loading.value = false
+      if (plan.value?.id === planId) loading.value = false
+    }
+  }
+  async function loadDocuments(countLines: WmsCountLine[]): Promise<void> {
+    if (!plan.value) return
+    const planId = plan.value.id
+    documentsLoading.value = true
+    documentsError.value = false
+    try {
+      const loaded = await fetchWmsCountVarianceDocuments(planId)
+      const movementIds = countLines.flatMap((row) =>
+        [row.lossMovementId, row.gainMovementId].filter((id): id is string => Boolean(id))
+      )
+      const movementRows = await fetchWmsCountVarianceMovements(movementIds)
+      if (movementRows.length !== movementIds.length) throw new Error('盘点差异流水不完整')
+      if (
+        (countLines.some((row) => row.lossMovementId) &&
+          !loaded.some((document) => document.kind === 'loss')) ||
+        (countLines.some((row) => row.gainMovementId) &&
+          !loaded.some((document) => document.kind === 'gain'))
+      ) {
+        throw new Error('盘盈盘亏单缺失')
+      }
+      if (plan.value?.id !== planId) return
+      documents.value = loaded
+      movements.value = movementRows
+    } catch {
+      if (plan.value?.id === planId) documentsError.value = true
+    } finally {
+      if (plan.value?.id === planId) documentsLoading.value = false
     }
   }
   function openLine(row: WmsCountLine): void {
@@ -155,7 +288,7 @@
     if (!plan.value || posting.value) return
     try {
       await confirmAction(
-        `确认盘点单 ${plan.value.documentNo} 的全部差异？确认后将生成盘盈盘亏流水，实盘结果不可再改。`,
+        `确认盘点单 ${plan.value.documentNo} 的全部差异？确认后将自动生成盘盈盘亏单和库存流水，实盘结果不可再改。`,
         '确认盘点差异',
         { type: 'warning', confirmButtonText: '确认记账', cancelButtonText: '继续复核' }
       )
@@ -174,7 +307,12 @@
     plan.value = data.plan
     projects.value = data.projects
     lines.value = []
+    documents.value = []
+    movements.value = []
+    loading.value = false
+    documentsLoading.value = false
     loadError.value = false
+    documentsError.value = false
     await drawerRef.value?.handleOpen(data, {
       title: '盘点表',
       subtitle: '实盘录入、差异复核与记账',

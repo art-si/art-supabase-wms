@@ -9,8 +9,9 @@
       />
       <ElAlert type="info" :closable="false" show-icon>
         期初
-        {{ line?.expectedQuantity ?? '—' }}
-        件；实盘结果保存后仍可复核，确认整张盘点表后才生成盘盈盘亏流水。
+        {{
+          line?.expectedQuantity ?? '—'
+        }}；实盘结果保存后仍可复核，确认整张盘点表后才生成盘盈盘亏单和库存流水。
       </ElAlert>
       <ElAlert v-if="loadError" type="error" :closable="false" show-icon>
         SN 清单加载失败或已变化，请重新生成盘点方案。

@@ -127,7 +127,10 @@
     }
   ])
   const typeLabels: Record<string, string> = {
+    initial_purchase_in: '期初采购入库',
+    initial_purchase_return: '期初采购退料',
     purchase_in: '采购入库',
+    purchase_return: '采购退货',
     production_in: '生产入库',
     other_in: '其他入库',
     sales_out: '销售出库',

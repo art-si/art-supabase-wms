@@ -4,7 +4,7 @@
       <BusinessWorkspaceHeader
         eyebrow="INVENTORY COUNT"
         title="库存盘点"
-        description="从即时库存生成盘点方案，逐批录入实盘数量与 SN，复核后自动生成盘盈盘亏流水。"
+        description="从即时库存生成盘点方案，逐批录入实盘数量与 SN，复核后自动生成盘盈盘亏单和库存流水。"
         icon="ri:survey-line"
         density="compact"
         :tags="[

@@ -86,12 +86,13 @@
       <ArtSectionCard
         v-if="selectedProjectId"
         title="项目完工复盘明细"
-        subtitle="五类明细使用同一项目和施工号范围；垛包履历保留已出库记录。"
+        subtitle="六类明细使用同一项目和施工号范围；垛包履历保留已出库记录。"
         class="mt-4"
         preserve-content-structure
       >
         <ElTabs v-model="activeTab" class="min-w-0">
           <ElTabPane name="stock" label="库存与垛包" />
+          <ElTabPane name="materials" label="物料占用" />
           <ElTabPane name="packs" label="垛包履历" />
           <ElTabPane name="orders" label="生产工单" />
           <ElTabPane name="movements" label="收发存记录" />
@@ -106,6 +107,20 @@
           :columns-factory="stockColumns"
           :search-bar-props="{ span: 8, labelWidth: 82, showExpand: false }"
           :table-props="{ rowKey: 'id', tableLayout: 'fixed', emptyText: '该范围暂无库存' }"
+        />
+        <ArtTableQuery
+          v-if="activeTab === 'materials'"
+          :key="`materials-${selectedProjectId}-${selectedConstructionNo}`"
+          v-model="materialSearch"
+          :api-fn="fetchMaterialRows"
+          :search-items="materialSearchItems"
+          :columns-factory="materialColumns"
+          :search-bar-props="{ span: 8, labelWidth: 82, showExpand: false }"
+          :table-props="{
+            rowKey: 'id',
+            tableLayout: 'fixed',
+            emptyText: '该范围暂无物料占用或流转记录'
+          }"
         />
         <ArtTableQuery
           v-if="activeTab === 'packs'"
@@ -164,6 +179,7 @@
   import { useTenantScopeStore } from '@/store/modules/tenantScope'
   import {
     fetchWmsProjectMovementPage,
+    fetchWmsProjectMaterialPage,
     fetchWmsProjectPackPage,
     fetchWmsProjectSections,
     fetchWmsProjectSummary,
@@ -173,6 +189,7 @@
     fetchWmsStockPage,
     type WmsMovement,
     type WmsProject,
+    type WmsProjectMaterial,
     type WmsProjectPack,
     type WmsProjectSection,
     type WmsProjectSummary,
@@ -183,7 +200,7 @@
   } from '@wms/api'
 
   defineOptions({ name: 'WmsProjectReport' })
-  type ReportTab = 'stock' | 'packs' | 'orders' | 'movements' | 'serials'
+  type ReportTab = 'stock' | 'materials' | 'packs' | 'orders' | 'movements' | 'serials'
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const projects = ref<WmsProject[]>([])
   const sections = ref<WmsProjectSection[]>([])
@@ -196,6 +213,7 @@
   const optionError = ref(false)
   let summaryRequestId = 0
   const stockSearch = reactive({ keyword: '', positiveOnly: true })
+  const materialSearch = reactive({ keyword: '' })
   const packSearch = reactive({ keyword: '' })
   const orderSearch = reactive({ keyword: '' })
   const movementSearch = reactive({ keyword: '' })
@@ -216,14 +234,14 @@
     if (!value) return []
     return [
       {
-        label: '成品在库',
-        value: formatNumberValue(value.finishedStockQuantity),
-        hint: '生产工单入库数量'
+        label: '成品在库物料',
+        value: `${formatNumberValue(value.finishedStockMaterialCount)} 类`,
+        hint: '数量与单位见物料占用'
       },
       {
-        label: '当前库存',
-        value: formatNumberValue(value.stockQuantity),
-        hint: `${value.materialCount} 类物料 · ${value.packCount} 个垛包`
+        label: '当前库存物料',
+        value: `${formatNumberValue(value.materialCount)} 类`,
+        hint: `${value.packCount} 个在库垛包`
       },
       {
         label: '板材面积',
@@ -231,20 +249,24 @@
         hint: '库存批次面积合计'
       },
       {
-        label: '项目预留',
-        value: formatNumberValue(value.reservedQuantity),
-        hint: '工单已锁定原料'
-      },
-      { label: '已领料', value: formatNumberValue(value.issuedQuantity), hint: '生产领料出库累计' },
-      {
-        label: '在制数量',
-        value: formatNumberValue(value.wipQuantity),
-        hint: `${value.workOrderCount} 张工单`
+        label: '项目预留物料',
+        value: `${formatNumberValue(value.reservedMaterialCount)} 类`,
+        hint: '各物料预留数量见明细'
       },
       {
-        label: '净供货',
-        value: formatNumberValue(value.netShippedQuantity),
-        hint: `累计出库 ${formatNumberValue(value.shippedQuantity)} · 退货 ${formatNumberValue(value.returnedQuantity)}`
+        label: '已领料物料',
+        value: `${formatNumberValue(value.issuedMaterialCount)} 类`,
+        hint: '公斤、米等单位分别展示'
+      },
+      {
+        label: '生产工单',
+        value: `${formatNumberValue(value.workOrderCount)} 张`,
+        hint: '在制数量按产品查看'
+      },
+      {
+        label: '已供货物料',
+        value: `${formatNumberValue(value.shippedMaterialCount)} 类`,
+        hint: '净供货数量逐项查看'
       },
       {
         label: '序列号',
@@ -259,6 +281,14 @@
   ]
   const packSearchItems: SearchFormItem[] = [
     { label: '包号 / 工单', key: 'keyword', type: 'input', props: { clearable: true } }
+  ]
+  const materialSearchItems: SearchFormItem[] = [
+    {
+      label: '物料',
+      key: 'keyword',
+      type: 'input',
+      props: { clearable: true, placeholder: '编码 / 名称' }
+    }
   ]
   const orderSearchItems: SearchFormItem[] = [
     { label: '工单编号', key: 'keyword', type: 'input', props: { clearable: true } }
@@ -286,6 +316,9 @@
   }
   function fetchPackRows(query: WmsStockQuery) {
     return fetchWmsProjectPackPage(scopedQuery(query))
+  }
+  function fetchMaterialRows(query: WmsStockQuery) {
+    return fetchWmsProjectMaterialPage(scopedQuery(query))
   }
   function fetchMovementRows(query: WmsStockQuery) {
     return fetchWmsProjectMovementPage(scopedQuery(query))
@@ -370,6 +403,78 @@
       { prop: 'completedQuantity', label: '已完工', minWidth: 100, align: 'right' },
       { prop: 'warehousedQuantity', label: '已入库', minWidth: 100, align: 'right' },
       { prop: 'plannedEndDate', label: '计划完工', minWidth: 130 }
+    ]
+  }
+  function materialColumns(): ColumnOption<WmsProjectMaterial>[] {
+    const quantity = (value: number, unit: string) => `${formatNumberValue(value)} ${unit}`
+    return [
+      {
+        prop: 'materialName',
+        label: '物料 / 库存单位',
+        minWidth: 240,
+        fixed: 'left',
+        formatter: (row) => (
+          <BusinessTableIdentityCell
+            primary={row.materialName}
+            secondary={row.materialCode}
+            tertiary={
+              row.quantityUnitName === row.baseUnitName
+                ? `在库 ${quantity(row.stockQuantity, row.quantityUnitName)} · 已领 ${quantity(row.issuedQuantity, row.quantityUnitName)}`
+                : `按${row.quantityUnitName}计数 · 主数据单位${row.baseUnitName}`
+            }
+            icon="ri:stack-line"
+          />
+        )
+      },
+      {
+        prop: 'stockQuantity',
+        label: '当前在库',
+        minWidth: 130,
+        align: 'right',
+        formatter: (row) => quantity(row.stockQuantity, row.quantityUnitName)
+      },
+      {
+        prop: 'reservedQuantity',
+        label: '项目预留',
+        minWidth: 130,
+        align: 'right',
+        formatter: (row) => quantity(row.reservedQuantity, row.quantityUnitName)
+      },
+      {
+        prop: 'issuedQuantity',
+        label: '累计领料',
+        minWidth: 130,
+        align: 'right',
+        formatter: (row) => quantity(row.issuedQuantity, row.quantityUnitName)
+      },
+      {
+        prop: 'wipQuantity',
+        label: '在制待入库',
+        minWidth: 130,
+        align: 'right',
+        formatter: (row) => quantity(row.wipQuantity, row.quantityUnitName)
+      },
+      {
+        prop: 'netShippedQuantity',
+        label: '净供货',
+        minWidth: 130,
+        align: 'right',
+        formatter: (row) => quantity(row.netShippedQuantity, row.quantityUnitName)
+      },
+      {
+        prop: 'stockAreaSqm',
+        label: '在库面积 ㎡',
+        minWidth: 120,
+        align: 'right',
+        formatter: (row) => (row.stockAreaSqm > 0 ? formatNumberValue(row.stockAreaSqm) : '—')
+      },
+      {
+        prop: 'serialCount',
+        label: '关联 SN',
+        minWidth: 105,
+        align: 'right',
+        formatter: (row) => (row.serialCount > 0 ? formatNumberValue(row.serialCount) : '—')
+      }
     ]
   }
   function packColumns(): ColumnOption<WmsProjectPack>[] {
@@ -512,6 +617,20 @@
         label: '父件 SN',
         minWidth: 175,
         formatter: (row) => row.parent?.serialNo || '主机 / 独立件'
+      },
+      {
+        prop: 'childSerialNos',
+        label: '绑定关键件 SN',
+        minWidth: 220,
+        formatter: (row) =>
+          row.childSerialNos?.length ? (
+            <BusinessTableIdentityCell
+              primary={`${row.childSerialNos.length} 件关键件`}
+              secondary={row.childSerialNos.join('、')}
+            />
+          ) : (
+            '—'
+          )
       },
       { prop: 'status', label: '库存状态', minWidth: 100 },
       {
