@@ -41,7 +41,7 @@
 </template>
 
 <script setup lang="tsx">
-  import { ElMessage, ElTag } from 'element-plus'
+  import { ElTag } from 'element-plus'
   import { useRoute, useRouter } from 'vue-router'
   import { useAuth } from '@/hooks/core/useAuth'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
@@ -142,16 +142,6 @@
           warehouses: warehouses.value,
           projects: projects.value
         })
-    },
-    {
-      key: 'import',
-      label: '导入',
-      icon: 'ri:file-upload-line',
-      permission: 'WmsIssueRequest:Import',
-      buttonProps: { type: 'success', plain: true },
-      onClick: () => {
-        ElMessage.info('请在新增窗口批量选择物料，系统会按 10、20、30 自动生成行号')
-      }
     },
     {
       type: 'export',
@@ -439,13 +429,6 @@
               <>
                 <ArtButtonTable
                   type="edit"
-                  icon="ri:edit-line"
-                  label="编辑"
-                  permission="WmsIssueRequest:Edit"
-                  onClick={() => openDetail(row)}
-                />
-                <ArtButtonTable
-                  type="edit"
                   icon="ri:send-plane-line"
                   label="提交"
                   permission="WmsIssueRequest:Submit"
@@ -490,13 +473,6 @@
             )}
             {['approved', 'partially_issued'].includes(row.status) && canPostStock() && (
               <>
-                <ArtButtonTable
-                  type="edit"
-                  icon="ri:file-transfer-line"
-                  label="下推"
-                  permission="WmsIssueRequest:Push"
-                  onClick={() => openDetail(row)}
-                />
                 <ArtButtonTable
                   type="edit"
                   icon="ri:logout-box-r-line"

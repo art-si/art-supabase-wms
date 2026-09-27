@@ -64,6 +64,7 @@
         {{ selectedBatch.material?.materialName }} · {{ selectedBatch.batchNo }} · 在库
         {{ selectedBatch.quantity }} · {{ projectName
         }}{{ selectedBatch.constructionNo ? ` / ${selectedBatch.constructionNo}` : '' }}
+        {{ selectedBatch.packId ? ` · 包号 ${selectedBatch.pack?.packNo || '已绑定垛包'}` : '' }}
       </ElAlert>
     </div>
   </ArtDialog>
@@ -200,7 +201,9 @@
         class: 'w-full!',
         disabled: Boolean(selectedBatch.value?.packId)
       },
-      help: selectedBatch.value?.packId ? '垛包必须整包转换，并重新排包。' : undefined
+      help: selectedBatch.value?.packId
+        ? '垛包必须整包调整；物料转换后需重新排包，其余调整沿用原包号。'
+        : undefined
     },
     ...(form.adjustmentType === 'bin_move'
       ? [

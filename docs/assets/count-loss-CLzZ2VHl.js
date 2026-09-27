@@ -1,0 +1,1 @@
+import{On as e,_n as t,pr as n}from"./useApi-s_02lHjl-DoQoJyzC.js";import{t as r}from"./workspace-hZcZg5JW.js";var i=e({name:`WmsCountLoss`,__name:`index`,setup(e){return(e,i)=>(n(),t(r,{kind:`loss`}))}});export{i as default};
