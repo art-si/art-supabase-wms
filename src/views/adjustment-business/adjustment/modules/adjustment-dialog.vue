@@ -71,6 +71,7 @@
 </template>
 
 <script setup lang="ts">
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import dayjs from 'dayjs'
   import { ElMessage } from 'element-plus'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
@@ -101,6 +102,8 @@
     type WmsUnitOption
   } from '@wms/api'
   import { adjustmentOptions } from '../adjustment-options'
+
+  const wmsAdjustmentConditionOptions = useDictionaryOptions('wmsAdjustmentCondition')
 
   interface Context {
     tenantId?: string
@@ -255,11 +258,9 @@
             key: 'targetStatus',
             label: '目标状态',
             type: 'select' as const,
-            options: [
-              { label: '正常', value: 'normal' },
-              { label: '质量待检', value: 'quality_hold' },
-              { label: '受损', value: 'damaged' }
-            ].filter((row) => row.value !== selectedBatch.value?.status),
+            options: wmsAdjustmentConditionOptions.filter(
+              (row) => row.value !== selectedBatch.value?.status
+            ),
             props: { placeholder: '选择目标库存状态' }
           }
         ]

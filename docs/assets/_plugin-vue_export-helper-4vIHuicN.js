@@ -1,0 +1,1 @@
+import{Sn as e}from"./supabase-k7dj2Fa5.js";import{t}from"./pick-BDaROBL0.js";var n=e({ariaLabel:String,ariaOrientation:{type:String,values:[`horizontal`,`vertical`,`undefined`]},ariaControls:String}),r=e=>t(n,e),i=(e,t)=>{let n=e.__vccOpts||e;for(let[e,r]of t)n[e]=r;return n};export{r as n,i as t};

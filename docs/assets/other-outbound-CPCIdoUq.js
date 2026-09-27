@@ -1,1 +1,0 @@
-import{On as e,_n as t,pr as n}from"./useApi-s_02lHjl-DoQoJyzC.js";import{t as r}from"./workspace-KwbKTJuk.js";var i=e({name:`WmsOtherOutbound`,__name:`index`,setup(e){return(e,i)=>(n(),t(r,{kind:`other_outbound`}))}});export{i as default};

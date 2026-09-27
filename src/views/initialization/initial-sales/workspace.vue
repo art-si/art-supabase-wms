@@ -57,11 +57,12 @@
         />
         <div class="mt-5 grid gap-3">
           <ElSelect v-model="sourceDocumentType" class="w-full" placeholder="选择来源业务">
-            <ElOption label="出库申请单" value="outbound_request" />
-            <ElOption label="销售签收单" value="sales_receipt" />
-            <ElOption label="项目任务" value="project_task" />
-            <ElOption label="返利结算单" value="rebate_settlement" />
-            <ElOption label="营销费用申请单" value="marketing_expense" />
+            <ElOption
+              v-for="option in sourceDocumentTypeOptions"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
           </ElSelect>
           <ElButton type="primary" :disabled="!sourceDocumentType" @click="createFromSource">
             建立出库草稿
@@ -85,6 +86,7 @@
 </template>
 
 <script setup lang="tsx">
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { ElMessage, ElTag } from 'element-plus'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
@@ -115,6 +117,9 @@
   } from '@wms/api'
   import InitialSalesDrawer from './modules/initial-sales-drawer.vue'
 
+  const commonDocumentReviewStatusOptions = useDictionaryOptions('commonDocumentReviewStatus')
+  const sourceDocumentTypeOptions = useDictionaryOptions('wmsOutboundSourceDocumentType')
+
   const props = defineProps<{ kind: WmsInitialSalesKind }>()
   const { confirmAction } = useArtFeedback()
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
@@ -128,7 +133,7 @@
   const sourceDialogRef = ref<ArtDialogExpose>()
   const sourceDocumentType = ref('')
   const workingId = ref<string>()
-  const selectedRows = ref<WmsInitialSalesListRow[]>([])
+  const selectedRows = ref<Array<{ documentId: string; kind: unknown; status: unknown }>>([])
   const returnKinds: WmsInitialSalesKind[] = ['initial_return', 'return', 'other_return']
   const isReturn = computed(() => returnKinds.includes(props.kind))
   const isInitial = computed(() => props.kind.startsWith('initial_'))
@@ -238,11 +243,7 @@
       props: {
         clearable: true,
         placeholder: '全部状态',
-        options: [
-          { label: '暂存', value: 'draft' },
-          { label: '已提交', value: 'submitted' },
-          { label: '已审核', value: 'approved' }
-        ]
+        options: commonDocumentReviewStatusOptions
       }
     },
     {
@@ -295,13 +296,14 @@
     row: Record<string, unknown>
     column: { property?: string }
   }): string {
-    return column.property === 'quantity' &&
-      returnKinds.includes((row as unknown as WmsInitialSalesListRow).kind)
+    return column.property === 'quantity' && returnKinds.some((kind) => kind === row.kind)
       ? 'initial-sales-negative-cell'
       : ''
   }
   function onSelectionChange(rows: Record<string, unknown>[]): void {
-    selectedRows.value = rows as unknown as WmsInitialSalesListRow[]
+    selectedRows.value = rows.flatMap(({ documentId, kind, status }) =>
+      typeof documentId === 'string' ? [{ documentId, kind, status }] : []
+    )
   }
   async function createFromSource(): Promise<void> {
     if (!sourceDocumentType.value) return

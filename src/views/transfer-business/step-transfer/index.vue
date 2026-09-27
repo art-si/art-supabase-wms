@@ -41,6 +41,7 @@
 </template>
 
 <script setup lang="tsx">
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { ElTag } from 'element-plus'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
@@ -69,6 +70,8 @@
   } from '@wms/api'
   import TransferCreateDialog from './modules/transfer-create-dialog.vue'
   import TransferReceiveDialog from './modules/transfer-receive-dialog.vue'
+
+  const wmsStepTransferStatusOptions = useDictionaryOptions('wmsStepTransferStatus')
 
   defineOptions({ name: 'WmsStepTransfer' })
   const { confirmAction } = useArtFeedback()
@@ -99,12 +102,7 @@
       props: {
         clearable: true,
         placeholder: '全部状态',
-        options: [
-          { label: '草稿', value: 'draft' },
-          { label: '在途', value: 'in_transit' },
-          { label: '已入库', value: 'received' },
-          { label: '已取消', value: 'cancelled' }
-        ]
+        options: wmsStepTransferStatusOptions
       }
     },
     {

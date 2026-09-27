@@ -104,6 +104,7 @@
 </template>
 
 <script setup lang="ts">
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { useMediaQuery } from '@vueuse/core'
   import { ElMessage } from 'element-plus'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
@@ -128,6 +129,8 @@
     type WmsWarehouse,
     type WmsWorkOrderOption
   } from '@wms/api'
+
+  const wmsIssueReasonOptions = useDictionaryOptions('wmsIssueReason')
 
   interface Context {
     tenantId?: string
@@ -189,14 +192,7 @@
       label: '申请类型',
       type: 'select',
       span: isNarrowViewport.value ? 24 : 12,
-      options: [
-        { label: '货损出库', value: 'damage_outbound' },
-        { label: '耗材出库', value: 'consumables_outbound' },
-        { label: '报废出库', value: 'scrap_outbound' },
-        { label: '福利领用', value: 'welfare_use' },
-        { label: '办公用品领用', value: 'office_supplies_use' },
-        { label: '劳保用品领用', value: 'labor_protection_use' }
-      ],
+      options: wmsIssueReasonOptions,
       props: { placeholder: '选择申请类型' }
     },
     {

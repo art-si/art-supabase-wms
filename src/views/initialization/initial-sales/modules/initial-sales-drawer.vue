@@ -352,6 +352,7 @@
 </template>
 
 <script setup lang="ts">
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import dayjs from 'dayjs'
   import { cloneDeep } from 'lodash-es'
   import { ElMessage } from 'element-plus'
@@ -401,6 +402,9 @@
     type WmsUnitOption,
     type WmsWarehouse
   } from '@wms/api'
+
+  const commonDocumentReviewStatusOptions = useDictionaryOptions('commonDocumentReviewStatus')
+  const wmsLineDiscountModeOptions = useDictionaryOptions('wmsLineDiscountMode')
 
   type OpenMode = 'create' | 'copy' | 'edit' | 'view'
   interface OpenData {
@@ -733,11 +737,7 @@
       key: 'discountMethod',
       label: '折扣方式',
       type: 'select',
-      options: [
-        { label: '无', value: 'none' },
-        { label: '折扣率', value: 'rate' },
-        { label: '单位折扣', value: 'amount' }
-      ],
+      options: wmsLineDiscountModeOptions,
       props: {
         onChange: () => {
           if (editLine.value) editLine.value.unitDiscountRate = 0
@@ -1127,11 +1127,7 @@
       key: 'status',
       label: '单据状态',
       type: 'select',
-      options: [
-        { label: '暂存', value: 'draft' },
-        { label: '已提交', value: 'submitted' },
-        { label: '已审核', value: 'approved' }
-      ],
+      options: commonDocumentReviewStatusOptions,
       props: { disabled: true }
     },
     { key: 'isInitialization', label: '初始化单据', type: 'switch', props: { disabled: true } },

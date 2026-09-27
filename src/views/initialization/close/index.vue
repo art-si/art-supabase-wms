@@ -35,6 +35,7 @@
 </template>
 
 <script setup lang="tsx">
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { ElTag } from 'element-plus'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
@@ -55,6 +56,8 @@
     type WmsInitializationStatusRow
   } from '@/api/wms-purchase'
 
+  const wmsInitializationStatusOptions = useDictionaryOptions('wmsInitializationStatus')
+
   defineOptions({ name: 'WmsInitializationClose' })
 
   const { confirmAction } = useArtFeedback()
@@ -70,10 +73,7 @@
       props: {
         clearable: true,
         placeholder: '全部状态',
-        options: [
-          { label: '已初始化', value: 'initialized' },
-          { label: '未初始化', value: 'not_initialized' }
-        ]
+        options: wmsInitializationStatusOptions
       }
     },
     {

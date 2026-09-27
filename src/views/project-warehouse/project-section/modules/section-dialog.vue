@@ -23,12 +23,15 @@
 </template>
 
 <script setup lang="ts">
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { normalizeNullableText } from '@/utils/form/normalize'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
   import { saveWmsProjectSection, type WmsProject, type WmsProjectSection } from '@wms/api'
+
+  const wmsProjectSectionStatusOptions = useDictionaryOptions('wmsProjectSectionStatus')
 
   interface Context {
     row?: WmsProjectSection
@@ -82,10 +85,7 @@
       key: 'status',
       label: '状态',
       type: 'select',
-      options: [
-        { label: '启用', value: 'active' },
-        { label: '关闭', value: 'closed' }
-      ],
+      options: wmsProjectSectionStatusOptions,
       props: { disabled: !form.id }
     },
     {

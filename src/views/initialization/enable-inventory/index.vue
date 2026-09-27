@@ -54,6 +54,7 @@
 </template>
 
 <script setup lang="tsx">
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import dayjs from 'dayjs'
   import { ElTag, ElMessage } from 'element-plus'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
@@ -77,6 +78,8 @@
     setWmsInventoryEnabled,
     type WmsInventoryOrganization
   } from '@wms/api'
+
+  const wmsInventoryEnableStatusOptions = useDictionaryOptions('wmsInventoryEnableStatus')
 
   defineOptions({ name: 'WmsInventoryEnable' })
   const { confirmAction } = useArtFeedback()
@@ -105,10 +108,7 @@
       props: {
         clearable: true,
         placeholder: '全部状态',
-        options: [
-          { label: '已启用', value: 'enabled' },
-          { label: '未启用', value: 'disabled' }
-        ]
+        options: wmsInventoryEnableStatusOptions
       }
     },
     {

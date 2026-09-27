@@ -1,3 +1,5 @@
 export * from './warehouse'
 export * from './initialization'
 export * from './initial-sales'
+export * from './production-material'
+export * from './inventory-report'

@@ -294,9 +294,11 @@
           <ElTableColumn label="货主类型" min-width="120"
             ><template #default="{ row }"
               ><ElSelect v-model="row.ownerType"
-                ><ElOption label="自有" value="self" /><ElOption
-                  label="供应商"
-                  value="supplier" /><ElOption label="客户" value="customer" /></ElSelect></template
+                ><ElOption
+                  v-for="option in userStore.getDictMap.mdmBusinessOwnerType ?? []"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value" /></ElSelect></template
           ></ElTableColumn>
           <ElTableColumn label="库存类型" min-width="120"
             ><template #default="{ row }"
@@ -310,11 +312,11 @@
           <ElTableColumn label="库存状态" min-width="120"
             ><template #default="{ row }"
               ><ElSelect v-model="row.stockStatus"
-                ><ElOption label="可用" value="available" /><ElOption
-                  label="报废"
-                  value="scrap" /><ElOption label="不良" value="defective" /><ElOption
-                  label="冻结"
-                  value="frozen" /></ElSelect></template
+                ><ElOption
+                  v-for="option in userStore.getDictMap.wmsStockStatus ?? []"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value" /></ElSelect></template
           ></ElTableColumn>
           <ElTableColumn label="赠品" width="86" align="center"
             ><template #default="{ row }"><ElCheckbox v-model="row.gift" /></template
@@ -369,6 +371,7 @@
   import { fetchGetEnableOrganizationTree } from '@/api/system-manage'
   import TreeUtils from '@/utils/tree'
   import { normalizeNullableText } from '@/utils/form/normalize'
+  import { useUserStore } from '@/store/modules/user'
   import {
     fetchWmsBins,
     fetchWmsInitialOptions,
@@ -423,6 +426,12 @@
     remark: string
   }
   const emit = defineEmits<{ success: [] }>()
+  const userStore = useUserStore()
+  void Promise.all(
+    ['mdmBusinessOwnerType', 'wmsCountStockType', 'wmsStockStatus'].map((code) =>
+      userStore.ensureDictLoaded(code)
+    )
+  )
   const drawerRef = ref<ArtDrawerExpose<OpenData>>()
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const context = shallowRef<Context>()
@@ -476,16 +485,7 @@
   const selectedMaterials = computed(() =>
     lines.value.map((row) => row.material).filter((row): row is WmsMaterialOption => Boolean(row))
   )
-  const stockTypes = [
-    { label: '普通', value: 'normal' },
-    { label: '赠品', value: 'gift' },
-    { label: '资产', value: 'asset' },
-    { label: 'VMI', value: 'vmi' },
-    { label: '委托代销', value: 'consignment' },
-    { label: '委托加工', value: 'outsourced' },
-    { label: '内协加工', value: 'internal' },
-    { label: '保税', value: 'bonded' }
-  ]
+  const stockTypes = computed(() => userStore.getDictMap.wmsCountStockType ?? [])
   const stockStatusLabels: Record<string, string> = {
     available: '可用',
     scrap: '报废',
@@ -607,7 +607,7 @@
     return Number(value || 0).toFixed(4)
   }
   function stockTypeLabel(value: string): string {
-    return stockTypes.find((item) => item.value === value)?.label || value || '—'
+    return stockTypes.value.find((item) => item.value === value)?.label || value || '—'
   }
   function stockStatusLabel(value: string): string {
     return stockStatusLabels[value] || value || '—'

@@ -1,5 +1,5 @@
 <div align="center">
-  <h1>Art Supabase WMS</h1>
+  <h1>Yiqi Workshop WMS</h1>
   <p><strong>Warehouse management for networks, inventory, and inbound/outbound execution</strong></p>
   <p>An inventory-identity and task-centered roadmap for appointments, receiving, putaway, picking, verification, shipping, and traceability.</p>
 
@@ -18,7 +18,7 @@
 
 ## Positioning
 
-Art Supabase WMS is the warehouse-management application for Art Supabase Pro. Its target is a traceable execution loop across warehouse, zone, location, material, lot/serial identity, inventory state, inbound, internal movement, outbound, and cycle-count adjustment.
+Yiqi Workshop WMS is the warehouse-management application for Yiqi Workshop. Its target is a traceable execution loop across warehouse, zone, location, material, lot/serial identity, inventory state, inbound, internal movement, outbound, and cycle-count adjustment.
 
 Authentication, tenancy, navigation, authorization, layout, shared components, stores, and the common Supabase client remain owned by [`art-supabase-pro`](https://gitee.com/wangyanghub/art-supabase-pro). MDM and its authoritative sources provide warehouse, location, and material identities.
 

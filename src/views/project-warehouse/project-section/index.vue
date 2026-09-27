@@ -40,6 +40,7 @@
 </template>
 
 <script setup lang="tsx">
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import BusinessWorkspaceHeader from '@/components/business/business-workspace-header/index.vue'
   import BusinessTableWorkspaceActions from '@/components/business/business-table-workspace-actions/index.vue'
@@ -61,6 +62,8 @@
     type WmsSectionQuery
   } from '@wms/api'
   import SectionDialog from './modules/section-dialog.vue'
+
+  const wmsProjectSectionStatusOptions = useDictionaryOptions('wmsProjectSectionStatus')
 
   defineOptions({ name: 'WmsProjectSection' })
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
@@ -102,10 +105,7 @@
       type: 'select',
       props: {
         clearable: true,
-        options: [
-          { label: '启用', value: 'active' },
-          { label: '关闭', value: 'closed' }
-        ]
+        options: wmsProjectSectionStatusOptions
       }
     },
     {

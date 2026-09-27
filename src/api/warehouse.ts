@@ -138,7 +138,7 @@ export async function fetchWmsMaterialOptions(
   let query = supabase
     .from('mdm_material')
     .select(
-      'id,material_code,material_name,specification_model,description,serial_management_enabled,inventory_unit_id,base_unit_id,auxiliary_unit_id,auxiliary_unit_2_id,unit_conversions',
+      'id,material_code,material_name,specification_model,description,serial_management_enabled,inventory_unit_id,production_unit_id,base_unit_id,auxiliary_unit_id,auxiliary_unit_2_id,unit_conversions',
       { count: 'exact' }
     )
     .eq('tenant_id', tenantId)
@@ -300,6 +300,7 @@ export async function fetchWmsStockPage(params: WmsStockQuery) {
       { count: 'exact' }
     )
     .order('last_movement_at', { ascending: false })
+  if (params.id) query = query.eq('id', params.id)
   if (params.tenantId) query = query.eq('tenant_id', params.tenantId)
   if (params.organizationId) query = query.eq('organization_id', params.organizationId)
   if (params.warehouseId) query = query.eq('warehouse_id', params.warehouseId)

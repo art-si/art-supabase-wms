@@ -39,6 +39,7 @@
 </template>
 
 <script setup lang="tsx">
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { ElTag } from 'element-plus'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
@@ -65,6 +66,8 @@
   } from '@wms/api'
   import InitialStockDrawer from './modules/initial-stock-drawer.vue'
 
+  const commonDocumentReviewStatusOptions = useDictionaryOptions('commonDocumentReviewStatus')
+
   defineOptions({ name: 'WmsInitialStock' })
   const { confirmAction } = useArtFeedback()
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
@@ -83,11 +86,7 @@
       props: {
         clearable: true,
         placeholder: '全部状态',
-        options: [
-          { label: '暂存', value: 'draft' },
-          { label: '已提交', value: 'submitted' },
-          { label: '已审核', value: 'approved' }
-        ]
+        options: commonDocumentReviewStatusOptions
       }
     },
     {

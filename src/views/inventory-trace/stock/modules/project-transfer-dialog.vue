@@ -7,30 +7,34 @@
         title="项目库存调拨"
         :description="sourceDescription"
       />
-      <ElAlert
-        title="调拨将生成新库存批次和不可变流水；来源项目归属不会被直接改写。"
-        type="info"
-        :closable="false"
-        show-icon
-      />
-      <ArtForm
-        ref="formRef"
-        v-model="form"
-        :items="items"
-        :rules="rules"
-        :span="isNarrowScreen ? 24 : 12"
-        :gutter="20"
-        label-position="top"
-        :show-reset="false"
-        :show-submit="false"
-      />
-      <ElAlert
-        v-if="serialLoadError"
-        title="序列号加载失败"
-        description="请重新打开调拨单后再提交，避免漏选单件。"
-        type="error"
-        :closable="false"
-      />
+      <ArtEmptyState
+        v-if="loadError"
+        title="调拨信息加载失败"
+        :description="loadError"
+        size="compact"
+        :visual-size="80"
+      >
+        <ElButton type="primary" @click="loadDetails">重新加载</ElButton>
+      </ArtEmptyState>
+      <template v-else-if="context">
+        <ElAlert
+          title="调拨将生成新库存批次和不可变流水；来源项目归属不会被直接改写。"
+          type="info"
+          :closable="false"
+          show-icon
+        />
+        <ArtForm
+          ref="formRef"
+          v-model="form"
+          :items="items"
+          :rules="rules"
+          :span="isNarrowScreen ? 24 : 12"
+          :gutter="20"
+          label-position="top"
+          :show-reset="false"
+          :show-submit="false"
+        />
+      </template>
     </div>
   </ArtDialog>
 </template>
@@ -44,8 +48,25 @@
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
-  import { fetchWmsBatchSerials, transferWmsProject } from '@wms/api'
+  import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
+  import { useTenantScopeStore } from '@/store/modules/tenantScope'
+  import {
+    fetchWmsBatchSerials,
+    fetchWmsProjectSections,
+    fetchWmsProjects,
+    fetchWmsStockPage,
+    transferWmsProject
+  } from '@wms/api'
   import type { WmsBatchSerial, WmsProject, WmsProjectSection, WmsStockBatch } from '@wms/api'
+
+  interface OpenRequest {
+    batchId: string
+    batchNo: string
+    materialName: string
+    quantity: number
+    sourceProjectName: string
+    tenantId: string | null
+  }
 
   interface Context {
     batch: WmsStockBatch
@@ -55,12 +76,15 @@
   }
 
   const emit = defineEmits<{ success: [] }>()
-  const dialogRef = ref<ArtDialogExpose<Context>>()
+  const dialogRef = ref<ArtDialogExpose<OpenRequest>>()
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const context = shallowRef<Context>()
+  const openRequest = shallowRef<OpenRequest>()
   const serials = ref<WmsBatchSerial[]>([])
-  const serialLoadError = ref(false)
+  const loadError = ref('')
   const isNarrowScreen = useMediaQuery('(max-width: 767px)')
+  const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
+  let loadRequest = 0
   const form = reactive({
     referenceNo: '',
     quantity: 1,
@@ -71,7 +95,12 @@
   })
   const sourceDescription = computed(() => {
     const batch = context.value?.batch
-    if (!batch) return ''
+    if (!batch) {
+      const request = openRequest.value
+      return request
+        ? `${request.materialName} · ${request.batchNo} · ${request.sourceProjectName} · 在库 ${request.quantity}`
+        : ''
+    }
     const scope = batch.projectId
       ? `${context.value?.sourceProjectName || '项目'} · ${batch.constructionNo || '未标施工号'}`
       : '公共库存'
@@ -184,7 +213,7 @@
     try {
       await formRef.value?.validate()
       const batch = context.value?.batch
-      if (!batch || serialLoadError.value) return false
+      if (!batch || loadError.value) return false
       if (form.quantity > batch.quantity) {
         ElMessage.warning('调拨数量不能超过当前在库数量')
         return false
@@ -227,31 +256,68 @@
     }
   }
 
-  async function handleOpen(data: Context): Promise<void> {
-    context.value = data
+  async function loadDetails(): Promise<void> {
+    const opening = openRequest.value
+    if (!opening) return
+    const request = ++loadRequest
+    context.value = undefined
     serials.value = []
-    serialLoadError.value = false
+    loadError.value = ''
+    dialogRef.value?.setOptions({ confirmDisabled: true })
+    dialogRef.value?.setLoading(true)
+    try {
+      const [{ data }, projects, sections, batchSerials] = await Promise.all([
+        fetchWmsStockPage({ id: opening.batchId, current: 1, size: 1 }),
+        fetchWmsProjects(opening.tenantId || undefined),
+        fetchWmsProjectSections(),
+        fetchWmsBatchSerials(opening.batchId)
+      ])
+      if (request !== loadRequest) return
+      if (opening.tenantId !== (effectiveTenantId.value || null)) {
+        loadError.value = '租户范围已变化，请关闭弹窗并重新选择库存批次。'
+        return
+      }
+      const batch = data[0]
+      if (!batch || batch.quantity <= 0) {
+        loadError.value = '当前批次已不可用，请刷新即时库存后重试。'
+        return
+      }
+      context.value = { batch, projects, sections, sourceProjectName: opening.sourceProjectName }
+      serials.value = batchSerials
+      form.quantity = batch.packId ? batch.quantity : Math.min(1, batch.quantity)
+      dialogRef.value?.setOptions({ confirmDisabled: false })
+    } catch {
+      if (request === loadRequest) loadError.value = '请检查网络后重新加载调拨信息。'
+    } finally {
+      if (request === loadRequest) dialogRef.value?.setLoading(false)
+    }
+  }
+
+  function handleOpen(data: OpenRequest): void {
+    ++loadRequest
+    openRequest.value = data
+    context.value = undefined
+    serials.value = []
+    loadError.value = ''
     Object.assign(form, {
       referenceNo: `XMD-${dayjs().format('YYYYMMDD')}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
-      quantity: data.batch.packId ? data.batch.quantity : 1,
+      quantity: 1,
       targetProjectId: '',
       targetConstructionNo: '',
       serialIds: [],
       remark: ''
     })
-    await dialogRef.value?.handleOpen(data, {
+    void dialogRef.value?.handleOpen(data, {
       title: '办理项目调拨',
       subtitle: '保持来源批次与目标批次的完整审计链',
+      loading: true,
+      loadingText: '正在加载调拨信息…',
+      confirmDisabled: true,
       onConfirm: submit,
-      onOpen: async () => {
-        dialogRef.value?.setLoading(true)
-        try {
-          serials.value = await fetchWmsBatchSerials(data.batch.id)
-        } catch {
-          serialLoadError.value = true
-        } finally {
-          dialogRef.value?.setLoading(false)
-        }
+      onOpen: loadDetails,
+      onClose: () => {
+        ++loadRequest
+        return true
       }
     })
   }

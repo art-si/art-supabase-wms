@@ -34,6 +34,7 @@ export interface WmsMaterialOption {
   description: string | null
   serialManagementEnabled: boolean
   inventoryUnitId?: string | null
+  productionUnitId?: string | null
   baseUnitId?: string | null
   auxiliaryUnitId?: string | null
   auxiliaryUnit2Id?: string | null
@@ -51,6 +52,7 @@ export interface WmsWorkOrderOption {
   constructionNo: string | null
   completedQuantity: number
   warehousedQuantity: number
+  orderQuantity: number
   allowedIssueWarehouseTypes: string[]
 }
 
@@ -126,6 +128,7 @@ export interface WmsStockBatch {
 }
 
 export interface WmsStockQuery {
+  id?: string
   tenantId?: string
   organizationId?: string
   warehouseId?: string

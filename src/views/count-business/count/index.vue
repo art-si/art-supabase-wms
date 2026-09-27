@@ -44,6 +44,7 @@
 </template>
 
 <script setup lang="tsx">
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { ElTag } from 'element-plus'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
@@ -73,6 +74,8 @@
   } from '@wms/api'
   import CountCreateDialog from './modules/count-create-dialog.vue'
   import CountDetailDrawer from './modules/count-detail-drawer.vue'
+
+  const wmsCountStatusOptions = useDictionaryOptions('wmsCountStatus')
 
   defineOptions({ name: 'WmsCount' })
   const { confirmAction } = useArtFeedback()
@@ -124,11 +127,7 @@
       props: {
         clearable: true,
         placeholder: '全部状态',
-        options: [
-          { label: '盘点中', value: 'counting' },
-          { label: '已记账', value: 'posted' },
-          { label: '已取消', value: 'cancelled' }
-        ]
+        options: wmsCountStatusOptions
       }
     },
     {
