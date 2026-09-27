@@ -4,7 +4,7 @@
       <BusinessWorkspaceHeader
         eyebrow="INVENTORY ACTIVATION"
         title="启用库存"
-        description="为库存组织设置启用日期。已启用的组织才可录入期初业务，启用日期也是期初单据业务日期的上限。"
+        description="仅为组织类型为公司的库存组织设置启用日期。已启用的组织才可录入期初业务，启用日期也是期初单据业务日期的上限。"
         icon="ri:toggle-line"
         density="compact"
         :tags="[
@@ -24,7 +24,7 @@
         :table-props="{
           rowKey: 'id',
           emptyText: '当前范围暂无库存组织',
-          emptyDescription: '请先在 MDM 主数据维护库存组织，再回到这里设置启用日期。'
+          emptyDescription: '请先在组织管理中维护组织类型为公司的启用组织，再回到这里设置启用日期。'
         }"
         focusable
       />
@@ -121,7 +121,8 @@
   function fetchRows(query: { enabled?: string; keyword?: string; current: number; size: number }) {
     return fetchWmsInventoryOrganizations({
       ...query,
-      tenantId: effectiveTenantId.value || undefined
+      tenantId: effectiveTenantId.value || undefined,
+      organizationType: 'company'
     })
   }
   async function refresh(): Promise<void> {

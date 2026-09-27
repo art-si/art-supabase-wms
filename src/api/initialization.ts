@@ -31,6 +31,7 @@ type InitializationRow = Pick<WmsInventoryOrganization, 'enabledOn' | 'initializ
 
 export async function fetchWmsInventoryOrganizations(query: {
   tenantId?: string
+  organizationType?: string
   keyword?: string
   enabled?: string
   current: number
@@ -42,6 +43,7 @@ export async function fetchWmsInventoryOrganizations(query: {
     .eq('status', '1')
     .order('organization_code')
   if (query.tenantId) request = request.eq('tenant_id', query.tenantId)
+  if (query.organizationType) request = request.eq('organization_type', query.organizationType)
   if (query.keyword?.trim())
     request = request.or(
       buildOrIlikeFilter(['organization_code', 'organization_name'], query.keyword)
