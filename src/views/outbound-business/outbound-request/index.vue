@@ -407,7 +407,7 @@
       {
         prop: 'operation',
         label: '操作',
-        width: 184,
+        width: 220,
         fixed: 'right',
         formatter: (row) => (
           <BusinessTableRowActions>

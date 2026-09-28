@@ -52,6 +52,7 @@
             :disabled="!form.workOrderId || lines.length >= 50"
             @click="addLine"
           >
+            <template #icon><ArtSvgIcon icon="ri:add-line" /></template>
             添加物料
           </ElButton>
         </template>
