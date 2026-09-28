@@ -1,5 +1,6 @@
 <template>
   <ArtSectionCard
+    :show-scrollbar="false"
     class="inventory-location-navigator"
     title="仓储位置"
     :subtitle="`当前条件下共 ${navigationTotal} 条记录`"
