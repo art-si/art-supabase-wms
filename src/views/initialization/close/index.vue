@@ -4,11 +4,11 @@
       <BusinessWorkspaceHeader
         eyebrow="INVENTORY INITIALIZATION"
         title="结束初始化"
-        description="按库存组织生成期初余额快照。结束后初始化单据进入锁定状态。"
+        description="仅对已启用的公司级库存组织生成期初余额快照。结束后初始化单据进入锁定状态。"
         icon="ri:checkbox-circle-line"
         density="compact"
         :tags="[
-          { label: '组织级控制', type: 'primary' },
+          { label: '公司级控制', type: 'primary' },
           { label: '期初余额', type: 'success' },
           { label: '可安全反初始化', type: 'info' }
         ]"
@@ -25,8 +25,8 @@
         :search-bar-props="{ span: 6, labelWidth: 82 }"
         :table-props="{
           rowKey: 'id',
-          emptyText: '暂无已启用的库存组织',
-          emptyDescription: '请先在“启用库存”中设置库存组织启用日期。'
+          emptyText: '未找到符合条件的公司库存组织',
+          emptyDescription: '可调整查询条件；若尚未启用，请先在“启用库存”为公司设置启用日期。'
         }"
         focusable
       />
@@ -77,10 +77,10 @@
       }
     },
     {
-      label: '库存组织',
+      label: '公司名称',
       key: 'keyword',
       type: 'input',
-      props: { clearable: true, placeholder: '组织名称或编码' }
+      props: { clearable: true, placeholder: '公司名称或编码' }
     }
   ]
 
@@ -118,7 +118,7 @@
     return [
       {
         prop: 'organizationName',
-        label: '库存组织',
+        label: '公司库存组织',
         minWidth: 280,
         formatter: (row) => (
           <BusinessTableIdentityCell
