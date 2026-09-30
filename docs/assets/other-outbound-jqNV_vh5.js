@@ -1,1 +1,0 @@
-import{Sr as e,dr as t,si as n}from"./supabase-k7dj2Fa5.js";import{t as r}from"./workspace-C5ZSJXhO.js";var i=e({name:`WmsOtherOutbound`,__name:`index`,setup(e){return(e,i)=>(n(),t(r,{kind:`other_outbound`}))}});export{i as default};

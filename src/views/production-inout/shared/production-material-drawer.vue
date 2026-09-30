@@ -388,7 +388,7 @@
             </span>
           </div>
         </template>
-        <div v-if="lines.length" class="overflow-x-auto">
+        <ElScrollbar v-if="lines.length">
           <ArtTable
             :data="lines"
             :columns="lineColumns"
@@ -447,7 +447,7 @@
               </BusinessTableRowActions>
             </template>
           </ArtTable>
-        </div>
+        </ElScrollbar>
       </ArtSectionCard>
     </div>
   </ArtDrawer>
