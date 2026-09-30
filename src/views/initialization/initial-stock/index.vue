@@ -39,8 +39,10 @@
 </template>
 
 <script setup lang="tsx">
+  import { useRoute, useRouter } from 'vue-router'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
-  import { ElTag } from 'element-plus'
+  import { ElMessage, ElTag } from 'element-plus'
+  import { useAuth } from '@/hooks/core/useAuth'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import ArtTableQuery, {
@@ -61,6 +63,7 @@
   import { useUserStore } from '@/store/modules/user'
   import {
     changeWmsInitialStockStatus,
+    fetchWmsInitialStockDocument,
     fetchWmsInitialStockPage,
     type WmsInitialStockDocument
   } from '@wms/api'
@@ -70,6 +73,9 @@
 
   defineOptions({ name: 'WmsInitialStock' })
   const { confirmAction } = useArtFeedback()
+  const { hasAuth } = useAuth()
+  const route = useRoute()
+  const router = useRouter()
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const userStore = useUserStore()
   void userStore.ensureDictLoaded('wmsInitialStockType')
@@ -78,6 +84,18 @@
   const drawerRef = ref<InstanceType<typeof InitialStockDrawer>>()
   const workingId = ref<string>()
   const search = reactive({ organizationId: '', status: '', keyword: '' })
+
+  onMounted(async () => {
+    const documentId = route.query.documentId
+    if (typeof documentId !== 'string' || !hasAuth('WmsInitialStock:View')) return
+    try {
+      await router.replace({ path: route.path, query: { ...route.query, documentId: undefined } })
+      const document = await fetchWmsInitialStockDocument(documentId)
+      await drawerRef.value?.handleOpen({ mode: 'view', document })
+    } catch {
+      ElMessage.error('初始库存单加载失败，请刷新后重试')
+    }
+  })
   const searchItems: SearchFormItem[] = [
     {
       label: '单据状态',

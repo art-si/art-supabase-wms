@@ -86,8 +86,10 @@
 </template>
 
 <script setup lang="tsx">
+  import { useRoute, useRouter } from 'vue-router'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { ElMessage, ElTag } from 'element-plus'
+  import { useAuth } from '@/hooks/core/useAuth'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
@@ -111,6 +113,7 @@
   import { useUserStore } from '@/store/modules/user'
   import {
     changeWmsInitialSalesStatus,
+    fetchWmsInitialSalesDocument,
     fetchWmsInitialSalesPage,
     type WmsInitialSalesKind,
     type WmsInitialSalesListRow
@@ -122,6 +125,9 @@
 
   const props = defineProps<{ kind: WmsInitialSalesKind }>()
   const { confirmAction } = useArtFeedback()
+  const { hasAuth } = useAuth()
+  const route = useRoute()
+  const router = useRouter()
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const userStore = useUserStore()
   void userStore.ensureDictLoaded('wmsInitialStockType')
@@ -134,6 +140,21 @@
   const sourceDocumentType = ref('')
   const workingId = ref<string>()
   const selectedRows = ref<Array<{ documentId: string; kind: unknown; status: unknown }>>([])
+
+  onMounted(async () => {
+    const documentId = route.query.documentId
+    if (typeof documentId !== 'string' || (!isInitial.value && props.kind !== 'return')) return
+    if (hasAuth(permission.value.View)) {
+      try {
+        await router.replace({ path: route.path, query: { ...route.query, documentId: undefined } })
+        const document = await fetchWmsInitialSalesDocument(documentId)
+        if (document.kind !== props.kind) throw new Error('单据类型不匹配')
+        await drawerRef.value?.handleOpen({ mode: 'view', document })
+      } catch {
+        ElMessage.error('期初销售单加载失败，请刷新后重试')
+      }
+    }
+  })
   const returnKinds: WmsInitialSalesKind[] = ['initial_return', 'return', 'other_return']
   const isReturn = computed(() => returnKinds.includes(props.kind))
   const isInitial = computed(() => props.kind.startsWith('initial_'))

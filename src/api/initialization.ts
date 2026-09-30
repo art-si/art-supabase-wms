@@ -119,6 +119,15 @@ export async function fetchWmsInitialStockPage(query: {
   return { data: data ?? [], total: total ?? 0 }
 }
 
+export async function fetchWmsInitialStockDocument(id: string): Promise<WmsInitialStockDocument> {
+  const { data } = await responseHandle<WmsInitialStockDocument>(
+    () => supabase.from('wms_initial_stock_document').select(documentSelect).eq('id', id).single(),
+    readOptions
+  )
+  if (!data) throw new Error('初始库存单不存在或无权查看')
+  return data
+}
+
 export async function saveWmsInitialStock(payload: WmsInitialStockPayload): Promise<string> {
   const { data } = await responseHandle<string>(
     () => supabase.rpc('wms_save_initial_stock_secure', { p_payload: keysToSnakeDeep(payload) }),
