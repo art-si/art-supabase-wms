@@ -67,9 +67,11 @@
             </template>
           </ArtTableMultipleSelect>
         </template>
-        <ElTable
+        <ArtTable
           v-if="mode === 'view'"
           :data="documentRows"
+          :pagination="false"
+          :show-table-header="false"
           row-key="lineId"
           table-layout="fixed"
           class="count-line-table"
@@ -158,10 +160,12 @@
           <ElTableColumn prop="sourceDocument" label="来源单据" min-width="130" />
           <ElTableColumn prop="sourceLineNo" label="源行号" width="95" />
           <ElTableColumn prop="lineRemark" label="备注" min-width="150" show-overflow-tooltip />
-        </ElTable>
-        <ElTable
+        </ArtTable>
+        <ArtTable
           v-else
           :data="lines"
+          :pagination="false"
+          :show-table-header="false"
           row-key="key"
           table-layout="fixed"
           class="count-line-table"
@@ -382,7 +386,7 @@
               ><ElButton link type="danger" @click="removeLine(row.key)">移除</ElButton></template
             ></ElTableColumn
           >
-        </ElTable>
+        </ArtTable>
       </ArtSectionCard>
     </div>
   </ArtDrawer>
@@ -395,6 +399,7 @@
   import ArtDescriptions from '@/components/core/base/art-descriptions/index.vue'
   import type { ArtDescriptionItem } from '@/components/core/base/art-descriptions/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
+  import ArtTable from '@/components/core/tables/art-table/index.vue'
   import ArtTableMultipleSelect from '@/components/core/forms/art-data-select/table-multiple.vue'
   import ArtEmployeeSelect from '@/components/business/art-employee-select/index.vue'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
