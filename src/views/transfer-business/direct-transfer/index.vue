@@ -33,7 +33,18 @@
           emptyDescription: '可办理同仓库存组织或库位调拨；异地仓库请使用分步调拨。'
         }"
         focusable
-      />
+      >
+        <template #search-displayMode>
+          <ElRadioGroup
+            v-model="displayMode"
+            aria-label="单据列表展示方式"
+            @change="tableRef?.refreshContext()"
+          >
+            <ElRadioButton label="document" value="document">按单据</ElRadioButton>
+            <ElRadioButton label="line" value="line">按明细</ElRadioButton>
+          </ElRadioGroup>
+        </template>
+      </ArtTableQuery>
       <DirectTransferDetailDrawer ref="detailRef" />
     </div>
   </ArtPermissionGuard>
@@ -54,7 +65,7 @@
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type { ColumnOption } from '@/types'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
-  import { fetchGetEnableOrganizationTree } from '@/api/system-manage'
+  import { fetchEnabledOrganizationTree } from '@/api/system-manage'
   import { formatDateTimeValue } from '@/utils/ui/format'
   import {
     fetchWmsDirectTransferPage,
@@ -71,6 +82,7 @@
   const router = useRouter()
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const tableRef = ref<ArtTableQueryExpose>()
+  const displayMode = ref<'document' | 'line'>('document')
   const detailRef = ref<InstanceType<typeof DirectTransferDetailDrawer>>()
   const projects = ref<WmsProject[]>([])
   const sections = ref<WmsProjectSection[]>([])
@@ -90,6 +102,7 @@
     }
   ]
   const searchItems = computed<SearchFormItem[]>(() => [
+    { label: '展示方式', key: 'displayMode', type: 'text' },
     {
       label: '库存组织',
       key: 'organizationId',
@@ -160,7 +173,7 @@
       const [projectRows, sectionRows, organizationResult] = await Promise.all([
         fetchWmsProjects(),
         fetchWmsProjectSections(),
-        fetchGetEnableOrganizationTree({ tenantId: filterTenantId.value })
+        fetchEnabledOrganizationTree({ tenantId: filterTenantId.value })
       ])
       projects.value = projectRows
       sections.value = sectionRows

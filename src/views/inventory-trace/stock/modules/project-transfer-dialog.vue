@@ -87,7 +87,7 @@
   const isNarrowScreen = useMediaQuery('(max-width: 767px)')
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   let loadRequest = 0
-  const form = reactive({
+  const form = ref({
     referenceNo: '',
     quantity: 1,
     targetProjectId: '',
@@ -111,7 +111,7 @@
   const targetSections = computed(
     () =>
       context.value?.sections.filter(
-        (section) => section.projectId === form.targetProjectId && section.status === 'active'
+        (section) => section.projectId === form.value.targetProjectId && section.status === 'active'
       ) ?? []
   )
   const items = computed<FormItem[]>(() => [
@@ -155,7 +155,7 @@
         clearable: true,
         filterable: true,
         placeholder: '留空表示调拨至公共库存',
-        onChange: () => (form.targetConstructionNo = '')
+        onChange: () => (form.value.targetConstructionNo = '')
       },
       help: '从项目库存转为公共库存时，清空目标项目。'
     },
@@ -170,8 +170,8 @@
       props: {
         clearable: true,
         filterable: true,
-        disabled: !form.targetProjectId,
-        placeholder: form.targetProjectId ? '选择目标施工号' : '公共库存无施工号'
+        disabled: !form.value.targetProjectId,
+        placeholder: form.value.targetProjectId ? '选择目标施工号' : '公共库存无施工号'
       }
     },
     ...(serials.value.length || context.value?.batch.material?.serialManagementEnabled
@@ -216,40 +216,40 @@
       if (!(await validateArtFormForSubmit(formRef.value))) return false
       const batch = context.value?.batch
       if (!batch || loadError.value) return false
-      if (form.quantity > batch.quantity) {
+      if (form.value.quantity > batch.quantity) {
         ElMessage.warning('调拨数量不能超过当前在库数量')
         return false
       }
-      if (batch.packId && form.quantity !== batch.quantity) {
+      if (batch.packId && form.value.quantity !== batch.quantity) {
         ElMessage.warning('垛包库存必须整包调拨')
         return false
       }
-      if (form.targetProjectId && !form.targetConstructionNo) {
+      if (form.value.targetProjectId && !form.value.targetConstructionNo) {
         ElMessage.warning('请选择目标项目的施工号')
         return false
       }
       if (
-        batch.projectId === (form.targetProjectId || null) &&
-        batch.constructionNo === (form.targetConstructionNo || null)
+        batch.projectId === (form.value.targetProjectId || null) &&
+        batch.constructionNo === (form.value.targetConstructionNo || null)
       ) {
         ElMessage.warning('目标项目和施工号与来源相同，无需调拨')
         return false
       }
       if (
         (batch.material?.serialManagementEnabled || serials.value.length > 0) &&
-        form.serialIds.length !== form.quantity
+        form.value.serialIds.length !== form.value.quantity
       ) {
         ElMessage.warning('序列号件数必须与调拨数量一致')
         return false
       }
       await transferWmsProject({
         batchId: batch.id,
-        quantity: form.quantity,
-        targetProjectId: form.targetProjectId || null,
-        targetConstructionNo: form.targetConstructionNo || null,
-        referenceNo: form.referenceNo.trim(),
-        remark: normalizeNullableText(form.remark),
-        serialIds: form.serialIds
+        quantity: form.value.quantity,
+        targetProjectId: form.value.targetProjectId || null,
+        targetConstructionNo: form.value.targetConstructionNo || null,
+        referenceNo: form.value.referenceNo.trim(),
+        remark: normalizeNullableText(form.value.remark),
+        serialIds: form.value.serialIds
       })
       emit('success')
       return true
@@ -287,7 +287,7 @@
       }
       context.value = { batch, projects, sections, sourceProjectName: opening.sourceProjectName }
       serials.value = batchSerials
-      form.quantity = batch.packId ? batch.quantity : Math.min(1, batch.quantity)
+      form.value.quantity = batch.packId ? batch.quantity : Math.min(1, batch.quantity)
       dialogRef.value?.setOptions({ confirmDisabled: false })
     } catch {
       if (request === loadRequest) loadError.value = '请检查网络后重新加载调拨信息。'
@@ -302,7 +302,7 @@
     context.value = undefined
     serials.value = []
     loadError.value = ''
-    Object.assign(form, {
+    Object.assign(form.value, {
       referenceNo: `XMD-${dayjs().format('YYYYMMDD')}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
       quantity: 1,
       targetProjectId: '',

@@ -20,7 +20,8 @@
         header-actions-placement="workspace"
         :search-bar-props="{ span: 6, labelWidth: 104 }"
         :table-props="{
-          rowKey: 'lineId',
+          rowKey: displayMode === 'document' ? 'documentId' : 'lineId',
+          spanMethod: mergeDocumentCells,
           tableLayout: 'fixed',
           cellClassName: quantityCellClass,
           emptyText: `当前范围暂无${title}`,
@@ -28,7 +29,14 @@
         }"
         focusable
         @selection-change="onSelectionChange"
-      />
+      >
+        <template #search-displayMode>
+          <ElRadioGroup v-model="displayMode" aria-label="单据列表展示方式" @change="refresh">
+            <ElRadioButton label="document" value="document">按单据</ElRadioButton>
+            <ElRadioButton label="line" value="line">按明细</ElRadioButton>
+          </ElRadioGroup>
+        </template>
+      </ArtTableQuery>
       <ProductionMaterialDrawer ref="drawerRef" :kind="kind" @success="refresh" />
     </div>
   </ArtPermissionGuard>
@@ -55,6 +63,11 @@
   import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type { ColumnOption } from '@/types'
+  import {
+    documentGroupSpan,
+    groupDocumentLines,
+    loadAllLinePages
+  } from '@/utils/business/document-detail-list'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import {
     changeWmsProductionMaterialStatus,
@@ -72,6 +85,31 @@
   const { confirmAction } = useArtFeedback()
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const tableRef = ref<ArtTableQueryExpose>()
+  const displayMode = ref<'document' | 'line'>('document')
+  const visibleRows = ref<WmsProductionMaterialListRow[]>([])
+  const lineProperties = new Set([
+    'materialStatus',
+    'workOrderQuantity',
+    'requestedQuantity',
+    'actualQuantity',
+    'materialDescription',
+    'materialCode',
+    'specificationModel',
+    'inventoryUnitName',
+    'warehouseName',
+    'batchNo'
+  ])
+  function mergeDocumentCells({
+    rowIndex,
+    column
+  }: {
+    rowIndex: number
+    column: { property?: string }
+  }) {
+    return displayMode.value === 'line'
+      ? documentGroupSpan(visibleRows.value, rowIndex, column.property, lineProperties)
+      : ([1, 1] as [number, number])
+  }
   const drawerRef = ref<InstanceType<typeof ProductionMaterialDrawer>>()
   const workingId = ref<string>()
   const selectedDocumentIds = ref<string[]>([])
@@ -97,6 +135,7 @@
     applicantName: ''
   })
   const searchItems = computed<SearchFormItem[]>(() => [
+    { label: '展示方式', key: 'displayMode', type: 'text' },
     {
       label: '单据状态',
       key: 'status',
@@ -128,7 +167,7 @@
         ]
       : [])
   ])
-  function fetchRows(query: {
+  async function fetchRows(query: {
     status?: string
     documentNo?: string
     workOrderNo?: string
@@ -139,11 +178,44 @@
     current: number
     size: number
   }) {
-    return fetchWmsProductionMaterialPage({
+    const fetchPage = (page: typeof query) =>
+      fetchWmsProductionMaterialPage({
+        ...page,
+        kind: props.kind,
+        tenantId: effectiveTenantId.value || undefined
+      })
+    if (displayMode.value === 'line') {
+      const result = await fetchPage(query)
+      visibleRows.value = result.data
+      return result
+    }
+    visibleRows.value = []
+    const hasMaterialFilter = Boolean(
+      query.materialCode?.trim() || query.materialDescription?.trim()
+    )
+    const matchingDocumentIds = hasMaterialFilter
+      ? new Set((await loadAllLinePages(fetchPage, query)).map((line) => line.documentId))
+      : null
+    const lines = await loadAllLinePages(fetchPage, {
       ...query,
-      kind: props.kind,
-      tenantId: effectiveTenantId.value || undefined
+      materialCode: undefined,
+      materialDescription: undefined
     })
+    const documents = groupDocumentLines(
+      matchingDocumentIds
+        ? lines.filter((line) => matchingDocumentIds.has(line.documentId))
+        : lines,
+      (line) => line.documentId
+    ).map(({ first, lines: group }) => ({
+      ...first,
+      lineNo: group.length,
+      materialCode: '',
+      materialDescription: `共 ${group.length} 项物料`
+    }))
+    return {
+      data: documents.slice((query.current - 1) * query.size, query.current * query.size),
+      total: documents.length
+    }
   }
   async function refresh(): Promise<void> {
     selectedDocumentIds.value = []
@@ -366,7 +438,7 @@
     closed: '关闭'
   }))
   function columnsFactory(): ColumnOption<WmsProductionMaterialListRow>[] {
-    return [
+    const columns: ColumnOption<WmsProductionMaterialListRow>[] = [
       { type: 'selection', width: 48, fixed: 'left' },
       {
         prop: 'documentNo',
@@ -376,7 +448,7 @@
         formatter: (row) => (
           <BusinessTableIdentityCell
             primary={row.documentNo}
-            secondary={`第 ${row.lineNo} 行 · ${formatWithDayjs(row.businessDate, 'MM-DD') ?? '--'}`}
+            secondary={`${displayMode.value === 'document' ? `共 ${row.lineNo} 项物料` : `第 ${row.lineNo} 行`} · ${formatWithDayjs(row.businessDate, 'MM-DD') ?? '--'}`}
             icon={config.value.icon}
           />
         )
@@ -466,7 +538,9 @@
         showOverflowTooltip: true,
         formatter: (row) => row.materialDescription || row.materialName
       },
-      { prop: 'materialCode', label: '物料编码', minWidth: 145, showOverflowTooltip: true },
+      ...(displayMode.value === 'line'
+        ? [{ prop: 'materialCode', label: '物料编码', minWidth: 145, showOverflowTooltip: true }]
+        : []),
       { prop: 'specificationModel', label: '规格型号', minWidth: 140, showOverflowTooltip: true },
       { prop: 'inventoryUnitName', label: '库存单位', width: 100 },
       ...(!config.value.finished
@@ -496,6 +570,18 @@
         )
       }
     ]
+    if (displayMode.value === 'line') return columns
+    const detailOnly = new Set([
+      'requestedQuantity',
+      'actualQuantity',
+      'materialStatus',
+      'workOrderQuantity',
+      'specificationModel',
+      'inventoryUnitName',
+      'warehouseName',
+      'batchNo'
+    ])
+    return columns.filter((column) => !detailOnly.has(String(column.prop)))
   }
 </script>
 

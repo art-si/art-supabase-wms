@@ -1,0 +1,1 @@
+import{li as e,pr as t,wr as n}from"./supabase-D4CFjxTN.js";import{t as r}from"./workspace-CI84ZMBa.js";var i=n({name:`WmsCountGain`,__name:`index`,setup(n){return(n,i)=>(e(),t(r,{kind:`gain`}))}});export{i as default};

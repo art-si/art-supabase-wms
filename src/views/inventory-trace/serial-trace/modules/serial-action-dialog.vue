@@ -72,7 +72,7 @@
   const loadError = ref(false)
   const orders = ref<WmsSerialReservationOrder[]>([])
   const children = ref<WmsAssemblyChildCandidate[]>([])
-  const form = reactive({ workOrderId: '', childSerialIds: [] as string[] })
+  const form = ref({ workOrderId: '', childSerialIds: [] as string[] })
   const items = computed<FormItem[]>(() =>
     context.value?.action === 'reserve'
       ? [
@@ -128,14 +128,14 @@
       const data = context.value
       if (!data || loadError.value) return false
       if (data.action === 'reserve') {
-        if (!orders.value.some((row) => row.workOrderId === form.workOrderId)) {
+        if (!orders.value.some((row) => row.workOrderId === form.value.workOrderId)) {
           ElMessage.warning('所选工单没有该批次的有效预留')
           return false
         }
-        await reserveWmsSerial(form.workOrderId, data.serial.id)
+        await reserveWmsSerial(form.value.workOrderId, data.serial.id)
       } else {
-        if (!data.serial.workOrderId || form.childSerialIds.length === 0) return false
-        await bindWmsAssemblySerials(data.serial.id, form.childSerialIds)
+        if (!data.serial.workOrderId || form.value.childSerialIds.length === 0) return false
+        await bindWmsAssemblySerials(data.serial.id, form.value.childSerialIds)
       }
       emit('success')
       return true
@@ -147,8 +147,8 @@
 
   async function handleOpen(data: Context): Promise<void> {
     context.value = data
-    form.workOrderId = ''
-    form.childSerialIds = []
+    form.value.workOrderId = ''
+    form.value.childSerialIds = []
     orders.value = []
     children.value = []
     loadError.value = false

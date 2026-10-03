@@ -68,7 +68,7 @@
     DataSelectRecord
   } from '@/components/core/forms/art-data-select/types'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
-  import { fetchGetEnableOrganizationTree } from '@/api/system-manage'
+  import { fetchEnabledOrganizationTree } from '@/api/system-manage'
   import TreeUtils from '@/utils/tree'
   import { normalizeNullableText } from '@/utils/form/normalize'
   import {
@@ -103,7 +103,7 @@
   const serials = ref<WmsBatchSerial[]>([])
   const selectedBatch = shallowRef<BatchOption | null>(null)
   const loadError = ref(false)
-  const form = reactive({
+  const form = ref({
     documentNo: '',
     sourceBatchId: '',
     targetWarehouseId: '',
@@ -158,8 +158,9 @@
         disabled: !selectedBatch.value,
         placeholder: '选择异地目标仓库',
         onChange: () => {
-          form.targetOrganizationId =
-            warehouses.value.find((row) => row.id === form.targetWarehouseId)?.organizationId || ''
+          form.value.targetOrganizationId =
+            warehouses.value.find((row) => row.id === form.value.targetWarehouseId)
+              ?.organizationId || ''
         }
       }
     },
@@ -177,7 +178,7 @@
         checkStrictly: true,
         defaultExpandAll: true,
         renderAfterExpand: false,
-        disabled: !form.targetWarehouseId,
+        disabled: !form.value.targetWarehouseId,
         placeholder: '选择调入后的归属组织'
       },
       help: `来源组织：${sourceOrganizationName.value}。跨组织调拨会在流水中保留两端归属。`
@@ -262,17 +263,17 @@
       row && typeof row.id === 'string' && typeof row.quantity === 'number'
         ? (row as BatchOption)
         : null
-    form.targetWarehouseId = ''
-    form.targetOrganizationId = ''
-    form.serialIds = []
+    form.value.targetWarehouseId = ''
+    form.value.targetOrganizationId = ''
+    form.value.serialIds = []
     serials.value = []
     if (!selectedBatch.value) return
-    form.quantity = selectedBatch.value.packId ? selectedBatch.value.quantity : 1
+    form.value.quantity = selectedBatch.value.packId ? selectedBatch.value.quantity : 1
     loadError.value = false
     try {
       const [serialRows, organizationResult] = await Promise.all([
         fetchWmsBatchSerials(selectedBatch.value.id),
-        fetchGetEnableOrganizationTree({ tenantId: selectedBatch.value.tenantId })
+        fetchEnabledOrganizationTree({ tenantId: selectedBatch.value.tenantId })
       ])
       serials.value = serialRows
       organizationTree.value = organizationResult.data ?? []
@@ -285,25 +286,29 @@
       if (!(await validateArtFormForSubmit(formRef.value))) return false
       const batch = selectedBatch.value
       if (!batch || loadError.value) return false
-      if (form.quantity > batch.quantity || (batch.packId && form.quantity !== batch.quantity)) {
+      if (
+        form.value.quantity > batch.quantity ||
+        (batch.packId && form.value.quantity !== batch.quantity)
+      ) {
         ElMessage.warning('调拨数量超过库存或未按整包办理')
         return false
       }
       if (
         (batch.material?.serialManagementEnabled || serials.value.length > 0) &&
-        (form.quantity !== Math.trunc(form.quantity) || form.serialIds.length !== form.quantity)
+        (form.value.quantity !== Math.trunc(form.value.quantity) ||
+          form.value.serialIds.length !== form.value.quantity)
       ) {
         ElMessage.warning('SN 件数必须与调拨数量一致')
         return false
       }
       await createWmsTransfer({
-        documentNo: form.documentNo.trim(),
+        documentNo: form.value.documentNo.trim(),
         sourceBatchId: batch.id,
-        targetWarehouseId: form.targetWarehouseId,
-        targetOrganizationId: form.targetOrganizationId,
-        quantity: form.quantity,
-        serialIds: form.serialIds,
-        remark: normalizeNullableText(form.remark)
+        targetWarehouseId: form.value.targetWarehouseId,
+        targetOrganizationId: form.value.targetOrganizationId,
+        quantity: form.value.quantity,
+        serialIds: form.value.serialIds,
+        remark: normalizeNullableText(form.value.remark)
       })
       emit('success')
       return true
@@ -319,7 +324,7 @@
     warehouses.value = []
     organizationTree.value = []
     loadError.value = false
-    Object.assign(form, {
+    Object.assign(form.value, {
       documentNo: `DB-${dayjs().format('YYYYMMDD')}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
       sourceBatchId: '',
       targetWarehouseId: '',

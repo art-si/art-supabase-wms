@@ -257,6 +257,19 @@ export async function fetchWmsInitialOptions(
   })
 }
 
+export async function fetchWmsInitialDocumentTypes(
+  tenantId: string,
+  menuName: string
+): Promise<WmsInitializationOption[]> {
+  const { data: menu } = await responseHandle<{ id: string }>(
+    () => supabase.from('sys_menu').select('id').eq('name', menuName).eq('type', 'menu').single(),
+    readOptions
+  )
+  if (!menu) return []
+  const rows = await fetchWmsInitialOptions('mdm_document_type', tenantId)
+  return rows.filter((row) => row.enabled && row.menuIds?.includes(menu.id))
+}
+
 export async function fetchWmsInitialStockMenuId(): Promise<string> {
   const { data } = await responseHandle<{ id: string }>(
     () =>

@@ -30,13 +30,21 @@
         header-actions-placement="workspace"
         :search-bar-props="{ span: 6, labelWidth: 82 }"
         :table-props="{
-          rowKey: 'id',
+          rowKey: displayMode === 'line' ? 'detailRowId' : 'id',
+          spanMethod: mergeDocumentCells,
           tableLayout: 'fixed',
           emptyText: '当前范围暂无盘点方案',
           emptyDescription: '选择仓库并生成盘点方案，系统会以当前批次库存创建盘点表。'
         }"
         focusable
-      />
+      >
+        <template #search-displayMode>
+          <ElRadioGroup v-model="displayMode" aria-label="单据列表展示方式" @change="refresh">
+            <ElRadioButton label="document" value="document">按单据</ElRadioButton>
+            <ElRadioButton label="line" value="line">按明细</ElRadioButton>
+          </ElRadioGroup>
+        </template>
+      </ArtTableQuery>
       <CountCreateDialog ref="createRef" @success="refresh" />
       <CountDetailDrawer ref="detailRef" @success="refresh" />
     </div>
@@ -59,14 +67,22 @@
   import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type { ColumnOption } from '@/types'
+  import {
+    documentGroupSpan,
+    expandDocumentLines,
+    loadAllLinePages,
+    paginateDetailRows
+  } from '@/utils/business/document-detail-list'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import {
     cancelWmsCountPlan,
     fetchWmsCountPlanPage,
+    fetchWmsCountLinesForPlans,
     fetchWmsProjectSections,
     fetchWmsProjects,
     fetchWmsWarehouses,
     type WmsCountPlan,
+    type WmsCountLine,
     type WmsProject,
     type WmsProjectSection,
     type WmsStockQuery,
@@ -81,6 +97,32 @@
   const { confirmAction } = useArtFeedback()
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const tableRef = ref<ArtTableQueryExpose>()
+  const displayMode = ref<'document' | 'line'>('document')
+  type CountPlanListRow = WmsCountPlan & {
+    detailRowId?: string
+    detailLine?: WmsCountLine
+    detailGroupStart?: boolean
+  }
+  const visibleRows = ref<CountPlanListRow[]>([])
+  const lineProperties = new Set([
+    'detailMaterialCode',
+    'detailMaterialName',
+    'detailBatchNo',
+    'detailExpectedQuantity',
+    'detailCountedQuantity',
+    'detailVariance'
+  ])
+  function mergeDocumentCells({
+    rowIndex,
+    column
+  }: {
+    rowIndex: number
+    column: { property?: string }
+  }) {
+    return displayMode.value === 'line'
+      ? documentGroupSpan(visibleRows.value, rowIndex, column.property, lineProperties)
+      : ([1, 1] as [number, number])
+  }
   const createRef = ref<InstanceType<typeof CountCreateDialog>>()
   const detailRef = ref<InstanceType<typeof CountDetailDrawer>>()
   const warehouses = ref<WmsWarehouse[]>([])
@@ -107,6 +149,7 @@
   })
   const filterTenantId = computed(() => effectiveTenantId.value || undefined)
   const searchItems = computed<SearchFormItem[]>(() => [
+    { label: '展示方式', key: 'displayMode', type: 'text' },
     {
       label: '仓库',
       key: 'warehouseId',
@@ -176,8 +219,33 @@
   function projectName(id: string | null): string {
     return id ? projects.value.find((row) => row.id === id)?.projectName || '历史项目' : '全仓范围'
   }
-  function fetchRows(query: WmsStockQuery) {
-    return fetchWmsCountPlanPage({ ...query, tenantId: filterTenantId.value })
+  async function fetchRows(query: WmsStockQuery) {
+    const fetchPage = (page: WmsStockQuery) =>
+      fetchWmsCountPlanPage({ ...page, tenantId: filterTenantId.value })
+    if (displayMode.value === 'document') {
+      visibleRows.value = []
+      return fetchPage(query)
+    }
+    const documents = await loadAllLinePages(fetchPage, query)
+    const lines = await fetchWmsCountLinesForPlans(documents.map((document) => document.id))
+    const linesByPlan = new Map<string, WmsCountLine[]>()
+    for (const line of lines) {
+      const group = linesByPlan.get(line.planId) || []
+      group.push(line)
+      linesByPlan.set(line.planId, group)
+    }
+    const rows = expandDocumentLines(
+      documents,
+      (document) => linesByPlan.get(document.id) || [],
+      (line) => line.id
+    )
+    const result = paginateDetailRows(
+      rows,
+      (query.current - 1) * query.size,
+      query.current * query.size - 1
+    )
+    visibleRows.value = result.data
+    return result
   }
   function openCreate(): void {
     void createRef.value?.handleOpen({
@@ -229,7 +297,7 @@
       workingId.value = undefined
     }
   }
-  function columnsFactory(): ColumnOption<WmsCountPlan>[] {
+  function columnsFactory(): ColumnOption<CountPlanListRow>[] {
     return [
       {
         prop: 'documentNo',
@@ -281,6 +349,52 @@
           />
         )
       },
+      ...(displayMode.value === 'line'
+        ? [
+            {
+              prop: 'detailMaterialCode',
+              label: '物料编码',
+              minWidth: 145,
+              formatter: (row: CountPlanListRow) => row.detailLine?.material?.materialCode || '—'
+            },
+            {
+              prop: 'detailMaterialName',
+              label: '物料名称',
+              minWidth: 180,
+              formatter: (row: CountPlanListRow) => row.detailLine?.material?.materialName || '—'
+            },
+            {
+              prop: 'detailBatchNo',
+              label: '批号',
+              minWidth: 130,
+              formatter: (row: CountPlanListRow) => row.detailLine?.batch?.batchNo || '—'
+            },
+            {
+              prop: 'detailExpectedQuantity',
+              label: '账存数量',
+              width: 120,
+              align: 'right' as const,
+              formatter: (row: CountPlanListRow) => row.detailLine?.expectedQuantity ?? 0
+            },
+            {
+              prop: 'detailCountedQuantity',
+              label: '实盘数量',
+              width: 120,
+              align: 'right' as const,
+              formatter: (row: CountPlanListRow) => row.detailLine?.countedQuantity ?? '待盘点'
+            },
+            {
+              prop: 'detailVariance',
+              label: '差异数量',
+              width: 120,
+              align: 'right' as const,
+              formatter: (row: CountPlanListRow) =>
+                row.detailLine?.countedQuantity == null
+                  ? '—'
+                  : row.detailLine.countedQuantity - row.detailLine.expectedQuantity
+            }
+          ]
+        : []),
       { prop: 'remark', label: '说明', minWidth: 210, showOverflowTooltip: true },
       {
         prop: 'postedAt',

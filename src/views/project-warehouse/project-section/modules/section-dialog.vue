@@ -45,7 +45,7 @@
   const dialogRef = ref<ArtDialogExpose<Context>>()
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const context = shallowRef<Context>()
-  const form = reactive({
+  const form = ref({
     id: '',
     projectId: '',
     constructionNo: '',
@@ -63,7 +63,7 @@
         .filter(
           (project) =>
             (!context.value?.tenantId || project.tenantId === context.value.tenantId) &&
-            (form.id === ''
+            (form.value.id === ''
               ? project.enabled && !['closed', 'cancelled'].includes(project.projectStatus)
               : true)
         )
@@ -71,12 +71,12 @@
           label: `${project.projectName} · ${project.projectCode}`,
           value: project.id
         })),
-      props: { disabled: !!form.id, filterable: true, placeholder: '选择项目' }
+      props: { disabled: !!form.value.id, filterable: true, placeholder: '选择项目' }
     },
     {
       key: 'constructionNo',
       label: '施工号',
-      props: { disabled: !!form.id, maxlength: 80, placeholder: '例如 1# 外墙标段' }
+      props: { disabled: !!form.value.id, maxlength: 80, placeholder: '例如 1# 外墙标段' }
     },
     {
       key: 'sectionName',
@@ -88,7 +88,7 @@
       label: '状态',
       type: 'select',
       options: wmsProjectSectionStatusOptions,
-      props: { disabled: !form.id }
+      props: { disabled: !form.value.id }
     },
     {
       key: 'remark',
@@ -108,12 +108,12 @@
     try {
       if (!(await validateArtFormForSubmit(formRef.value))) return false
       await saveWmsProjectSection({
-        id: form.id || undefined,
-        projectId: form.projectId,
-        constructionNo: form.constructionNo.trim(),
-        sectionName: form.sectionName.trim(),
-        status: form.status,
-        remark: normalizeNullableText(form.remark)
+        id: form.value.id || undefined,
+        projectId: form.value.projectId,
+        constructionNo: form.value.constructionNo.trim(),
+        sectionName: form.value.sectionName.trim(),
+        status: form.value.status,
+        remark: normalizeNullableText(form.value.remark)
       })
       emit('success')
       return true
@@ -125,7 +125,7 @@
 
   async function handleOpen(data: Context): Promise<void> {
     context.value = data
-    Object.assign(form, {
+    Object.assign(form.value, {
       id: data.row?.id || '',
       projectId: data.row?.projectId || '',
       constructionNo: data.row?.constructionNo || '',

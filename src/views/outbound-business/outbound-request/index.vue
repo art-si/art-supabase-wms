@@ -27,13 +27,21 @@
         header-actions-placement="workspace"
         :search-bar-props="{ span: 6, labelWidth: 82 }"
         :table-props="{
-          rowKey: 'id',
+          rowKey: displayMode === 'line' ? 'detailRowId' : 'id',
+          spanMethod: mergeDocumentCells,
           tableLayout: 'fixed',
           emptyText: `当前范围暂无${displayTitle}`,
           emptyDescription: '新增申请并填写申请类型、日期、项目、物料和数量。'
         }"
         focusable
-      />
+      >
+        <template #search-displayMode>
+          <ElRadioGroup v-model="displayMode" aria-label="单据列表展示方式" @change="refresh">
+            <ElRadioButton label="document" value="document">按单据</ElRadioButton>
+            <ElRadioButton label="line" value="line">按明细</ElRadioButton>
+          </ElRadioGroup>
+        </template>
+      </ArtTableQuery>
       <IssueRequestCreateDialog ref="createRef" @success="refresh" />
       <IssueRequestDetailDrawer ref="detailRef" @success="refresh" />
     </div>
@@ -57,18 +65,26 @@
   import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type { ColumnOption } from '@/types'
+  import {
+    documentGroupSpan,
+    expandDocumentLines,
+    loadAllLinePages,
+    paginateDetailRows
+  } from '@/utils/business/document-detail-list'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import {
     cancelWmsIssueRequest,
     copyWmsIssueRequest,
     deleteWmsIssueRequest,
     fetchWmsIssueRequestPage,
+    fetchWmsIssueRequestLinesForDocuments,
     fetchWmsProjectSections,
     fetchWmsProjects,
     fetchWmsWarehouses,
     reviewWmsIssueRequest,
     submitWmsIssueRequest,
     type WmsIssueRequest,
+    type WmsIssueRequestLine,
     type WmsIssueRequestStatus,
     type WmsProject,
     type WmsProjectSection,
@@ -95,6 +111,31 @@
   const router = useRouter()
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const tableRef = ref<ArtTableQueryExpose>()
+  const displayMode = ref<'document' | 'line'>('document')
+  type IssueListRow = WmsIssueRequest & {
+    detailRowId?: string
+    detailLine?: WmsIssueRequestLine
+    detailGroupStart?: boolean
+  }
+  const visibleRows = ref<IssueListRow[]>([])
+  const lineProperties = new Set([
+    'materialCodes',
+    'materialDescriptions',
+    'requestedQuantityTotal',
+    'detailIssuedQuantity',
+    'detailUnit'
+  ])
+  function mergeDocumentCells({
+    rowIndex,
+    column
+  }: {
+    rowIndex: number
+    column: { property?: string }
+  }) {
+    return displayMode.value === 'line'
+      ? documentGroupSpan(visibleRows.value, rowIndex, column.property, lineProperties)
+      : ([1, 1] as [number, number])
+  }
   const createRef = ref<InstanceType<typeof IssueRequestCreateDialog>>()
   const detailRef = ref<InstanceType<typeof IssueRequestDetailDrawer>>()
   const warehouses = ref<WmsWarehouse[]>([])
@@ -163,6 +204,7 @@
     }
   ])
   const searchItems = computed<SearchFormItem[]>(() => [
+    { label: '展示方式', key: 'displayMode', type: 'text' },
     {
       label: '单据状态',
       key: 'status',
@@ -222,18 +264,45 @@
   function projectName(id: string | null): string {
     return id ? projects.value.find((row) => row.id === id)?.projectName || '历史项目' : '公共库存'
   }
-  function fetchRows(query: WmsStockQuery) {
+  async function fetchRows(query: WmsStockQuery) {
     const applicationDateRange = Array.isArray(
       (query as WmsStockQuery & { applicationDateRange?: string[] }).applicationDateRange
     )
       ? (query as WmsStockQuery & { applicationDateRange?: string[] }).applicationDateRange
       : []
-    return fetchWmsIssueRequestPage({
-      ...query,
-      applicationDateStart: applicationDateRange?.[0],
-      applicationDateEnd: applicationDateRange?.[1],
-      tenantId: filterTenantId.value
-    })
+    const fetchPage = (page: WmsStockQuery) =>
+      fetchWmsIssueRequestPage({
+        ...page,
+        applicationDateStart: applicationDateRange?.[0],
+        applicationDateEnd: applicationDateRange?.[1],
+        tenantId: filterTenantId.value
+      })
+    if (displayMode.value === 'document') {
+      visibleRows.value = []
+      return fetchPage(query)
+    }
+    const documents = await loadAllLinePages(fetchPage, query)
+    const lines = await fetchWmsIssueRequestLinesForDocuments(
+      documents.map((document) => document.id)
+    )
+    const linesByDocument = new Map<string, WmsIssueRequestLine[]>()
+    for (const line of lines) {
+      const group = linesByDocument.get(line.requestId) || []
+      group.push(line)
+      linesByDocument.set(line.requestId, group)
+    }
+    const rows = expandDocumentLines(
+      documents,
+      (document) => linesByDocument.get(document.id) || [],
+      (line) => line.id
+    )
+    const result = paginateDetailRows(
+      rows,
+      (query.current - 1) * query.size,
+      query.current * query.size - 1
+    )
+    visibleRows.value = result.data
+    return result
   }
   function openDetail(row: WmsIssueRequest): void {
     void detailRef.value?.handleOpen(row, projectName(row.projectId))
@@ -336,7 +405,7 @@
       workingId.value = undefined
     }
   }
-  function columnsFactory(): ColumnOption<WmsIssueRequest>[] {
+  function columnsFactory(): ColumnOption<IssueListRow>[] {
     return [
       {
         prop: 'documentNo',
@@ -400,9 +469,45 @@
           />
         )
       },
-      { prop: 'materialCodes', label: '物料编码', minWidth: 170, showOverflowTooltip: true },
-      { prop: 'materialDescriptions', label: '物料描述', minWidth: 210, showOverflowTooltip: true },
-      { prop: 'requestedQuantityTotal', label: '申请数量', minWidth: 110, align: 'right' },
+      {
+        prop: 'materialCodes',
+        label: '物料编码',
+        minWidth: 170,
+        showOverflowTooltip: true,
+        formatter: (row) => row.detailLine?.material?.materialCode || row.materialCodes || '—'
+      },
+      {
+        prop: 'materialDescriptions',
+        label: '物料描述',
+        minWidth: 210,
+        showOverflowTooltip: true,
+        formatter: (row) =>
+          row.detailLine?.material?.materialName || row.materialDescriptions || '—'
+      },
+      {
+        prop: 'requestedQuantityTotal',
+        label: '申请数量',
+        minWidth: 110,
+        align: 'right',
+        formatter: (row) => row.detailLine?.requestedQuantity ?? row.requestedQuantityTotal ?? '—'
+      },
+      ...(displayMode.value === 'line'
+        ? [
+            {
+              prop: 'detailIssuedQuantity',
+              label: '已出库数量',
+              minWidth: 110,
+              align: 'right' as const,
+              formatter: (row: IssueListRow) => row.detailLine?.issuedQuantity ?? 0
+            },
+            {
+              prop: 'detailUnit',
+              label: '基本单位',
+              minWidth: 100,
+              formatter: (row: IssueListRow) => row.detailLine?.material?.baseUnit?.unitName || '—'
+            }
+          ]
+        : []),
       { prop: 'remark', label: '备注', minWidth: 180, showOverflowTooltip: true },
       {
         prop: 'operation',

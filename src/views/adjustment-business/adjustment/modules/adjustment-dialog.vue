@@ -122,7 +122,7 @@
   const units = ref<WmsUnitOption[]>([])
   const serials = ref<WmsBatchSerial[]>([])
   const loadError = ref(false)
-  const form = reactive({
+  const form = ref({
     adjustmentType: 'bin_move' as WmsAdjustmentType,
     documentNo: '',
     sourceBatchId: '',
@@ -210,7 +210,7 @@
         ? '垛包必须整包调整；物料转换后需重新排包，其余调整沿用原包号。'
         : undefined
     },
-    ...(form.adjustmentType === 'bin_move'
+    ...(form.value.adjustmentType === 'bin_move'
       ? [
           {
             key: 'targetBinId',
@@ -227,7 +227,7 @@
           }
         ]
       : []),
-    ...(form.adjustmentType === 'material_convert'
+    ...(form.value.adjustmentType === 'material_convert'
       ? [
           { key: 'targetMaterialId', label: '目标物料', type: 'input' as const, span: 24 },
           {
@@ -244,7 +244,7 @@
           }
         ]
       : []),
-    ...(form.adjustmentType === 'batch_convert'
+    ...(form.value.adjustmentType === 'batch_convert'
       ? [
           {
             key: 'targetBatchNo',
@@ -254,7 +254,7 @@
           }
         ]
       : []),
-    ...(form.adjustmentType === 'status_convert'
+    ...(form.value.adjustmentType === 'status_convert'
       ? [
           {
             key: 'targetStatus',
@@ -267,7 +267,7 @@
           }
         ]
       : []),
-    ...(form.adjustmentType === 'unit_convert'
+    ...(form.value.adjustmentType === 'unit_convert'
       ? [
           {
             key: 'targetDisplayUnitId',
@@ -284,7 +284,7 @@
           }
         ]
       : []),
-    ...(form.adjustmentType === 'attribute_convert'
+    ...(form.value.adjustmentType === 'attribute_convert'
       ? [
           {
             key: 'productionDate',
@@ -361,23 +361,23 @@
       }
     ],
     targetBinId:
-      form.adjustmentType === 'bin_move'
+      form.value.adjustmentType === 'bin_move'
         ? [{ required: true, message: '请选择目标库位', trigger: 'change' }]
         : [],
     targetMaterialId:
-      form.adjustmentType === 'material_convert'
+      form.value.adjustmentType === 'material_convert'
         ? [{ required: true, message: '请选择目标物料', trigger: 'change' }]
         : [],
     targetBatchNo:
-      form.adjustmentType === 'batch_convert'
+      form.value.adjustmentType === 'batch_convert'
         ? [{ required: true, message: '请填写新批号', trigger: 'blur' }]
         : [],
     targetStatus:
-      form.adjustmentType === 'status_convert'
+      form.value.adjustmentType === 'status_convert'
         ? [{ required: true, message: '请选择目标状态', trigger: 'change' }]
         : [],
     targetDisplayUnitId:
-      form.adjustmentType === 'unit_convert'
+      form.value.adjustmentType === 'unit_convert'
         ? [{ required: true, message: '请选择目标单位', trigger: 'change' }]
         : []
   }))
@@ -385,7 +385,7 @@
     const result = await fetchWmsStockPage({
       tenantId: context.value?.tenantId,
       positiveOnly: true,
-      status: form.adjustmentType === 'status_convert' ? undefined : 'normal',
+      status: form.value.adjustmentType === 'status_convert' ? undefined : 'normal',
       keyword: params.keyword,
       current: params.page,
       size: params.pageSize
@@ -414,7 +414,7 @@
   function onMaterialSelected(rows: DataSelectRecord[]): void {
     const row = rows[0]
     selectedMaterial.value = row && typeof row.id === 'string' ? [row as WmsMaterialOption] : []
-    form.targetMaterialId = selectedMaterial.value[0]?.id || ''
+    form.value.targetMaterialId = selectedMaterial.value[0]?.id || ''
   }
   async function onBatchSelected(rows: DataSelectRecord[]): Promise<void> {
     const row = rows[0]
@@ -427,13 +427,15 @@
     units.value = []
     serials.value = []
     if (!selectedBatch.value) return
-    form.sourceBatchId = selectedBatch.value.id
-    form.quantity = selectedBatch.value.packId ? selectedBatch.value.quantity : 1
-    form.targetQuantity = form.quantity
-    form.productionDate = selectedBatch.value.productionDate || ''
-    form.expiryDate = selectedBatch.value.expiryDate || ''
-    form.trackingNo = selectedBatch.value.trackingNo || ''
-    form.auxiliaryAttributesText = JSON.stringify(selectedBatch.value.auxiliaryAttributes || {})
+    form.value.sourceBatchId = selectedBatch.value.id
+    form.value.quantity = selectedBatch.value.packId ? selectedBatch.value.quantity : 1
+    form.value.targetQuantity = form.value.quantity
+    form.value.productionDate = selectedBatch.value.productionDate || ''
+    form.value.expiryDate = selectedBatch.value.expiryDate || ''
+    form.value.trackingNo = selectedBatch.value.trackingNo || ''
+    form.value.auxiliaryAttributesText = JSON.stringify(
+      selectedBatch.value.auxiliaryAttributes || {}
+    )
     loadError.value = false
     try {
       const [binRows, unitRows, serialRows] = await Promise.all([
@@ -449,19 +451,19 @@
     }
   }
   function resetTarget(): void {
-    form.targetBinId = ''
-    form.targetMaterialId = ''
-    form.targetBatchNo = ''
-    form.targetStatus = ''
-    form.targetDisplayUnitId = ''
-    form.serialIds = []
+    form.value.targetBinId = ''
+    form.value.targetMaterialId = ''
+    form.value.targetBatchNo = ''
+    form.value.targetStatus = ''
+    form.value.targetDisplayUnitId = ''
+    form.value.serialIds = []
     selectedMaterial.value = []
   }
   function onTypeChange(): void {
     selectedBatch.value = null
-    form.sourceBatchId = ''
-    form.quantity = 1
-    form.targetQuantity = 1
+    form.value.sourceBatchId = ''
+    form.value.quantity = 1
+    form.value.targetQuantity = 1
     bins.value = []
     units.value = []
     serials.value = []
@@ -472,54 +474,58 @@
       if (!(await validateArtFormForSubmit(formRef.value))) return false
       const batch = selectedBatch.value
       if (!batch || loadError.value) return false
-      if (form.quantity > batch.quantity || (batch.packId && form.quantity !== batch.quantity)) {
+      if (
+        form.value.quantity > batch.quantity ||
+        (batch.packId && form.value.quantity !== batch.quantity)
+      ) {
         ElMessage.warning('调整数量超过库存或未按整包办理')
         return false
       }
       if (
-        form.adjustmentType === 'material_convert' &&
-        form.targetMaterialId === batch.materialId
+        form.value.adjustmentType === 'material_convert' &&
+        form.value.targetMaterialId === batch.materialId
       ) {
         ElMessage.warning('目标物料须与来源物料不同')
         return false
       }
       if (
         (batch.material?.serialManagementEnabled || serials.value.length > 0) &&
-        (form.quantity !== Math.trunc(form.quantity) || form.serialIds.length !== form.quantity)
+        (form.value.quantity !== Math.trunc(form.value.quantity) ||
+          form.value.serialIds.length !== form.value.quantity)
       ) {
         ElMessage.warning('SN 件数必须与调整数量一致')
         return false
       }
       const payload: WmsAdjustmentInput = {
-        documentNo: form.documentNo.trim(),
-        adjustmentType: form.adjustmentType,
+        documentNo: form.value.documentNo.trim(),
+        adjustmentType: form.value.adjustmentType,
         sourceBatchId: batch.id,
-        quantity: form.quantity,
-        serialIds: form.serialIds,
-        remark: normalizeNullableText(form.remark)
+        quantity: form.value.quantity,
+        serialIds: form.value.serialIds,
+        remark: normalizeNullableText(form.value.remark)
       }
-      switch (form.adjustmentType) {
+      switch (form.value.adjustmentType) {
         case 'bin_move':
-          payload.targetBinId = form.targetBinId
+          payload.targetBinId = form.value.targetBinId
           break
         case 'material_convert':
-          payload.targetMaterialId = form.targetMaterialId
-          payload.targetQuantity = form.targetQuantity
-          payload.targetBatchNo = form.targetBatchNo.trim() || undefined
+          payload.targetMaterialId = form.value.targetMaterialId
+          payload.targetQuantity = form.value.targetQuantity
+          payload.targetBatchNo = form.value.targetBatchNo.trim() || undefined
           break
         case 'batch_convert':
-          payload.targetBatchNo = form.targetBatchNo.trim()
+          payload.targetBatchNo = form.value.targetBatchNo.trim()
           break
         case 'status_convert':
-          payload.targetStatus = form.targetStatus
+          payload.targetStatus = form.value.targetStatus
           break
         case 'unit_convert':
-          payload.targetDisplayUnitId = form.targetDisplayUnitId
+          payload.targetDisplayUnitId = form.value.targetDisplayUnitId
           break
         case 'attribute_convert': {
           let attributes: unknown
           try {
-            attributes = JSON.parse(form.auxiliaryAttributesText.trim() || '{}')
+            attributes = JSON.parse(form.value.auxiliaryAttributesText.trim() || '{}')
           } catch {
             ElMessage.warning('辅助属性格式无效，请填写字段名与值组成的对象')
             return false
@@ -528,9 +534,9 @@
             ElMessage.warning('辅助属性须为字段名与值组成的对象')
             return false
           }
-          payload.productionDate = form.productionDate || null
-          payload.expiryDate = form.expiryDate || null
-          payload.trackingNo = normalizeNullableText(form.trackingNo)
+          payload.productionDate = form.value.productionDate || null
+          payload.expiryDate = form.value.expiryDate || null
+          payload.trackingNo = normalizeNullableText(form.value.trackingNo)
           payload.auxiliaryAttributes = attributes as Record<string, unknown>
           break
         }
@@ -551,7 +557,7 @@
     units.value = []
     serials.value = []
     loadError.value = false
-    Object.assign(form, {
+    Object.assign(form.value, {
       adjustmentType: 'bin_move',
       documentNo: `TZ-${dayjs().format('YYYYMMDD')}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
       sourceBatchId: '',

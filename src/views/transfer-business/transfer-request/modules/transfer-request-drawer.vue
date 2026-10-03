@@ -375,12 +375,13 @@
     DataSelectFetchParams,
     DataSelectRecord
   } from '@/components/core/forms/art-data-select/types'
-  import { fetchGetEnableOrganizationTree } from '@/api/system-manage'
+  import { fetchEnabledOrganizationTree } from '@/api/system-manage'
   import TreeUtils from '@/utils/tree'
   import { normalizeNullableText } from '@/utils/form/normalize'
   import { useUserStore } from '@/store/modules/user'
   import {
     fetchWmsBins,
+    fetchWmsInitialDocumentTypes,
     fetchWmsInitialOptions,
     fetchWmsMaterialOptions,
     fetchWmsProjects,
@@ -477,7 +478,7 @@
     label: 'organizationLabel',
     children: 'children'
   }
-  const form = reactive({
+  const form = ref({
     id: '',
     documentNo: '保存后自动生成',
     organizationId: '',
@@ -506,20 +507,21 @@
   }
   const firstDocumentRow = computed(() => documentRows.value[0])
   const viewData = computed(() => ({
-    documentNo: form.documentNo,
-    organization: organizationLabel(form.organizationId),
+    documentNo: form.value.documentNo,
+    organization: organizationLabel(form.value.organizationId),
     documentType:
       firstDocumentRow.value?.documentTypeName ||
-      optionName(documentTypes.value, form.documentTypeId),
+      optionName(documentTypes.value, form.value.documentTypeId),
     businessType:
       firstDocumentRow.value?.businessTypeName ||
-      optionName(businessTypes.value, form.businessTypeId),
-    applicationDate: form.applicationDate,
+      optionName(businessTypes.value, form.value.businessTypeId),
+    applicationDate: form.value.applicationDate,
     applicant: firstDocumentRow.value?.applicantName || '未指定',
-    department: firstDocumentRow.value?.departmentName || organizationLabel(form.departmentId),
+    department:
+      firstDocumentRow.value?.departmentName || organizationLabel(form.value.departmentId),
     status: statusLabel(firstDocumentRow.value?.status),
     pushedMode: pushModeLabel(firstDocumentRow.value?.pushedMode),
-    remark: form.remark || '—'
+    remark: form.value.remark || '—'
   }))
   const viewItems: ArtDescriptionItem<typeof viewData.value>[] = [
     { key: 'documentNo', label: '单据编号', field: 'documentNo', copyable: true },
@@ -569,7 +571,9 @@
       label: '业务类型',
       type: 'select',
       options: businessTypes.value
-        .filter((row) => !form.documentTypeId || row.documentTypeId === form.documentTypeId)
+        .filter(
+          (row) => !form.value.documentTypeId || row.documentTypeId === form.value.documentTypeId
+        )
         .map((row) => ({ label: row.name, value: row.id })),
       props: { filterable: true }
     },
@@ -645,14 +649,15 @@
     )
   }
   function onApplicantSelected(rows: Array<{ departmentId?: string | null }>) {
-    if (!form.departmentId && rows[0]?.departmentId) form.departmentId = rows[0].departmentId
+    if (!form.value.departmentId && rows[0]?.departmentId)
+      form.value.departmentId = rows[0].departmentId
   }
   function selectDefaultBusinessType() {
-    form.businessTypeId =
-      businessTypes.value.find((row) => row.documentTypeId === form.documentTypeId)?.id || ''
+    form.value.businessTypeId =
+      businessTypes.value.find((row) => row.documentTypeId === form.value.documentTypeId)?.id || ''
   }
   function newLine(material: WmsMaterialOption): DraftLine {
-    const orgId = form.organizationId || organizations.value[0]?.id || ''
+    const orgId = form.value.organizationId || organizations.value[0]?.id || ''
     const wh = warehouseOptions(orgId)
     return {
       key: crypto.randomUUID(),
@@ -748,7 +753,7 @@
     documentRows.value = rows
     const first = rows[0]
     if (!first) throw new Error('调拨申请不存在')
-    Object.assign(form, {
+    Object.assign(form.value, {
       id: first.documentId,
       documentNo: first.documentNo,
       organizationId: first.organizationId,
@@ -793,16 +798,14 @@
   async function loadOptions(tenantId: string) {
     const [docRows, businessRows, projectRows, unitRows, warehouseRows, orgResult] =
       await Promise.all([
-        fetchWmsInitialOptions('mdm_document_type', tenantId),
+        fetchWmsInitialDocumentTypes(tenantId, 'WmsTransfer'),
         fetchWmsInitialOptions('mdm_business_type', tenantId),
         fetchWmsProjects(tenantId),
         fetchWmsUnitOptions(tenantId),
         fetchWmsWarehouses(tenantId),
-        fetchGetEnableOrganizationTree({ tenantId })
+        fetchEnabledOrganizationTree({ tenantId })
       ])
-    documentTypes.value = docRows.filter(
-      (row) => row.code === 'WMS_TRANSFER_REQUEST_STANDARD' || row.name.includes('调拨')
-    )
+    documentTypes.value = docRows
     businessTypes.value = businessRows
     projects.value = projectRows
     units.value = unitRows
@@ -831,15 +834,15 @@
         return false
       }
       await saveWmsTransferRequest({
-        id: mode.value === 'edit' ? form.id : undefined,
+        id: mode.value === 'edit' ? form.value.id : undefined,
         tenantId: context.value?.tenantId,
-        organizationId: form.organizationId,
-        documentTypeId: form.documentTypeId,
-        businessTypeId: form.businessTypeId,
-        applicationDate: form.applicationDate,
-        applicantId: form.applicantId || null,
-        departmentId: form.departmentId || null,
-        remark: normalizeNullableText(form.remark),
+        organizationId: form.value.organizationId,
+        documentTypeId: form.value.documentTypeId,
+        businessTypeId: form.value.businessTypeId,
+        applicationDate: form.value.applicationDate,
+        applicantId: form.value.applicantId || null,
+        departmentId: form.value.departmentId || null,
+        remark: normalizeNullableText(form.value.remark),
         lines: lines.value.map((row) => ({
           materialId: row.materialId,
           projectId: row.projectId || null,
@@ -878,7 +881,7 @@
     mode.value = data.mode
     lines.value = []
     documentRows.value = []
-    Object.assign(form, {
+    Object.assign(form.value, {
       id: '',
       documentNo: '保存后自动生成',
       organizationId: '',
@@ -906,17 +909,14 @@
         try {
           if (!data.tenantId) throw new Error('缺少租户')
           await loadOptions(data.tenantId)
-          form.organizationId = organizations.value[0]?.id || ''
-          form.documentTypeId =
-            documentTypes.value.find((row) => row.code === 'WMS_TRANSFER_REQUEST_STANDARD')?.id ||
-            documentTypes.value[0]?.id ||
-            ''
+          form.value.organizationId = organizations.value[0]?.id || ''
+          form.value.documentTypeId = documentTypes.value.find((row) => row.isDefault)?.id || ''
           selectDefaultBusinessType()
           if (data.documentId) {
             await loadDocument(data.documentId)
             if (data.mode === 'copy') {
-              form.id = ''
-              form.documentNo = '保存后自动生成'
+              form.value.id = ''
+              form.value.documentNo = '保存后自动生成'
             }
           }
         } finally {

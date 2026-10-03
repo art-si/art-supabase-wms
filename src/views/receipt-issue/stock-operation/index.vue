@@ -267,7 +267,7 @@
   } from '@/components/core/forms/art-data-select/types'
   import { useUserStore } from '@/store/modules/user'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
-  import { fetchGetEnableOrganizationTree } from '@/api/system-manage'
+  import { fetchEnabledOrganizationTree } from '@/api/system-manage'
   import {
     fetchWmsBatchSerials,
     fetchWmsBins,
@@ -1137,7 +1137,7 @@
               ? fetchWmsShippingNotices(selectedWarehouse.value?.tenantId || '')
               : [],
             form.movementType === 'transfer'
-              ? fetchGetEnableOrganizationTree({
+              ? fetchEnabledOrganizationTree({
                   tenantId: selectedWarehouse.value?.tenantId || ''
                 })
               : { data: [] }

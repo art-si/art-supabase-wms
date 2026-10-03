@@ -26,7 +26,8 @@
         header-actions-placement="workspace"
         :search-bar-props="{ span: 5, labelWidth: 76 }"
         :table-props="{
-          rowKey: 'lineId',
+          rowKey: displayMode === 'document' ? 'documentId' : 'lineId',
+          spanMethod: mergeDocumentCells,
           tableLayout: 'fixed',
           cellClassName: salesCellClassName,
           emptyText: `当前范围暂无${title}`,
@@ -34,7 +35,14 @@
         }"
         focusable
         @selection-change="onSelectionChange"
-      />
+      >
+        <template #search-displayMode>
+          <ElRadioGroup v-model="displayMode" aria-label="单据列表展示方式" @change="refresh">
+            <ElRadioButton label="document" value="document">按单据</ElRadioButton>
+            <ElRadioButton label="line" value="line">按明细</ElRadioButton>
+          </ElRadioGroup>
+        </template>
+      </ArtTableQuery>
       <InitialSalesDrawer
         ref="drawerRef"
         :kind="kind"
@@ -109,6 +117,11 @@
   import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type { ColumnOption } from '@/types'
+  import {
+    documentGroupSpan,
+    groupDocumentLines,
+    loadAllLinePages
+  } from '@/utils/business/document-detail-list'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { useUserStore } from '@/store/modules/user'
   import {
@@ -133,6 +146,39 @@
   void userStore.ensureDictLoaded('wmsInitialStockType')
   void userStore.ensureDictLoaded('wmsInitialStockCondition')
   const tableRef = ref<ArtTableQueryExpose>()
+  const displayMode = ref<'document' | 'line'>('document')
+  const visibleRows = ref<WmsInitialSalesListRow[]>([])
+  const lineProperties = new Set([
+    'projectName',
+    'materialCode',
+    'materialDescription',
+    'specificationModel',
+    'inventoryUnitName',
+    'quantity',
+    'unitPrice',
+    'taxInclusiveUnitPrice',
+    'taxRate',
+    'amount',
+    'taxAmount',
+    'totalAmount',
+    'batchNo',
+    'warehouseName',
+    'binName',
+    'stockType',
+    'stockStatus',
+    'gift'
+  ])
+  function mergeDocumentCells({
+    rowIndex,
+    column
+  }: {
+    rowIndex: number
+    column: { property?: string }
+  }) {
+    return displayMode.value === 'line'
+      ? documentGroupSpan(visibleRows.value, rowIndex, column.property, lineProperties)
+      : ([1, 1] as [number, number])
+  }
   const drawerRef = ref<InstanceType<typeof InitialSalesDrawer>>()
   const otherReturnDrawerRef = ref<InstanceType<typeof InitialSalesDrawer>>()
   const pushDialogRef = ref<ArtDialogExpose>()
@@ -257,6 +303,7 @@
     materialCode: ''
   })
   const searchItems: SearchFormItem[] = [
+    { label: '展示方式', key: 'displayMode', type: 'text' },
     {
       label: '单据状态',
       key: 'status',
@@ -292,7 +339,7 @@
       props: { clearable: true, placeholder: '物料编码' }
     }
   ]
-  function fetchRows(query: {
+  async function fetchRows(query: {
     status?: string
     customer?: string
     projectName?: string
@@ -301,11 +348,47 @@
     current: number
     size: number
   }) {
-    return fetchWmsInitialSalesPage({
+    const fetchPage = (page: typeof query) =>
+      fetchWmsInitialSalesPage({
+        ...page,
+        kind: props.kind,
+        tenantId: effectiveTenantId.value || undefined
+      })
+    if (displayMode.value === 'line') {
+      const result = await fetchPage(query)
+      visibleRows.value = result.data
+      return result
+    }
+    visibleRows.value = []
+    const hasMaterialFilter = Boolean(
+      query.materialCode?.trim() || query.materialDescription?.trim()
+    )
+    const matchingDocumentIds = hasMaterialFilter
+      ? new Set((await loadAllLinePages(fetchPage, query)).map((line) => line.documentId))
+      : null
+    const lines = await loadAllLinePages(fetchPage, {
       ...query,
-      kind: props.kind,
-      tenantId: effectiveTenantId.value || undefined
+      materialCode: undefined,
+      materialDescription: undefined
     })
+    const documents = groupDocumentLines(
+      matchingDocumentIds
+        ? lines.filter((line) => matchingDocumentIds.has(line.documentId))
+        : lines,
+      (line) => line.documentId
+    ).map(({ first, lines: group }) => ({
+      ...first,
+      lineNo: group.length,
+      materialCode: '',
+      materialDescription: `共 ${group.length} 项物料`,
+      amount: group.reduce((sum, line) => sum + Number(line.amount || 0), 0),
+      taxAmount: group.reduce((sum, line) => sum + Number(line.taxAmount || 0), 0),
+      totalAmount: group.reduce((sum, line) => sum + Number(line.totalAmount || 0), 0)
+    }))
+    return {
+      data: documents.slice((query.current - 1) * query.size, query.current * query.size),
+      total: documents.length
+    }
   }
   async function refresh(): Promise<void> {
     await tableRef.value?.refreshUpdate()
@@ -487,8 +570,8 @@
     }
   }
   function columnsFactory(): ColumnOption<WmsInitialSalesListRow>[] {
-    return [
-      ...(props.kind === 'other_outbound'
+    const columns: ColumnOption<WmsInitialSalesListRow>[] = [
+      ...(props.kind === 'other_outbound' && displayMode.value === 'document'
         ? [{ type: 'selection' as const, width: 48, fixed: 'left' as const }]
         : []),
       {
@@ -499,7 +582,7 @@
         formatter: (row) => (
           <BusinessTableIdentityCell
             primary={row.documentNo}
-            secondary={`第 ${row.lineNo} 行 · ${row.customerName}`}
+            secondary={`${displayMode.value === 'document' ? `共 ${row.lineNo} 项物料` : `第 ${row.lineNo} 行`} · ${row.customerName}`}
             icon={returnKinds.includes(row.kind) ? 'ri:arrow-go-back-line' : 'ri:logout-box-r-line'}
           />
         )
@@ -539,7 +622,9 @@
           ] as ColumnOption<WmsInitialSalesListRow>[])
         : []),
       { prop: 'projectName', label: '项目名称', minWidth: 165, showOverflowTooltip: true },
-      { prop: 'materialCode', label: '物料编码', minWidth: 125 },
+      ...(displayMode.value === 'line'
+        ? [{ prop: 'materialCode', label: '物料编码', minWidth: 125 }]
+        : []),
       { prop: 'materialDescription', label: '物料描述', minWidth: 175, showOverflowTooltip: true },
       { prop: 'specificationModel', label: '规格型号', minWidth: 130 },
       { prop: 'inventoryUnitName', label: '库存单位', width: 98 },
@@ -611,6 +696,22 @@
         )
       }
     ]
+    if (displayMode.value === 'line') return columns
+    const detailOnly = new Set([
+      'quantity',
+      'specificationModel',
+      'inventoryUnitName',
+      'unitPrice',
+      'taxInclusiveUnitPrice',
+      'taxRate',
+      'batchNo',
+      'warehouseName',
+      'binName',
+      'stockType',
+      'stockStatus',
+      'gift'
+    ])
+    return columns.filter((column) => !detailOnly.has(String(column.prop)))
   }
 </script>
 

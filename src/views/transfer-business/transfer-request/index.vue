@@ -25,13 +25,21 @@
         header-actions-placement="workspace"
         :search-bar-props="{ span: 5, labelWidth: 76 }"
         :table-props="{
-          rowKey: 'lineId',
+          rowKey: displayMode === 'document' ? 'documentId' : 'lineId',
+          spanMethod: mergeDocumentCells,
           tableLayout: 'fixed',
           emptyText: '当前范围暂无调拨申请单',
           emptyDescription: '新建申请单并填写物料、调出仓库和调入仓库。'
         }"
         focusable
-      />
+      >
+        <template #search-displayMode>
+          <ElRadioGroup v-model="displayMode" aria-label="单据列表展示方式" @change="refresh">
+            <ElRadioButton label="document" value="document">按单据</ElRadioButton>
+            <ElRadioButton label="line" value="line">按明细</ElRadioButton>
+          </ElRadioGroup>
+        </template>
+      </ArtTableQuery>
       <TransferRequestDrawer ref="drawerRef" @success="refresh" />
       <ArtDialog ref="pushDialogRef" size="sm" :show-footer="false">
         <ArtEntitySummary
@@ -71,6 +79,11 @@
   import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type { ColumnOption } from '@/types'
+  import {
+    documentGroupSpan,
+    groupDocumentLines,
+    loadAllLinePages
+  } from '@/utils/business/document-detail-list'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import {
     changeWmsTransferRequestStatus,
@@ -88,6 +101,37 @@
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const { defaultWriteTenantId } = useTenantScopeFormPolicy()
   const tableRef = ref<ArtTableQueryExpose>()
+  const displayMode = ref<'document' | 'line'>('document')
+  const visibleRows = ref<WmsTransferRequestRow[]>([])
+  const lineProperties = new Set([
+    'materialCode',
+    'materialDescription',
+    'specificationModel',
+    'projectName',
+    'constructionNo',
+    'inventoryUnitName',
+    'quantity',
+    'sourceOrganizationName',
+    'sourceWarehouseName',
+    'sourceBinName',
+    'targetOrganizationName',
+    'targetWarehouseName',
+    'targetBinName',
+    'stockType',
+    'stockStatus',
+    'gift'
+  ])
+  function mergeDocumentCells({
+    rowIndex,
+    column
+  }: {
+    rowIndex: number
+    column: { property?: string }
+  }) {
+    return displayMode.value === 'line'
+      ? documentGroupSpan(visibleRows.value, rowIndex, column.property, lineProperties)
+      : ([1, 1] as [number, number])
+  }
   const drawerRef = ref<InstanceType<typeof TransferRequestDrawer>>()
   const pushDialogRef = ref<ArtDialogExpose>()
   const pushRow = ref<WmsTransferRequestRow>()
@@ -120,6 +164,7 @@
     frozen: '冻结'
   }
   const searchItems = computed<SearchFormItem[]>(() => [
+    { label: '展示方式', key: 'displayMode', type: 'text' },
     {
       label: '单据状态',
       key: 'status',
@@ -177,13 +222,35 @@
       props: { clearable: true, placeholder: '单据编号' }
     }
   ])
-  function fetchRows(query: WmsStockQuery & { applicationDateRange?: string[] }) {
-    return fetchWmsTransferRequestPage({
-      ...query,
-      tenantId: effectiveTenantId.value || undefined,
-      applicationDateStart: query.applicationDateRange?.[0],
-      applicationDateEnd: query.applicationDateRange?.[1]
-    })
+  async function fetchRows(query: WmsStockQuery & { applicationDateRange?: string[] }) {
+    const fetchPage = (page: typeof query) =>
+      fetchWmsTransferRequestPage({
+        ...page,
+        tenantId: effectiveTenantId.value || undefined,
+        applicationDateStart: page.applicationDateRange?.[0],
+        applicationDateEnd: page.applicationDateRange?.[1]
+      })
+    if (displayMode.value === 'line') {
+      const result = await fetchPage(query)
+      visibleRows.value = result.data
+      return result
+    }
+    visibleRows.value = []
+    const lines = await loadAllLinePages(fetchPage, query)
+    const documents = groupDocumentLines(lines, (line) => line.documentId).map(
+      ({ first, lines: group }) => ({
+        ...first,
+        lineNo: group.length,
+        materialCode: '',
+        materialDescription: `共 ${group.length} 项物料`,
+        quantity: group.reduce((sum, line) => sum + Number(line.quantity || 0), 0),
+        baseQuantity: group.reduce((sum, line) => sum + Number(line.baseQuantity || 0), 0)
+      })
+    )
+    return {
+      data: documents.slice((query.current - 1) * query.size, query.current * query.size),
+      total: documents.length
+    }
   }
   async function refresh(): Promise<void> {
     await tableRef.value?.refreshUpdate()
@@ -315,7 +382,7 @@
     else if (item.key === 'push') void openPush(row)
   }
   function columnsFactory(): ColumnOption<WmsTransferRequestRow>[] {
-    return [
+    const columns: ColumnOption<WmsTransferRequestRow>[] = [
       {
         prop: 'documentNo',
         label: '单据编号',
@@ -324,7 +391,7 @@
         formatter: (row) => (
           <BusinessTableIdentityCell
             primary={row.documentNo}
-            secondary={`第 ${row.lineNo} 行 · ${row.documentTypeName}`}
+            secondary={`${displayMode.value === 'document' ? `共 ${row.lineNo} 项物料` : `第 ${row.lineNo} 行`} · ${row.documentTypeName}`}
             icon="ri:file-transfer-line"
           />
         )
@@ -352,12 +419,18 @@
       { prop: 'businessTypeName', label: '业务类型', minWidth: 125 },
       { prop: 'applicantName', label: '申请人', minWidth: 105 },
       { prop: 'departmentName', label: '申请部门', minWidth: 135 },
-      { prop: 'materialCode', label: '物料编码', minWidth: 125 },
+      ...(displayMode.value === 'line'
+        ? [{ prop: 'materialCode', label: '物料编码', minWidth: 125 }]
+        : []),
       { prop: 'materialDescription', label: '物料描述', minWidth: 180, showOverflowTooltip: true },
-      { prop: 'specificationModel', label: '规格型号', minWidth: 125 },
+      ...(displayMode.value === 'line'
+        ? [{ prop: 'specificationModel', label: '规格型号', minWidth: 125 }]
+        : []),
       { prop: 'projectName', label: '项目名称', minWidth: 150, showOverflowTooltip: true },
       { prop: 'constructionNo', label: '施工号', minWidth: 115 },
-      { prop: 'inventoryUnitName', label: '库存单位', width: 98 },
+      ...(displayMode.value === 'line'
+        ? [{ prop: 'inventoryUnitName', label: '库存单位', width: 98 }]
+        : []),
       {
         prop: 'quantity',
         label: '数量',
@@ -413,6 +486,21 @@
         )
       }
     ]
+    if (displayMode.value === 'line') return columns
+    const detailOnly = new Set([
+      'projectName',
+      'constructionNo',
+      'sourceOrganizationName',
+      'sourceWarehouseName',
+      'sourceBinName',
+      'targetOrganizationName',
+      'targetWarehouseName',
+      'targetBinName',
+      'stockType',
+      'stockStatus',
+      'gift'
+    ])
+    return columns.filter((column) => !detailOnly.has(String(column.prop)))
   }
   watch(
     effectiveTenantId,

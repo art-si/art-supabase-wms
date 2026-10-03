@@ -139,22 +139,247 @@
                 row.material?.code || row.materialId
               }}</small>
             </template>
-            <template #openingQuantity="{ row }">
-              <strong class="tabular-nums">{{ row.openingQuantity || '待录入' }}</strong>
-            </template>
-            <template #yearlyOpeningQuantity="{ row }">{{ yearlyOpening(row) }}</template>
-            <template #warehouseId="{ row }">{{
-              row.warehouse?.name || warehouseName(row.warehouseId)
-            }}</template>
-            <template #amount="{ row }">{{ lineAmount(row).toFixed(2) }}</template>
-            <template #operation="{ row }">
-              <ArtButtonTable
-                :type="mode === 'view' ? 'view' : 'edit'"
-                :icon="mode === 'view' ? 'ri:eye-line' : 'ri:edit-line'"
-                :label="mode === 'view' ? '查看' : '编辑'"
-                :permission="mode === 'view' ? 'WmsInitialStock:View' : lineEditPermission"
-                @click="openLine(lineIndex(row))"
+            <template #projectId="{ row }">
+              <ArtTableSingleSelect
+                v-if="mode !== 'view'"
+                :model-value="row.projectId || undefined"
+                :selected-data="row.project ? [row.project] : []"
+                :data="projects"
+                :columns="projectColumns"
+                row-key="id"
+                label-key="name"
+                description-key="code"
+                title="选择项目"
+                clearable
+                @update:model-value="onInlineProjectChange(row, String($event || '') || null)"
+                @update:selected-data="row.project = $event[0] || null"
               />
+              <span v-else>{{ row.project?.name || '—' }}</span>
+            </template>
+            <template #constructionNo="{ row }"
+              ><ElInput
+                v-if="mode !== 'view'"
+                v-model="row.constructionNo"
+                :disabled="!row.projectId"
+                placeholder="施工号"
+              /><span v-else>{{ row.constructionNo || '—' }}</span></template
+            >
+            <template #gift="{ row }"
+              ><ElSwitch v-if="mode !== 'view'" v-model="row.gift" /><span v-else>{{
+                row.gift ? '是' : '否'
+              }}</span></template
+            >
+            <template #inventoryUnitId="{ row }"
+              ><ElSelect v-if="mode !== 'view'" v-model="row.inventoryUnitId" filterable
+                ><ElOption
+                  v-for="unit in unitOptions"
+                  :key="unit.value"
+                  :label="unit.label"
+                  :value="unit.value" /></ElSelect
+              ><span v-else>{{ unitName(row.inventoryUnitId) }}</span></template
+            >
+            <template #openingQuantity="{ row }"
+              ><ElInputNumber
+                v-if="mode !== 'view'"
+                v-model="row.openingQuantity"
+                :min="0"
+                :precision="4"
+                :controls="false"
+                class="w-full!"
+              /><strong v-else class="tabular-nums">{{ row.openingQuantity }}</strong></template
+            >
+            <template #baseUnitId="{ row }"
+              ><ElSelect v-if="mode !== 'view'" v-model="row.baseUnitId" filterable
+                ><ElOption
+                  v-for="unit in unitOptions"
+                  :key="unit.value"
+                  :label="unit.label"
+                  :value="unit.value" /></ElSelect
+              ><span v-else>{{ unitName(row.baseUnitId) }}</span></template
+            >
+            <template #baseQuantity="{ row }">{{ baseQuantity(row) }}</template>
+            <template #yearlyOpeningQuantity="{ row }">{{ yearlyOpening(row) }}</template>
+            <template #yearlyReceivedQuantity="{ row }"
+              ><ElInputNumber
+                v-if="mode !== 'view'"
+                v-model="row.yearlyReceivedQuantity"
+                :min="0"
+                :precision="4"
+                :controls="false"
+                class="w-full!"
+              /><span v-else>{{ row.yearlyReceivedQuantity }}</span></template
+            >
+            <template #yearlyIssuedQuantity="{ row }"
+              ><ElInputNumber
+                v-if="mode !== 'view'"
+                v-model="row.yearlyIssuedQuantity"
+                :min="0"
+                :precision="4"
+                :controls="false"
+                class="w-full!"
+              /><span v-else>{{ row.yearlyIssuedQuantity }}</span></template
+            >
+            <template #auxiliaryUnitId="{ row }">{{ unitName(row.auxiliaryUnitId) }}</template>
+            <template #openingAuxQuantity="{ row }">{{
+              auxQuantity(row, row.openingQuantity)
+            }}</template>
+            <template #unitPrice="{ row }"
+              ><ElInputNumber
+                v-if="mode !== 'view'"
+                v-model="row.unitPrice"
+                :min="0"
+                :precision="4"
+                :controls="false"
+                class="w-full!"
+              /><span v-else>{{ row.unitPrice }}</span></template
+            >
+            <template #amount="{ row }"
+              ><ElInputNumber
+                v-if="mode !== 'view' && form.amountEntryEnabled && !row.gift"
+                v-model="row.amount"
+                :min="0"
+                :precision="2"
+                :controls="false"
+                class="w-full!"
+              /><span v-else>{{ lineAmount(row).toFixed(2) }}</span></template
+            >
+            <template #warehouseId="{ row }"
+              ><ElSelect
+                v-if="mode !== 'view'"
+                v-model="row.warehouseId"
+                filterable
+                @change="onInlineWarehouseChange(row)"
+                ><ElOption
+                  v-for="warehouse in currentWarehouses"
+                  :key="warehouse.id"
+                  :label="`${warehouse.warehouseName} · ${warehouse.warehouseCode}`"
+                  :value="warehouse.id" /></ElSelect
+              ><span v-else>{{
+                row.warehouse?.name || warehouseName(row.warehouseId)
+              }}</span></template
+            >
+            <template #binId="{ row }"
+              ><ElSelect
+                v-if="mode !== 'view'"
+                v-model="row.binId"
+                filterable
+                clearable
+                :disabled="!row.warehouseId"
+                @visible-change="($event) => $event && loadInlineBins(row)"
+                ><ElOption
+                  v-for="bin in bins"
+                  :key="bin.id"
+                  :label="`${bin.binName} · ${bin.binCode}`"
+                  :value="bin.id" /></ElSelect
+              ><span v-else>{{ row.bin?.binName || row.binId || '—' }}</span></template
+            >
+            <template #stockType="{ row }"
+              ><ElSelect v-if="mode !== 'view'" v-model="row.stockType"
+                ><ElOption
+                  v-for="option in stockTypes"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value" /></ElSelect
+              ><span v-else>{{ row.stockType }}</span></template
+            >
+            <template #stockStatus="{ row }"
+              ><ElSelect v-if="mode !== 'view'" v-model="row.stockStatus"
+                ><ElOption
+                  v-for="option in stockStatuses"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value" /></ElSelect
+              ><span v-else>{{ row.stockStatus }}</span></template
+            >
+            <template #ownerType="{ row }"
+              ><ElSelect v-if="mode !== 'view'" v-model="row.ownerType" @change="row.ownerId = null"
+                ><ElOption
+                  v-for="option in ownerTypes"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value" /></ElSelect
+              ><span v-else>{{ row.ownerType }}</span></template
+            >
+            <template #ownerId="{ row }"
+              ><ArtTableSingleSelect
+                v-if="mode !== 'view' && row.ownerType !== 'self'"
+                :model-value="row.ownerId || undefined"
+                :data="row.ownerType === 'supplier' ? suppliers : customers"
+                :columns="ownerColumns"
+                row-key="id"
+                label-key="name"
+                description-key="code"
+                title="选择货主"
+                @update:model-value="row.ownerId = String($event || '') || null"
+              /><span v-else>{{
+                row.ownerType === 'self' ? '自有' : row.ownerId || '—'
+              }}</span></template
+            >
+            <template #batchNo="{ row }"
+              ><ElInput v-if="mode !== 'view'" v-model="row.batchNo" placeholder="自动生成" /><span
+                v-else
+                >{{ row.batchNo || '—' }}</span
+              ></template
+            >
+            <template #inboundDate="{ row }"
+              ><ElDatePicker
+                v-if="mode !== 'view'"
+                v-model="row.inboundDate"
+                type="date"
+                value-format="YYYY-MM-DD"
+                class="w-full!"
+              /><span v-else>{{ row.inboundDate || '—' }}</span></template
+            >
+            <template #keeperId="{ row }"
+              ><ArtEmployeeSelect
+                v-if="mode !== 'view'"
+                :model-value="row.keeperId || undefined"
+                :tenant-id="form.tenantId || undefined"
+                title="选择行仓管员"
+                @update:model-value="row.keeperId = $event || null"
+              /><span v-else>{{ row.keeperId || '—' }}</span></template
+            >
+            <template #productionDate="{ row }"
+              ><ElDatePicker
+                v-if="mode !== 'view'"
+                v-model="row.productionDate"
+                type="date"
+                value-format="YYYY-MM-DD"
+                class="w-full!"
+              /><span v-else>{{ row.productionDate || '—' }}</span></template
+            >
+            <template #expiryDate="{ row }"
+              ><ElDatePicker
+                v-if="mode !== 'view'"
+                v-model="row.expiryDate"
+                type="date"
+                value-format="YYYY-MM-DD"
+                class="w-full!"
+              /><span v-else>{{ row.expiryDate || '—' }}</span></template
+            >
+            <template #trackingNo="{ row }"
+              ><ElInput v-if="mode !== 'view'" v-model="row.trackingNo" /><span v-else>{{
+                row.trackingNo || '—'
+              }}</span></template
+            >
+            <template #sourceDocument="{ row }"
+              ><ElInput v-if="mode !== 'view'" v-model="row.sourceDocument" /><span v-else>{{
+                row.sourceDocument || '—'
+              }}</span></template
+            >
+            <template #remark="{ row }"
+              ><ElInput v-if="mode !== 'view'" v-model="row.remark" /><span v-else>{{
+                row.remark || '—'
+              }}</span></template
+            >
+            <template #operation="{ row }">
+              <ElButton
+                v-if="row.material?.serialManagementEnabled"
+                link
+                type="primary"
+                @click="openInlineSerials(row)"
+                >序列号 {{ row.serialNos.length }}</ElButton
+              >
               <ArtButtonMore
                 v-if="mode !== 'view'"
                 :list="lineMoreActions"
@@ -168,137 +393,14 @@
     </div>
   </ArtDrawer>
 
-  <ArtDialog ref="lineDialogRef" size="lg" :show-footer="mode !== 'view'">
-    <div v-if="editLine" class="min-w-0 space-y-5">
-      <ArtEntitySummary
-        icon="ri:package-2-line"
-        eyebrow="MATERIAL LINE"
-        :title="`${editLine.material?.name || '物料'} · 第 ${editLine.lineNo} 行`"
-        :description="`${editLine.material?.code || ''} · ${editLine.material?.specificationModel || '无规格型号'}`"
-      />
-      <template v-if="mode === 'view'">
-        <ArtSectionCard title="数量与核算" subtitle="期初余额、年度变化和辅助数量">
-          <ArtDescriptions :data="editLine" :items="lineQuantityItems" :columns="3" />
-        </ArtSectionCard>
-        <ArtSectionCard title="仓储与货权" subtitle="仓库、仓位、库存类型与货主">
-          <ArtDescriptions :data="editLine" :items="lineStorageItems" :columns="3" />
-        </ArtSectionCard>
-        <ArtSectionCard title="批次追溯" subtitle="生产、有效期、来源和序列号">
-          <ArtDescriptions :data="editLine" :items="lineTraceItems" :columns="3" />
-        </ArtSectionCard>
-      </template>
-      <template v-else>
-        <ArtSectionCard title="数量与核算" subtitle="年初数量与辅助数量由系统自动计算。">
-          <ArtForm
-            v-model="editLine"
-            :items="lineQuantityFormItems"
-            :rules="lineQuantityRules"
-            :span="6"
-            :gutter="16"
-            label-position="top"
-            :show-reset="false"
-            :show-submit="false"
-          >
-            <template #projectId>
-              <ArtTableSingleSelect
-                :model-value="editLine.projectId || undefined"
-                :selected-data="selectedProject"
-                :data="projects"
-                :columns="projectColumns"
-                row-key="id"
-                label-key="name"
-                description-key="code"
-                title="选择销售项目"
-                placeholder="选择项目"
-                @update:model-value="editLine.projectId = String($event || '') || null"
-                @update:selected-data="onProjectSelected"
-              />
-            </template>
-          </ArtForm>
-          <div
-            class="grid gap-3 rounded-xl bg-[var(--el-fill-color-light)] p-4 text-sm sm:grid-cols-4"
-          >
-            <span
-              >辅助单位<strong class="block">{{ unitName(editLine.auxiliaryUnitId) }}</strong></span
-            >
-            <span
-              >期初辅助数量<strong class="block tabular-nums">{{
-                auxQuantity(editLine, editLine.openingQuantity)
-              }}</strong></span
-            >
-            <span
-              >年收入辅助数<strong class="block tabular-nums">{{
-                auxQuantity(editLine, editLine.yearlyReceivedQuantity)
-              }}</strong></span
-            >
-            <span
-              >年发出辅助数<strong class="block tabular-nums">{{
-                auxQuantity(editLine, editLine.yearlyIssuedQuantity)
-              }}</strong></span
-            >
-          </div>
-        </ArtSectionCard>
-        <ArtSectionCard title="仓储与货权" subtitle="仓位随所选仓库过滤；仓管员默认继承表头。">
-          <ArtForm
-            v-model="editLine"
-            :items="lineStorageFormItems"
-            :rules="lineStorageRules"
-            :span="6"
-            :gutter="16"
-            label-position="top"
-            :show-reset="false"
-            :show-submit="false"
-          >
-            <template #ownerId>
-              <ArtTableSingleSelect
-                v-if="editLine.ownerType !== 'self'"
-                :model-value="editLine.ownerId || undefined"
-                :selected-data="selectedOwner"
-                :data="editLine.ownerType === 'supplier' ? suppliers : customers"
-                :columns="ownerColumns"
-                row-key="id"
-                label-key="name"
-                description-key="code"
-                title="选择货主"
-                @update:model-value="editLine.ownerId = String($event || '') || null"
-                @update:selected-data="selectedOwner = $event"
-              />
-              <span v-else>自有</span>
-            </template>
-            <template #keeperId>
-              <ArtEmployeeSelect
-                :model-value="editLine.keeperId || undefined"
-                :selected-data="selectedLineKeeper"
-                :tenant-id="form.tenantId || undefined"
-                title="选择行仓管员"
-                @update:model-value="editLine.keeperId = $event || null"
-                @update:selected-data="selectedLineKeeper = $event"
-              />
-            </template>
-          </ArtForm>
-        </ArtSectionCard>
-        <ArtSectionCard title="批次追溯" subtitle="序列号物料须逐件录入 SN，一行一个。">
-          <ArtForm
-            v-model="editLine"
-            :items="lineTraceFormItems"
-            :span="6"
-            :gutter="16"
-            label-position="top"
-            :show-reset="false"
-            :show-submit="false"
-          >
-            <template #serialNos>
-              <ElInput
-                v-model="serialText"
-                type="textarea"
-                :rows="4"
-                placeholder="每行一个 SN，与期初数量一致"
-              />
-            </template>
-          </ArtForm>
-        </ArtSectionCard>
-      </template>
-    </div>
+  <ArtDialog ref="serialDialogRef" size="sm" :show-footer="mode !== 'view'">
+    <ElInput
+      v-model="serialText"
+      type="textarea"
+      :rows="10"
+      :readonly="mode === 'view'"
+      placeholder="每行一个序列号"
+    />
   </ArtDialog>
 </template>
 
@@ -319,7 +421,6 @@
   import ArtDescriptions from '@/components/core/base/art-descriptions/index.vue'
   import type { ArtDescriptionItem } from '@/components/core/base/art-descriptions/types'
   import ArtTable from '@/components/core/tables/art-table/index.vue'
-  import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import ArtButtonMore, {
     type ButtonMoreItem
   } from '@/components/core/forms/art-button-more/index.vue'
@@ -332,7 +433,7 @@
     DataSelectFetchParams
   } from '@/components/core/forms/art-data-select/types'
   import type { EmployeeIntegrationItem } from '@/api/integration/employees'
-  import { fetchGetEnableOrganizationTree } from '@/api/system-manage'
+  import { fetchEnabledOrganizationTree } from '@/api/system-manage'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import type { ColumnOption } from '@/types'
   import {
@@ -363,7 +464,7 @@
   const userStore = useUserStore()
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const drawerRef = ref<ArtDrawerExpose<OpenData>>()
-  const lineDialogRef = ref<ArtDialogExpose>()
+  const serialDialogRef = ref<ArtDialogExpose>()
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const mode = ref<OpenMode>('create')
   const currentDocument = shallowRef<WmsInitialStockDocument | null>(null)
@@ -424,23 +525,41 @@
     { prop: 'lineNo', label: '行号', width: 68 },
     { prop: 'material', label: '物料', minWidth: 220, useSlot: true },
     { prop: 'material.specificationModel', label: '规格型号', minWidth: 130 },
-    { prop: 'openingQuantity', label: '期初数量', width: 110, align: 'right', useSlot: true },
-    { prop: 'yearlyOpeningQuantity', label: '年初数量', width: 110, align: 'right', useSlot: true },
-    { prop: 'warehouseId', label: '入库仓库', minWidth: 150, useSlot: true },
-    { prop: 'batchNo', label: '批号', minWidth: 130 },
-    { prop: 'amount', label: '金额(元)', width: 125, align: 'right', useSlot: true },
-    { prop: 'operation', label: '操作', width: 112, fixed: 'right', useSlot: true }
+    { prop: 'projectId', label: '项目', width: 170, useSlot: true },
+    { prop: 'constructionNo', label: '施工号', width: 150, useSlot: true },
+    { prop: 'gift', label: '赠品', width: 80, useSlot: true },
+    { prop: 'inventoryUnitId', label: '库存单位', width: 135, useSlot: true },
+    { prop: 'openingQuantity', label: '期初数量', width: 135, align: 'right', useSlot: true },
+    { prop: 'baseUnitId', label: '基本单位', width: 135, useSlot: true },
+    { prop: 'baseQuantity', label: '基本数量', width: 110, useSlot: true },
+    { prop: 'yearlyOpeningQuantity', label: '年初数量', width: 110, useSlot: true },
+    { prop: 'yearlyReceivedQuantity', label: '年收入数量', width: 135, useSlot: true },
+    { prop: 'yearlyIssuedQuantity', label: '年发出数量', width: 135, useSlot: true },
+    { prop: 'auxiliaryUnitId', label: '辅助单位', width: 110, useSlot: true },
+    { prop: 'openingAuxQuantity', label: '期初辅助数量', width: 120, useSlot: true },
+    { prop: 'unitPrice', label: '单价', width: 130, useSlot: true },
+    { prop: 'amount', label: '金额(元)', width: 135, align: 'right', useSlot: true },
+    { prop: 'warehouseId', label: '入库仓库', width: 180, useSlot: true },
+    { prop: 'binId', label: '仓位', width: 150, useSlot: true },
+    { prop: 'stockType', label: '库存类型', width: 130, useSlot: true },
+    { prop: 'stockStatus', label: '库存状态', width: 130, useSlot: true },
+    { prop: 'ownerType', label: '货主类型', width: 130, useSlot: true },
+    { prop: 'ownerId', label: '货主', width: 170, useSlot: true },
+    { prop: 'batchNo', label: '批号', width: 150, useSlot: true },
+    { prop: 'inboundDate', label: '入库日期', width: 165, useSlot: true },
+    { prop: 'keeperId', label: '仓管员', width: 170, useSlot: true },
+    { prop: 'productionDate', label: '生产日期', width: 165, useSlot: true },
+    { prop: 'expiryDate', label: '有效期至', width: 165, useSlot: true },
+    { prop: 'trackingNo', label: '跟踪号', width: 150, useSlot: true },
+    { prop: 'sourceDocument', label: '源单据', width: 150, useSlot: true },
+    { prop: 'remark', label: '备注', width: 180, useSlot: true },
+    { prop: 'operation', label: '操作', width: 135, fixed: 'right', useSlot: true }
   ]
   const materialPickerIds = ref<string[]>([])
   const materialPickerRows = ref<DataSelectRecord[]>([])
   const selectedKeeper = ref<EmployeeIntegrationItem[]>([])
-  const selectedLineKeeper = ref<EmployeeIntegrationItem[]>([])
-  const selectedProject = ref<DataSelectRecord[]>([])
-  const selectedOwner = ref<DataSelectRecord[]>([])
-  const editLine = ref<WmsInitialStockLine>()
-  const editingIndex = ref(-1)
   const serialText = ref('')
-  const form = reactive({
+  const form = ref({
     id: '',
     tenantId: '',
     organizationId: '',
@@ -464,10 +583,10 @@
   const ownerTypes = computed(() => userStore.getDictMap['mdmBusinessOwnerType'] ?? [])
   const currencies = computed(() => userStore.getDictMap['mdmCurrency'] ?? [])
   const selectedOrganization = computed(() =>
-    organizations.value.find((item) => item.id === form.organizationId)
+    organizations.value.find((item) => item.id === form.value.organizationId)
   )
   const viewData = computed(() => ({
-    documentNo: form.documentNo,
+    documentNo: form.value.documentNo,
     organization:
       currentDocument.value?.organization?.organizationName ||
       selectedOrganization.value?.organizationName ||
@@ -477,16 +596,19 @@
       selectedOrganization.value?.organizationCode ||
       '—',
     documentType:
-      documentTypes.value.find((item) => item.id === form.documentTypeId)?.name ||
+      documentTypes.value.find((item) => item.id === form.value.documentTypeId)?.name ||
       '标准初始化库存单',
     businessType:
-      businessTypes.value.find((item) => item.id === form.businessTypeId)?.name || '初始化库存',
-    businessDate: form.businessDate,
-    accountingDate: form.accountingDate,
-    keeper: currentDocument.value?.keeper?.employeeName || (form.keeperId ? '已指定' : '未指定'),
-    currency: currencies.value.find((item) => item.value === form.currencyCode)?.label || '人民币',
-    amountEntry: form.amountEntryEnabled ? '启用' : '未启用',
-    remark: form.remark || '—'
+      businessTypes.value.find((item) => item.id === form.value.businessTypeId)?.name ||
+      '初始化库存',
+    businessDate: form.value.businessDate,
+    accountingDate: form.value.accountingDate,
+    keeper:
+      currentDocument.value?.keeper?.employeeName || (form.value.keeperId ? '已指定' : '未指定'),
+    currency:
+      currencies.value.find((item) => item.value === form.value.currencyCode)?.label || '人民币',
+    amountEntry: form.value.amountEntryEnabled ? '启用' : '未启用',
+    remark: form.value.remark || '—'
   }))
   const viewItems: ArtDescriptionItem<typeof viewData.value>[] = [
     { key: 'documentNo', label: '单据编号', field: 'documentNo', copyable: true },
@@ -501,148 +623,11 @@
     { key: 'amountEntry', label: '录入金额', field: 'amountEntry' },
     { key: 'remark', label: '备注', field: 'remark', span: 3 }
   ]
-  const lineQuantityItems: ArtDescriptionItem<WmsInitialStockLine>[] = [
-    {
-      key: 'project',
-      label: '项目名称',
-      value: (line: WmsInitialStockLine) =>
-        line.project?.name || projects.value.find((item) => item.id === line.projectId)?.name || '—'
-    },
-    { key: 'constructionNo', label: '施工号', field: 'constructionNo' },
-    { key: 'gift', label: '赠品', value: (line: WmsInitialStockLine) => (line.gift ? '是' : '否') },
-    {
-      key: 'inventoryUnit',
-      label: '库存单位',
-      value: (line: WmsInitialStockLine) =>
-        line.inventoryUnit?.unitName || unitName(line.inventoryUnitId)
-    },
-    {
-      key: 'openingQuantity',
-      label: '期初数量',
-      value: (line: WmsInitialStockLine) => Number(line.openingQuantity).toFixed(4)
-    },
-    {
-      key: 'baseUnit',
-      label: '基本单位',
-      value: (line: WmsInitialStockLine) => unitName(line.baseUnitId)
-    },
-    {
-      key: 'baseQuantity',
-      label: '基本数量',
-      value: (line: WmsInitialStockLine) => baseQuantity(line).toFixed(4)
-    },
-    {
-      key: 'yearlyOpeningQuantity',
-      label: '年初数量',
-      value: (line: WmsInitialStockLine) => yearlyOpening(line).toFixed(4)
-    },
-    {
-      key: 'yearlyReceivedQuantity',
-      label: '年收入数量',
-      value: (line: WmsInitialStockLine) => Number(line.yearlyReceivedQuantity).toFixed(4)
-    },
-    {
-      key: 'yearlyIssuedQuantity',
-      label: '年发出数量',
-      value: (line: WmsInitialStockLine) => Number(line.yearlyIssuedQuantity).toFixed(4)
-    },
-    {
-      key: 'unitPrice',
-      label: '单价(元)',
-      value: (line: WmsInitialStockLine) => Number(line.unitPrice).toFixed(4)
-    },
-    {
-      key: 'amount',
-      label: '金额(元)',
-      value: (line: WmsInitialStockLine) => lineAmount(line).toFixed(2)
-    },
-    {
-      key: 'auxiliaryUnit',
-      label: '辅助单位',
-      value: (line: WmsInitialStockLine) => unitName(line.auxiliaryUnitId)
-    },
-    {
-      key: 'openingAuxQuantity',
-      label: '期初辅助数量',
-      value: (line: WmsInitialStockLine) => auxQuantity(line, line.openingQuantity)
-    },
-    {
-      key: 'yearlyReceivedAuxQuantity',
-      label: '年收入辅助数',
-      value: (line: WmsInitialStockLine) => auxQuantity(line, line.yearlyReceivedQuantity)
-    },
-    {
-      key: 'yearlyIssuedAuxQuantity',
-      label: '年发出辅助数',
-      value: (line: WmsInitialStockLine) => auxQuantity(line, line.yearlyIssuedQuantity)
-    }
-  ]
-  const lineStorageItems: ArtDescriptionItem<WmsInitialStockLine>[] = [
-    {
-      key: 'warehouse',
-      label: '入库仓库',
-      value: (line: WmsInitialStockLine) => line.warehouse?.name || warehouseName(line.warehouseId)
-    },
-    {
-      key: 'bin',
-      label: '入库仓位',
-      value: (line: WmsInitialStockLine) =>
-        line.bin?.binName || bins.value.find((item) => item.id === line.binId)?.binName || '—'
-    },
-    {
-      key: 'stockType',
-      label: '入库库存类型',
-      field: 'stockType',
-      dictCode: 'wmsInitialStockType'
-    },
-    {
-      key: 'stockStatus',
-      label: '库存状态',
-      field: 'stockStatus',
-      dictCode: 'wmsInitialStockCondition'
-    },
-    { key: 'ownerType', label: '货主类型', field: 'ownerType', dictCode: 'mdmBusinessOwnerType' },
-    {
-      key: 'owner',
-      label: '货主',
-      value: (line: WmsInitialStockLine) =>
-        line.ownerType === 'self'
-          ? '自有'
-          : (line.ownerType === 'supplier' ? suppliers.value : customers.value).find(
-              (item) => item.id === line.ownerId
-            )?.name || '已指定'
-    },
-    { key: 'batchNo', label: '批号', field: 'batchNo', copyable: true },
-    { key: 'inboundDate', label: '入库日期', field: 'inboundDate' },
-    {
-      key: 'keeper',
-      label: '仓管员',
-      value: (line: WmsInitialStockLine) =>
-        line.keeperId === form.keeperId
-          ? viewData.value.keeper
-          : line.keeperId
-            ? '已指定'
-            : '未指定'
-    }
-  ]
-  const lineTraceItems: ArtDescriptionItem<WmsInitialStockLine>[] = [
-    { key: 'productionDate', label: '生产日期', field: 'productionDate' },
-    { key: 'expiryDate', label: '有效期至', field: 'expiryDate' },
-    { key: 'trackingNo', label: '跟踪号', field: 'trackingNo', copyable: true },
-    { key: 'sourceDocument', label: '源单据', field: 'sourceDocument' },
-    {
-      key: 'serialNos',
-      label: '序列号',
-      value: (line: WmsInitialStockLine) => line.serialNos.join('、') || '—',
-      span: 2
-    },
-    { key: 'remark', label: '备注', field: 'remark', span: 3 }
-  ]
   const currentWarehouses = computed(() =>
     warehouses.value.filter(
       (item) =>
-        item.tenantId === form.tenantId &&
-        item.organizationId === form.organizationId &&
+        item.tenantId === form.value.tenantId &&
+        item.organizationId === form.value.organizationId &&
         item.status === 'enabled'
     )
   )
@@ -652,154 +637,6 @@
   const unitOptions = computed(() =>
     units.value.map((item) => ({ label: `${item.unitName} · ${item.unitCode}`, value: item.id }))
   )
-  const lineQuantityFormItems = computed<FormItem[]>(() => [
-    { key: 'projectId', label: '项目名称', type: 'input' },
-    {
-      key: 'constructionNo',
-      label: '施工号',
-      type: 'input',
-      props: { disabled: !editLine.value?.projectId, placeholder: '选择项目后填写' }
-    },
-    { key: 'gift', label: '赠品', type: 'switch' },
-    {
-      key: 'inventoryUnitId',
-      label: '库存单位',
-      type: 'select',
-      options: unitOptions.value,
-      props: { filterable: true }
-    },
-    {
-      key: 'openingQuantity',
-      label: '期初数量',
-      type: 'number',
-      props: { min: 0, precision: 4, controlsPosition: 'right' }
-    },
-    {
-      key: 'baseUnitId',
-      label: '基本单位',
-      type: 'select',
-      options: unitOptions.value,
-      props: { filterable: true }
-    },
-    {
-      key: 'baseQuantity',
-      label: '基本数量',
-      type: 'text',
-      props: { formatter: () => (editLine.value ? baseQuantity(editLine.value) : '—') }
-    },
-    {
-      key: 'yearlyOpeningQuantity',
-      label: '年初数量',
-      type: 'text',
-      props: { formatter: () => (editLine.value ? yearlyOpening(editLine.value) : '—') }
-    },
-    {
-      key: 'yearlyReceivedQuantity',
-      label: '年收入数量',
-      type: 'number',
-      props: { min: 0, precision: 4 }
-    },
-    {
-      key: 'yearlyIssuedQuantity',
-      label: '年发出数量',
-      type: 'number',
-      props: { min: 0, precision: 4 }
-    },
-    { key: 'unitPrice', label: '单价(元)', type: 'number', props: { min: 0, precision: 4 } },
-    {
-      key: 'amount',
-      label: '金额(元)',
-      type: 'number',
-      props: { min: 0, precision: 2, disabled: !form.amountEntryEnabled || !!editLine.value?.gift }
-    }
-  ])
-  const lineQuantityRules = {
-    inventoryUnitId: [{ required: true, message: '请选择库存单位', trigger: 'change' }],
-    openingQuantity: [{ required: true, message: '请填写期初数量', trigger: 'change' }]
-  }
-  const lineStorageFormItems = computed<FormItem[]>(() => [
-    {
-      key: 'warehouseId',
-      label: '入库仓库',
-      type: 'select',
-      options: currentWarehouses.value.map((item) => ({
-        label: `${item.warehouseName} · ${item.warehouseCode}`,
-        value: item.id
-      })),
-      props: { filterable: true, onChange: onWarehouseChange }
-    },
-    {
-      key: 'binId',
-      label: '入库仓位',
-      type: 'select',
-      options: bins.value.map((item) => ({
-        label: `${item.binName} · ${item.binCode}`,
-        value: item.id
-      })),
-      props: { filterable: true, clearable: true, disabled: !editLine.value?.warehouseId }
-    },
-    { key: 'stockType', label: '入库库存类型', type: 'select', options: stockTypes.value },
-    { key: 'stockStatus', label: '库存状态', type: 'select', options: stockStatuses.value },
-    {
-      key: 'ownerType',
-      label: '货主类型',
-      type: 'select',
-      options: ownerTypes.value,
-      props: {
-        onChange: () => {
-          if (editLine.value) editLine.value.ownerId = null
-        }
-      }
-    },
-    { key: 'ownerId', label: '货主', type: 'input' },
-    {
-      key: 'batchNo',
-      label: '批号',
-      type: 'input',
-      props: { maxlength: 80, placeholder: '留空时按单据与行号生成' }
-    },
-    {
-      key: 'inboundDate',
-      label: '入库日期',
-      type: 'date',
-      props: { valueFormat: 'YYYY-MM-DD', class: 'w-full!' }
-    },
-    { key: 'keeperId', label: '仓管员', type: 'input' }
-  ])
-  const lineStorageRules = {
-    warehouseId: [{ required: true, message: '请选择入库仓库', trigger: 'change' }],
-    stockType: [{ required: true, message: '请选择库存类型', trigger: 'change' }]
-  }
-  const lineTraceFormItems = computed<FormItem[]>(() => [
-    {
-      key: 'productionDate',
-      label: '生产日期',
-      type: 'date',
-      props: { valueFormat: 'YYYY-MM-DD', class: 'w-full!' }
-    },
-    {
-      key: 'expiryDate',
-      label: '有效期至',
-      type: 'date',
-      props: { valueFormat: 'YYYY-MM-DD', class: 'w-full!' }
-    },
-    { key: 'trackingNo', label: '跟踪号', type: 'input', props: { maxlength: 100 } },
-    { key: 'sourceDocument', label: '源单据', type: 'input', props: { maxlength: 80 } },
-    {
-      key: 'remark',
-      label: '备注',
-      type: 'input',
-      span: 24,
-      props: { type: 'textarea', rows: 2, maxlength: 500, showWordLimit: true }
-    },
-    {
-      key: 'serialNos',
-      label: '序列号',
-      type: 'input',
-      span: 24,
-      hidden: !editLine.value?.material?.serialManagementEnabled
-    }
-  ])
   const headerItems = computed<FormItem[]>(() => [
     {
       key: 'documentNo',
@@ -842,7 +679,7 @@
         .filter(
           (item) =>
             item.enabled &&
-            item.documentTypeId === form.documentTypeId &&
+            item.documentTypeId === form.value.documentTypeId &&
             item.menuIds?.includes(initialStockMenuId.value)
         )
         .map((item) => ({ label: item.name, value: item.id })),
@@ -961,14 +798,14 @@
   ): number {
     return line.gift
       ? 0
-      : form.amountEntryEnabled
+      : form.value.amountEntryEnabled
         ? Number(line.amount || 0)
         : Math.round(Number(line.unitPrice || 0) * Number(line.openingQuantity || 0) * 100) / 100
   }
   async function materialApi(params: DataSelectFetchParams) {
-    if (!form.tenantId) return { data: [], total: 0 }
+    if (!form.value.tenantId) return { data: [], total: 0 }
     return fetchWmsInitialMaterials({
-      tenantId: form.tenantId,
+      tenantId: form.value.tenantId,
       keyword: params.keyword,
       current: params.page,
       size: params.pageSize
@@ -979,7 +816,7 @@
       return null
     return {
       id: row.id,
-      tenantId: form.tenantId,
+      tenantId: form.value.tenantId,
       code: row.code,
       name: row.name,
       description: typeof row.description === 'string' ? row.description : null,
@@ -1018,7 +855,7 @@
       ownerType: 'self',
       ownerId: null,
       stockStatus: 'available',
-      keeperId: form.keeperId,
+      keeperId: form.value.keeperId,
       auxiliaryUnitId: material.auxiliaryUnitId,
       openingAuxQuantity: null,
       yearlyOpeningAuxQuantity: null,
@@ -1059,8 +896,7 @@
     selectedLines.value = []
   }
   function openSelectedLine(): void {
-    const index = selectedLines.value[0] ? lineIndex(selectedLines.value[0]) : -1
-    if (index >= 0) void openLine(index)
+    if (selectedLines.value[0]) void openInlineSerials(selectedLines.value[0])
   }
   function deleteSelectedLines(): void {
     const selected = new Set(selectedLines.value)
@@ -1081,73 +917,39 @@
     if (item.key === 'copy-line') copyLine(index)
     else if (item.key === 'delete-line') removeLine(index)
   }
-  function onProjectSelected(rows: DataSelectRecord[]): void {
-    selectedProject.value = rows
-    if (editLine.value && !rows.length) editLine.value.constructionNo = null
+  function onInlineProjectChange(line: WmsInitialStockLine, projectId: string | null): void {
+    line.projectId = projectId
+    line.constructionNo = null
   }
-  async function onWarehouseChange(): Promise<void> {
-    if (!editLine.value) return
-    editLine.value.binId = null
-    bins.value = editLine.value.warehouseId ? await fetchWmsBins(editLine.value.warehouseId) : []
+  async function onInlineWarehouseChange(line: WmsInitialStockLine): Promise<void> {
+    line.binId = null
+    await loadInlineBins(line)
   }
-  async function openLine(index: number): Promise<void> {
-    editingIndex.value = index
-    editLine.value = cloneDeep(lines.value[index])
-    serialText.value = editLine.value.serialNos.join('\n')
-    selectedProject.value = editLine.value.project ? [editLine.value.project] : []
-    selectedOwner.value = []
-    bins.value = []
-    await lineDialogRef.value?.handleOpen(undefined, {
-      title: mode.value === 'view' ? '物料明细' : '编辑物料明细',
-      subtitle: `第 ${editLine.value.lineNo} 行`,
+  async function loadInlineBins(line: WmsInitialStockLine): Promise<void> {
+    bins.value = line.warehouseId ? await fetchWmsBins(line.warehouseId) : []
+  }
+  async function openInlineSerials(line: WmsInitialStockLine): Promise<void> {
+    serialText.value = line.serialNos.join('\n')
+    await serialDialogRef.value?.handleOpen(undefined, {
+      title: `第 ${line.lineNo} 行序列号`,
       showFooter: mode.value !== 'view',
-      confirmText: '保存明细',
+      confirmText: '保存序列号',
       onConfirm: () => {
-        if (!editLine.value) return false
-        const line = editLine.value
-        if (
-          !line.inventoryUnitId ||
-          Number(line.openingQuantity) <= 0 ||
-          !line.warehouseId ||
-          !line.stockType
-        ) {
-          ElMessage.warning('请填写库存单位、期初数量、入库仓库和库存类型')
-          return false
-        }
-        if (yearlyOpening(line) < 0) {
-          ElMessage.warning('年初数量不能小于零')
-          return false
-        }
-        if (line.projectId && !line.constructionNo?.trim()) {
-          ElMessage.warning('选择项目后请填写施工号')
-          return false
-        }
-        if (line.ownerType !== 'self' && !line.ownerId) {
-          ElMessage.warning('请选择货主')
-          return false
-        }
         const serials = serialText.value
           .split(/\r?\n/)
           .map((value) => value.trim())
           .filter(Boolean)
         if (
-          line.material?.serialManagementEnabled &&
-          serials.length !== Number(line.openingQuantity)
+          serials.length !== Number(line.openingQuantity) ||
+          new Set(serials).size !== serials.length
         ) {
-          ElMessage.warning('SN 件数必须与期初数量一致')
+          ElMessage.warning('SN 件数须与期初数量一致且不能重复')
           return false
         }
         line.serialNos = serials
-        line.baseQuantity = baseQuantity(line)
-        line.yearlyOpeningQuantity = yearlyOpening(line)
-        line.amount = lineAmount(line)
-        lines.value[editingIndex.value] = cloneDeep(line)
         return true
       }
     })
-    if (editLine.value.warehouseId) {
-      bins.value = await fetchWmsBins(editLine.value.warehouseId)
-    }
   }
   async function loadTenantOptions(tenantId: string): Promise<void> {
     const [unitRows, documentRows, businessRows, projectRows, supplierRows, customerRows] =
@@ -1168,54 +970,55 @@
     const availableDocuments = documentRows.filter(
       (item) => item.enabled && item.menuIds?.includes(initialStockMenuId.value)
     )
-    if (!availableDocuments.some((item) => item.id === form.documentTypeId))
-      form.documentTypeId =
-        availableDocuments.find((item) => item.isDefault)?.id ?? availableDocuments[0]?.id ?? ''
+    if (!availableDocuments.some((item) => item.id === form.value.documentTypeId))
+      form.value.documentTypeId = availableDocuments.find((item) => item.isDefault)?.id ?? ''
     onDocumentTypeChange()
   }
   function onDocumentTypeChange(): void {
     const available = businessTypes.value.filter(
       (item) =>
         item.enabled &&
-        item.documentTypeId === form.documentTypeId &&
+        item.documentTypeId === form.value.documentTypeId &&
         item.menuIds?.includes(initialStockMenuId.value)
     )
-    if (!available.some((item) => item.id === form.businessTypeId))
-      form.businessTypeId = available.find((item) => item.isDefault)?.id ?? available[0]?.id ?? ''
+    if (!available.some((item) => item.id === form.value.businessTypeId))
+      form.value.businessTypeId =
+        available.find((item) => item.isDefault)?.id ?? available[0]?.id ?? ''
   }
   async function onOrganizationChange(): Promise<void> {
     const organization = selectedOrganization.value
-    form.tenantId = organization?.tenantId ?? ''
-    form.businessDate = dayjs().format('YYYY-MM-DD')
-    form.documentTypeId = ''
-    form.businessTypeId = ''
+    form.value.tenantId = organization?.tenantId ?? ''
+    form.value.businessDate = dayjs().format('YYYY-MM-DD')
+    form.value.documentTypeId = ''
+    form.value.businessTypeId = ''
     lines.value = []
-    if (form.tenantId) await loadTenantOptions(form.tenantId)
+    if (form.value.tenantId) await loadTenantOptions(form.value.tenantId)
   }
   async function loadOptions(): Promise<void> {
     optionError.value = false
     try {
-      const tenantId = form.tenantId || effectiveTenantId.value || userStore.getUserInfo.tenantId
+      const tenantId =
+        form.value.tenantId || effectiveTenantId.value || userStore.getUserInfo.tenantId
       const [orgPage, warehouseRows, organizationResult, menuId] = await Promise.all([
         fetchWmsInventoryOrganizations({ current: 1, size: 2000, tenantId }),
         fetchWmsWarehouses(),
-        fetchGetEnableOrganizationTree({ tenantId }),
+        fetchEnabledOrganizationTree({ tenantId }),
         fetchWmsInitialStockMenuId()
       ])
       organizations.value = orgPage.data
       initialStockMenuId.value = menuId
       warehouses.value = warehouseRows
       organizationTree.value = organizationResult.data ?? []
-      if (mode.value === 'create' && !form.organizationId) {
+      if (mode.value === 'create' && !form.value.organizationId) {
         const defaultOrganization = orgPage.data.find(
           (item) => item.enabledOn && item.isDefault && !item.initializationClosedAt
         )
         if (defaultOrganization) {
-          form.organizationId = defaultOrganization.id
+          form.value.organizationId = defaultOrganization.id
           await onOrganizationChange()
         }
       }
-      if (form.tenantId) await loadTenantOptions(form.tenantId)
+      if (form.value.tenantId) await loadTenantOptions(form.value.tenantId)
     } catch {
       optionError.value = true
     }
@@ -1226,7 +1029,7 @@
       if (!(await validateArtFormForSubmit(formRef.value))) return false
       if (
         !selectedOrganization.value?.enabledOn ||
-        form.businessDate > selectedOrganization.value.enabledOn
+        form.value.businessDate > selectedOrganization.value.enabledOn
       ) {
         ElMessage.warning('业务日期不得晚于库存组织启用日期')
         return false
@@ -1246,17 +1049,42 @@
         ElMessage.warning(`第 ${incomplete.lineNo} 行尚未填写必填信息`)
         return false
       }
+      for (const line of lines.value) {
+        if (yearlyOpening(line) < 0) {
+          ElMessage.warning(`第 ${line.lineNo} 行年初数量不能小于零`)
+          return false
+        }
+        if (line.projectId && !line.constructionNo?.trim()) {
+          ElMessage.warning(`第 ${line.lineNo} 行选择项目后请填写施工号`)
+          return false
+        }
+        if (line.ownerType !== 'self' && !line.ownerId) {
+          ElMessage.warning(`第 ${line.lineNo} 行请选择货主`)
+          return false
+        }
+        if (
+          line.material?.serialManagementEnabled &&
+          (line.serialNos.length !== Number(line.openingQuantity) ||
+            new Set(line.serialNos).size !== line.serialNos.length)
+        ) {
+          ElMessage.warning(`第 ${line.lineNo} 行 SN 件数须与期初数量一致且不能重复`)
+          return false
+        }
+        line.baseQuantity = baseQuantity(line)
+        line.yearlyOpeningQuantity = yearlyOpening(line)
+        line.amount = lineAmount(line)
+      }
       await saveWmsInitialStock({
-        id: mode.value === 'edit' ? form.id : undefined,
-        tenantId: form.tenantId,
-        organizationId: form.organizationId,
-        documentTypeId: form.documentTypeId,
-        businessTypeId: form.businessTypeId,
-        businessDate: form.businessDate,
-        keeperId: form.keeperId,
-        remark: normalizeNullableText(form.remark),
-        currencyCode: form.currencyCode,
-        amountEntryEnabled: form.amountEntryEnabled,
+        id: mode.value === 'edit' ? form.value.id : undefined,
+        tenantId: form.value.tenantId,
+        organizationId: form.value.organizationId,
+        documentTypeId: form.value.documentTypeId,
+        businessTypeId: form.value.businessTypeId,
+        businessDate: form.value.businessDate,
+        keeperId: form.value.keeperId,
+        remark: normalizeNullableText(form.value.remark),
+        currencyCode: form.value.currencyCode,
+        amountEntryEnabled: form.value.amountEntryEnabled,
         lines: lines.value
       })
       emit('success')
@@ -1270,7 +1098,7 @@
     mode.value = data.mode
     const source = data.document
     currentDocument.value = source ?? null
-    Object.assign(form, {
+    Object.assign(form.value, {
       id: data.mode === 'edit' ? (source?.id ?? '') : '',
       tenantId: source?.tenantId ?? '',
       organizationId: source?.organizationId ?? '',

@@ -1,4 +1,5 @@
 import { useSupabase } from '@/hooks'
+import { fetchAllRangePages } from '@/utils/supabase/pagination'
 import { buildOrIlikeFilter } from '@/utils/supabase/search'
 import { normalizeNullableText } from '@/utils/form/normalize'
 import type {
@@ -857,6 +858,32 @@ export async function fetchWmsIssueRequestLines(id: string): Promise<WmsIssueReq
   return data ?? []
 }
 
+export async function fetchWmsIssueRequestLinesForDocuments(
+  documentIds: string[]
+): Promise<WmsIssueRequestLine[]> {
+  const lines: WmsIssueRequestLine[] = []
+  for (let offset = 0; offset < documentIds.length; offset += 100) {
+    const ids = documentIds.slice(offset, offset + 100)
+    const result = await fetchAllRangePages<WmsIssueRequestLine>(({ from, to }) =>
+      responseHandle<WmsIssueRequestLine[]>(
+        () =>
+          supabase
+            .from('wms_issue_request_line')
+            .select(
+              '*,material:mdm_material!wms_issue_request_line_material_fk(material_code,material_name,serial_management_enabled,baseUnit:mdm_unit_of_measure!mdm_material_base_unit_fkey(unit_name))'
+            )
+            .in('request_id', ids)
+            .order('id')
+            .range(from, to),
+        readOptions
+      )
+    )
+    if (result.error) throw result.error
+    lines.push(...(result.data ?? []))
+  }
+  return lines
+}
+
 export async function fetchWmsIssueRequestAllocations(
   requestId: string
 ): Promise<WmsIssueRequestAllocation[]> {
@@ -1000,6 +1027,30 @@ export async function fetchWmsCountLines(planId: string): Promise<WmsCountLine[]
   return data ?? []
 }
 
+export async function fetchWmsCountLinesForPlans(planIds: string[]): Promise<WmsCountLine[]> {
+  const lines: WmsCountLine[] = []
+  for (let offset = 0; offset < planIds.length; offset += 100) {
+    const ids = planIds.slice(offset, offset + 100)
+    const result = await fetchAllRangePages<WmsCountLine>(({ from, to }) =>
+      responseHandle<WmsCountLine[]>(
+        () =>
+          supabase
+            .from('wms_count_line')
+            .select(
+              '*,batch:wms_inventory_batch!wms_count_line_batch_fk(batch_no,warehouse_id,bin_id,pack_id),material:mdm_material!wms_count_line_material_fk(material_code,material_name,serial_management_enabled)'
+            )
+            .in('plan_id', ids)
+            .order('id')
+            .range(from, to),
+        readOptions
+      )
+    )
+    if (result.error) throw result.error
+    lines.push(...(result.data ?? []))
+  }
+  return lines
+}
+
 export async function fetchWmsCountVarianceDocuments(
   planId: string
 ): Promise<WmsCountVarianceDocument[]> {
@@ -1119,6 +1170,32 @@ export async function fetchWmsAssemblyComponents(id: string): Promise<WmsAssembl
     readOptions
   )
   return data ?? []
+}
+
+export async function fetchWmsAssemblyComponentsForDocuments(
+  documentIds: string[]
+): Promise<WmsAssemblyComponent[]> {
+  const components: WmsAssemblyComponent[] = []
+  for (let offset = 0; offset < documentIds.length; offset += 100) {
+    const ids = documentIds.slice(offset, offset + 100)
+    const result = await fetchAllRangePages<WmsAssemblyComponent>(({ from, to }) =>
+      responseHandle<WmsAssemblyComponent[]>(
+        () =>
+          supabase
+            .from('wms_assembly_component')
+            .select(
+              '*,sourceBatch:wms_inventory_batch!wms_assembly_component_batch_fk(batch_no,bin:mdm_warehouse_bin!wms_inventory_batch_bin_fk(bin_code,bin_name)),material:mdm_material!wms_assembly_component_material_id_fkey(material_code,material_name)'
+            )
+            .in('assembly_id', ids)
+            .order('id')
+            .range(from, to),
+        readOptions
+      )
+    )
+    if (result.error) throw result.error
+    components.push(...(result.data ?? []))
+  }
+  return components
 }
 
 export async function postWmsAssembly(payload: WmsAssemblyInput): Promise<string> {

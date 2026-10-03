@@ -70,16 +70,16 @@
   const serials = ref<WmsBatchSerial[]>([])
   const loadError = ref(false)
   const newSerialText = ref('')
-  const form = reactive({ countedQuantity: 0, countedSerialIds: [] as string[] })
+  const form = ref({ countedQuantity: 0, countedSerialIds: [] as string[] })
   const newSerialNos = computed(() =>
     newSerialText.value
       .split(/[\r\n,，]+/)
       .map((value) => value.trim())
       .filter(Boolean)
   )
-  watch([() => form.countedSerialIds, newSerialNos], () => {
+  watch([() => form.value.countedSerialIds, newSerialNos], () => {
     if (isSerial.value)
-      form.countedQuantity = form.countedSerialIds.length + newSerialNos.value.length
+      form.value.countedQuantity = form.value.countedSerialIds.length + newSerialNos.value.length
   })
   const items = computed<FormItem[]>(() => [
     {
@@ -139,8 +139,8 @@
       }
       await recordWmsCountLine({
         lineId: line.value.id,
-        countedQuantity: form.countedQuantity,
-        countedSerialIds: isSerial.value ? form.countedSerialIds : [],
+        countedQuantity: form.value.countedQuantity,
+        countedSerialIds: isSerial.value ? form.value.countedSerialIds : [],
         newSerialNos: isSerial.value ? newSerialNos.value : []
       })
       emit('success')
@@ -154,8 +154,8 @@
     line.value = data
     serials.value = []
     loadError.value = false
-    form.countedQuantity = data.countedQuantity ?? data.expectedQuantity
-    form.countedSerialIds =
+    form.value.countedQuantity = data.countedQuantity ?? data.expectedQuantity
+    form.value.countedSerialIds =
       data.countedQuantity === null ? [...data.expectedSerialIds] : [...data.countedSerialIds]
     newSerialText.value = data.newSerialNos.join('\n')
     await dialogRef.value?.handleOpen(data, {

@@ -176,7 +176,7 @@
   const loadError = ref(false)
   const warehouseRequiresLocation = ref(false)
   const selectKey = ref(0)
-  const form = reactive({
+  const form = ref({
     documentNo: '',
     targetMaterialId: '',
     targetBinId: '',
@@ -363,7 +363,7 @@
     if (!components.value.length) {
       bins.value = []
       warehouseRequiresLocation.value = false
-      form.targetBinId = ''
+      form.value.targetBinId = ''
     }
     selectKey.value += 1
   }
@@ -380,7 +380,7 @@
   function onMaterialSelected(rows: DataSelectRecord[]): void {
     const row = rows[0]
     selectedMaterial.value = row && typeof row.id === 'string' ? [row as WmsMaterialOption] : []
-    form.targetMaterialId = selectedMaterial.value[0]?.id || ''
+    form.value.targetMaterialId = selectedMaterial.value[0]?.id || ''
   }
   async function submit(): Promise<boolean> {
     try {
@@ -393,7 +393,7 @@
         ElMessage.warning('组件用量须大于零且不能超过在库')
         return false
       }
-      if (components.value.some((item) => item.batch.materialId === form.targetMaterialId)) {
+      if (components.value.some((item) => item.batch.materialId === form.value.targetMaterialId)) {
         ElMessage.warning('成品物料不能同时作为来源组件')
         return false
       }
@@ -403,16 +403,16 @@
       }
       if (!firstBatch.value) return false
       const payload: WmsAssemblyInput = {
-        documentNo: normalizeNullableText(form.documentNo),
-        targetMaterialId: form.targetMaterialId,
-        targetBinId: form.targetBinId || null,
-        targetBatchNo: normalizeNullableText(form.targetBatchNo),
-        targetQuantity: form.targetQuantity,
-        targetAreaSqm: form.targetAreaSqm ?? null,
-        lengthMm: form.lengthMm ?? null,
-        widthMm: form.widthMm ?? null,
-        thicknessMm: form.thicknessMm ?? null,
-        remark: normalizeNullableText(form.remark),
+        documentNo: normalizeNullableText(form.value.documentNo),
+        targetMaterialId: form.value.targetMaterialId,
+        targetBinId: form.value.targetBinId || null,
+        targetBatchNo: normalizeNullableText(form.value.targetBatchNo),
+        targetQuantity: form.value.targetQuantity,
+        targetAreaSqm: form.value.targetAreaSqm ?? null,
+        lengthMm: form.value.lengthMm ?? null,
+        widthMm: form.value.widthMm ?? null,
+        thicknessMm: form.value.thicknessMm ?? null,
+        remark: normalizeNullableText(form.value.remark),
         components: components.value.map((item) => ({
           batchId: item.batch.id,
           quantity: item.quantity
@@ -434,7 +434,7 @@
     warehouseRequiresLocation.value = false
     loadError.value = false
     selectKey.value += 1
-    Object.assign(form, {
+    Object.assign(form.value, {
       documentNo: '',
       targetMaterialId: '',
       targetBinId: '',

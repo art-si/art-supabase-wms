@@ -51,7 +51,7 @@
   const dialogRef = ref<ArtDialogExpose<Context>>()
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const context = shallowRef<Context>()
-  const form = reactive({
+  const form = ref({
     documentNo: '',
     warehouseId: '',
     projectId: '',
@@ -59,7 +59,7 @@
     remark: ''
   })
   const selectedWarehouse = computed(() =>
-    context.value?.warehouses.find((row) => row.id === form.warehouseId)
+    context.value?.warehouses.find((row) => row.id === form.value.warehouseId)
   )
   const items = computed<FormItem[]>(() => [
     {
@@ -84,8 +84,8 @@
         filterable: true,
         placeholder: '选择仓库',
         onChange: () => {
-          form.projectId = ''
-          form.constructionNo = ''
+          form.value.projectId = ''
+          form.value.constructionNo = ''
         }
       }
     },
@@ -104,9 +104,9 @@
       props: {
         clearable: true,
         filterable: true,
-        disabled: !form.warehouseId,
+        disabled: !form.value.warehouseId,
         placeholder: '留空盘点全部项目',
-        onChange: () => (form.constructionNo = '')
+        onChange: () => (form.value.constructionNo = '')
       }
     },
     {
@@ -114,7 +114,7 @@
       label: '施工号范围',
       type: 'select',
       options: (context.value?.sections ?? [])
-        .filter((row) => row.projectId === form.projectId && row.status === 'active')
+        .filter((row) => row.projectId === form.value.projectId && row.status === 'active')
         .map((row) => ({
           label: `${row.constructionNo} · ${row.sectionName}`,
           value: row.constructionNo
@@ -122,8 +122,8 @@
       props: {
         clearable: true,
         filterable: true,
-        disabled: !form.projectId,
-        placeholder: form.projectId ? '留空盘点项目全部施工号' : '请先选项目'
+        disabled: !form.value.projectId,
+        placeholder: form.value.projectId ? '留空盘点项目全部施工号' : '请先选项目'
       }
     },
     {
@@ -142,11 +142,11 @@
     try {
       if (!(await validateArtFormForSubmit(formRef.value))) return false
       await createWmsCountPlan({
-        documentNo: form.documentNo.trim(),
-        warehouseId: form.warehouseId,
-        projectId: form.projectId || null,
-        constructionNo: form.constructionNo || null,
-        remark: normalizeNullableText(form.remark)
+        documentNo: form.value.documentNo.trim(),
+        warehouseId: form.value.warehouseId,
+        projectId: form.value.projectId || null,
+        constructionNo: form.value.constructionNo || null,
+        remark: normalizeNullableText(form.value.remark)
       })
       emit('success')
       return true
@@ -157,7 +157,7 @@
   }
   async function handleOpen(data: Context): Promise<void> {
     context.value = data
-    Object.assign(form, {
+    Object.assign(form.value, {
       documentNo: `PD-${dayjs().format('YYYYMMDD')}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
       warehouseId: '',
       projectId: '',

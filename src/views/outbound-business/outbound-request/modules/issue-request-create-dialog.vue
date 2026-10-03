@@ -156,7 +156,7 @@
   const lines = ref<DraftLine[]>([])
   const loadError = ref(false)
   const isNarrowViewport = useMediaQuery('(max-width: 767px)')
-  const form = reactive({
+  const form = ref({
     warehouseId: '',
     workOrderId: '',
     documentNo: '',
@@ -165,7 +165,7 @@
     remark: ''
   })
   const selectedWarehouse = computed(() =>
-    context.value?.warehouses.find((row) => row.id === form.warehouseId)
+    context.value?.warehouses.find((row) => row.id === form.value.warehouseId)
   )
   const eligibleWarehouses = computed(() =>
     (context.value?.warehouses || []).filter(
@@ -175,7 +175,9 @@
         (!context.value?.tenantId || row.tenantId === context.value.tenantId)
     )
   )
-  const selectedOrder = computed(() => orders.value.find((row) => row.id === form.workOrderId))
+  const selectedOrder = computed(() =>
+    orders.value.find((row) => row.id === form.value.workOrderId)
+  )
   const scopeLabel = computed(() => {
     const order = selectedOrder.value
     if (!order) return '选择工单后自动带入'
@@ -229,7 +231,7 @@
         filterable: true,
         remote: true,
         remoteMethod: searchOrders,
-        disabled: !form.warehouseId,
+        disabled: !form.value.warehouseId,
         placeholder: '选择已下达工单',
         onChange: onOrderChange
       }
@@ -262,13 +264,13 @@
     workOrderId: [{ required: true, message: '请选择 MES 工单', trigger: 'change' }]
   }
   async function searchOrders(keyword = ''): Promise<void> {
-    if (!form.warehouseId) return
+    if (!form.value.warehouseId) return
     loadError.value = false
     ordersLoaded.value = false
     try {
       const warehouse = selectedWarehouse.value
       orders.value = warehouse
-        ? (await fetchWmsWorkOrderOptions(form.warehouseId, keyword)).filter(
+        ? (await fetchWmsWorkOrderOptions(form.value.warehouseId, keyword)).filter(
             (row) =>
               row.organizationId === warehouse.organizationId &&
               row.allowedIssueWarehouseTypes.includes(warehouse.warehouseType)
@@ -280,23 +282,26 @@
     }
   }
   async function onWarehouseChange(): Promise<void> {
-    form.workOrderId = ''
+    form.value.workOrderId = ''
     orders.value = []
     ordersLoaded.value = false
     lines.value = []
     await searchOrders(context.value?.workOrderId)
     const requestedId = context.value?.workOrderId
     if (requestedId && orders.value.some((row) => row.id === requestedId)) {
-      form.workOrderId = requestedId
+      form.value.workOrderId = requestedId
       await onOrderChange()
     }
   }
   async function onOrderChange(): Promise<void> {
     lines.value = []
-    if (!form.workOrderId || !form.warehouseId) return
+    if (!form.value.workOrderId || !form.value.warehouseId) return
     loadError.value = false
     try {
-      const reservations = await fetchWmsIssueReservationLines(form.workOrderId, form.warehouseId)
+      const reservations = await fetchWmsIssueReservationLines(
+        form.value.workOrderId,
+        form.value.warehouseId
+      )
       lines.value = reservations.map((row) => ({
         key: crypto.randomUUID(),
         materialId: row.materialId,
@@ -344,12 +349,12 @@
         return false
       }
       await createWmsIssueRequest({
-        warehouseId: form.warehouseId,
-        workOrderId: form.workOrderId,
-        documentNo: normalizeNullableText(form.documentNo),
-        requestType: form.requestType,
-        applicationDate: form.applicationDate,
-        remark: normalizeNullableText(form.remark),
+        warehouseId: form.value.warehouseId,
+        workOrderId: form.value.workOrderId,
+        documentNo: normalizeNullableText(form.value.documentNo),
+        requestType: form.value.requestType,
+        applicationDate: form.value.applicationDate,
+        remark: normalizeNullableText(form.value.remark),
         lines: lines.value.map((row) => ({ materialId: row.materialId, quantity: row.quantity }))
       })
       emit('success')
@@ -365,7 +370,7 @@
     ordersLoaded.value = false
     lines.value = []
     loadError.value = false
-    Object.assign(form, {
+    Object.assign(form.value, {
       warehouseId: '',
       workOrderId: '',
       documentNo: '',

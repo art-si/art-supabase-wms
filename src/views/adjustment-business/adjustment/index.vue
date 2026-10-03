@@ -28,13 +28,21 @@
         header-actions-placement="workspace"
         :search-bar-props="{ span: 6, labelWidth: 82 }"
         :table-props="{
-          rowKey: 'id',
+          rowKey: displayMode === 'line' ? 'detailRowId' : 'id',
+          spanMethod: mergeDocumentCells,
           tableLayout: 'fixed',
           emptyText: '当前范围暂无库存调整单',
           emptyDescription: '选择来源批次，办理仓位移动或形态转换后在此追溯。'
         }"
         focusable
-      />
+      >
+        <template #search-displayMode>
+          <ElRadioGroup v-model="displayMode" aria-label="单据列表展示方式" @change="refresh">
+            <ElRadioButton label="document" value="document">按单据</ElRadioButton>
+            <ElRadioButton label="line" value="line">按明细</ElRadioButton>
+          </ElRadioGroup>
+        </template>
+      </ArtTableQuery>
       <AdjustmentDialog ref="dialogRef" @success="refresh" />
     </div>
   </ArtPermissionGuard>
@@ -52,6 +60,12 @@
   import BusinessTableIdentityCell from '@/components/business/business-table-identity-cell/index.vue'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type { ColumnOption } from '@/types'
+  import {
+    documentGroupSpan,
+    expandDocumentLines,
+    loadAllLinePages,
+    paginateDetailRows
+  } from '@/utils/business/document-detail-list'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import {
     fetchWmsAdjustmentPage,
@@ -68,6 +82,25 @@
   defineOptions({ name: 'WmsAdjustment' })
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const tableRef = ref<ArtTableQueryExpose>()
+  const displayMode = ref<'document' | 'line'>('document')
+  type AdjustmentListRow = WmsAdjustmentDocument & {
+    detailRowId?: string
+    detailLine?: 'source' | 'target'
+    detailGroupStart?: boolean
+  }
+  const visibleRows = ref<AdjustmentListRow[]>([])
+  const lineProperties = new Set(['detailSide', 'detailMaterial', 'detailBatch', 'detailQuantity'])
+  function mergeDocumentCells({
+    rowIndex,
+    column
+  }: {
+    rowIndex: number
+    column: { property?: string }
+  }) {
+    return displayMode.value === 'line'
+      ? documentGroupSpan(visibleRows.value, rowIndex, column.property, lineProperties)
+      : ([1, 1] as [number, number])
+  }
   const dialogRef = ref<InstanceType<typeof AdjustmentDialog>>()
   const projects = ref<WmsProject[]>([])
   const sections = ref<WmsProjectSection[]>([])
@@ -84,6 +117,7 @@
   const search = reactive({ status: '', projectId: '', constructionNo: '', keyword: '' })
   const filterTenantId = computed(() => effectiveTenantId.value || undefined)
   const searchItems = computed<SearchFormItem[]>(() => [
+    { label: '展示方式', key: 'displayMode', type: 'text' },
     {
       label: '业务类型',
       key: 'status',
@@ -159,8 +193,26 @@
         return row.targetBatch?.batchNo || '新批次'
     }
   }
-  function fetchRows(query: WmsStockQuery) {
-    return fetchWmsAdjustmentPage({ ...query, tenantId: filterTenantId.value })
+  async function fetchRows(query: WmsStockQuery) {
+    const fetchPage = (page: WmsStockQuery) =>
+      fetchWmsAdjustmentPage({ ...page, tenantId: filterTenantId.value })
+    if (displayMode.value === 'document') {
+      visibleRows.value = []
+      return fetchPage(query)
+    }
+    const documents = await loadAllLinePages(fetchPage, query)
+    const rows = expandDocumentLines(
+      documents,
+      () => ['source', 'target'] as Array<'source' | 'target'>,
+      (side) => side
+    )
+    const result = paginateDetailRows(
+      rows,
+      (query.current - 1) * query.size,
+      query.current * query.size - 1
+    )
+    visibleRows.value = result.data
+    return result
   }
   function openCreate(): void {
     void dialogRef.value?.handleOpen({ tenantId: filterTenantId.value, projects: projects.value })
@@ -181,8 +233,8 @@
       optionError.value = true
     }
   }
-  function columnsFactory(): ColumnOption<WmsAdjustmentDocument>[] {
-    return [
+  function columnsFactory(): ColumnOption<AdjustmentListRow>[] {
+    const columns: ColumnOption<AdjustmentListRow>[] = [
       {
         prop: 'documentNo',
         label: '调整单',
@@ -236,6 +288,42 @@
         minWidth: 175,
         formatter: (row) => <span title={resultSummary(row)}>{resultSummary(row)}</span>
       },
+      ...(displayMode.value === 'line'
+        ? [
+            {
+              prop: 'detailSide',
+              label: '明细方向',
+              width: 105,
+              formatter: (row: AdjustmentListRow) => (row.detailLine === 'source' ? '调出' : '调入')
+            },
+            {
+              prop: 'detailMaterial',
+              label: '物料',
+              minWidth: 175,
+              formatter: (row: AdjustmentListRow) =>
+                row.detailLine === 'source'
+                  ? row.sourceMaterial?.materialName || '—'
+                  : row.targetMaterial?.materialName || '—'
+            },
+            {
+              prop: 'detailBatch',
+              label: '批号',
+              minWidth: 135,
+              formatter: (row: AdjustmentListRow) =>
+                row.detailLine === 'source'
+                  ? row.sourceBatch?.batchNo || '—'
+                  : row.targetBatch?.batchNo || '—'
+            },
+            {
+              prop: 'detailQuantity',
+              label: '数量',
+              width: 115,
+              align: 'right' as const,
+              formatter: (row: AdjustmentListRow) =>
+                row.detailLine === 'source' ? row.sourceQuantity : row.targetQuantity
+            }
+          ]
+        : []),
       {
         prop: 'projectId',
         label: '项目 / 施工号',
@@ -249,6 +337,14 @@
       },
       { prop: 'remark', label: '原因', minWidth: 190, showOverflowTooltip: true }
     ]
+    return displayMode.value === 'line'
+      ? columns.filter(
+          (column) =>
+            !['sourceMaterialId', 'targetMaterialId', 'sourceQuantity'].includes(
+              String(column.prop)
+            )
+        )
+      : columns
   }
   onMounted(() => void loadOptions())
 </script>

@@ -411,13 +411,14 @@
     DataSelectFetchParams,
     DataSelectRecord
   } from '@/components/core/forms/art-data-select/types'
-  import { fetchGetEnableOrganizationTree } from '@/api/system-manage'
+  import { fetchEnabledOrganizationTree } from '@/api/system-manage'
   import TreeUtils from '@/utils/tree'
   import { normalizeNullableText } from '@/utils/form/normalize'
   import { useUserStore } from '@/store/modules/user'
   import {
     fetchWmsBins,
     fetchWmsCountAdjustment,
+    fetchWmsInitialDocumentTypes,
     fetchWmsInitialOptions,
     fetchWmsMaterialOptions,
     fetchWmsProjects,
@@ -504,7 +505,7 @@
       )
   )
   const today = () => new Date().toISOString().slice(0, 10)
-  const form = reactive({
+  const form = ref({
     id: '',
     documentNo: '保存后自动生成',
     organizationId: '',
@@ -523,7 +524,7 @@
   )
   const warehouseOptions = computed(() =>
     warehouses.value.filter(
-      (row) => row.organizationId === form.organizationId && row.status === 'enabled'
+      (row) => row.organizationId === form.value.organizationId && row.status === 'enabled'
     )
   )
   const stockTypes = computed(() => userStore.getDictMap.wmsCountStockType ?? [])
@@ -540,19 +541,19 @@
   }
   const firstDocumentRow = computed(() => documentRows.value[0])
   const viewData = computed(() => ({
-    documentNo: form.documentNo,
-    organization: organizationLabel(form.organizationId),
+    documentNo: form.value.documentNo,
+    organization: organizationLabel(form.value.organizationId),
     documentType:
       firstDocumentRow.value?.documentTypeName ||
-      optionName(documentTypes.value, form.documentTypeId),
+      optionName(documentTypes.value, form.value.documentTypeId),
     businessType:
       firstDocumentRow.value?.businessTypeName ||
-      optionName(businessTypes.value, form.businessTypeId),
-    businessDate: form.businessDate,
-    accountingDate: form.accountingDate,
+      optionName(businessTypes.value, form.value.businessTypeId),
+    businessDate: form.value.businessDate,
+    accountingDate: form.value.accountingDate,
     keeper: firstDocumentRow.value?.headerKeeperName || '未指定',
     status: statusLabel(firstDocumentRow.value?.status),
-    remark: form.remark || '—'
+    remark: form.value.remark || '—'
   }))
   const viewItems: ArtDescriptionItem<typeof viewData.value>[] = [
     { key: 'documentNo', label: '单据编号', field: 'documentNo', copyable: true },
@@ -602,7 +603,9 @@
       label: '业务类型',
       type: 'select',
       options: businessTypes.value
-        .filter((row) => !form.documentTypeId || row.documentTypeId === form.documentTypeId)
+        .filter(
+          (row) => !form.value.documentTypeId || row.documentTypeId === form.value.documentTypeId
+        )
         .map((row) => ({ label: row.name, value: row.id })),
       props: { filterable: true }
     },
@@ -680,11 +683,11 @@
     return column.property === 'varianceQuantity' ? 'count-variance-cell' : ''
   }
   function syncHeaderKeeper(): void {
-    for (const row of lines.value) if (!row.keeperId) row.keeperId = form.keeperId
+    for (const row of lines.value) if (!row.keeperId) row.keeperId = form.value.keeperId
   }
   function selectDefaultBusinessType(): void {
-    form.businessTypeId =
-      businessTypes.value.find((row) => row.documentTypeId === form.documentTypeId)?.id || ''
+    form.value.businessTypeId =
+      businessTypes.value.find((row) => row.documentTypeId === form.value.documentTypeId)?.id || ''
   }
   function onOrganizationChange(): void {
     for (const row of lines.value) {
@@ -715,7 +718,7 @@
       ownerType: 'self',
       ownerId: '',
       stockStatus: 'available',
-      keeperId: form.keeperId,
+      keeperId: form.value.keeperId,
       auxiliaryUnitId: material.auxiliaryUnitId || '',
       auxiliaryQuantity: 0,
       auxiliaryUnit2Id: material.auxiliaryUnit2Id || '',
@@ -774,7 +777,7 @@
     documentRows.value = rows
     const first = rows[0]
     if (!first) throw new Error(`${title.value}不存在`)
-    Object.assign(form, {
+    Object.assign(form.value, {
       id: first.documentId,
       documentNo: first.documentNo,
       organizationId: first.organizationId,
@@ -831,19 +834,19 @@
       customerRows,
       orgResult
     ] = await Promise.all([
-      fetchWmsInitialOptions('mdm_document_type', tenantId),
+      fetchWmsInitialDocumentTypes(
+        tenantId,
+        props.kind === 'gain' ? 'WmsCountGain' : 'WmsCountLoss'
+      ),
       fetchWmsInitialOptions('mdm_business_type', tenantId),
       fetchWmsProjects(tenantId),
       fetchWmsUnitOptions(tenantId),
       fetchWmsWarehouses(tenantId),
       fetchWmsInitialOptions('mdm_supplier', tenantId),
       fetchWmsInitialOptions('mdm_customer', tenantId),
-      fetchGetEnableOrganizationTree({ tenantId })
+      fetchEnabledOrganizationTree({ tenantId })
     ])
-    const code = props.kind === 'gain' ? 'WMS_COUNT_GAIN_STANDARD' : 'WMS_COUNT_LOSS_STANDARD'
-    documentTypes.value = docRows.filter(
-      (row) => row.code === code || row.name.includes(title.value)
-    )
+    documentTypes.value = docRows
     businessTypes.value = businessRows
     projects.value = projectRows
     units.value = unitRows
@@ -868,15 +871,15 @@
         return false
       }
       await saveWmsCountAdjustment({
-        id: mode.value === 'edit' ? form.id : undefined,
+        id: mode.value === 'edit' ? form.value.id : undefined,
         tenantId: context.value?.tenantId,
-        organizationId: form.organizationId,
+        organizationId: form.value.organizationId,
         kind: props.kind,
-        documentTypeId: form.documentTypeId,
-        businessTypeId: form.businessTypeId,
-        businessDate: form.businessDate,
-        keeperId: form.keeperId || null,
-        remark: normalizeNullableText(form.remark),
+        documentTypeId: form.value.documentTypeId,
+        businessTypeId: form.value.businessTypeId,
+        businessDate: form.value.businessDate,
+        keeperId: form.value.keeperId || null,
+        remark: normalizeNullableText(form.value.remark),
         lines: lines.value.map((row) => ({
           materialId: row.materialId,
           projectId: row.projectId || null,
@@ -893,7 +896,7 @@
           ownerType: row.ownerType,
           ownerId: row.ownerType === 'self' ? null : row.ownerId || null,
           stockStatus: row.stockStatus,
-          keeperId: row.keeperId || form.keeperId || null,
+          keeperId: row.keeperId || form.value.keeperId || null,
           auxiliaryUnitId: row.auxiliaryUnitId || null,
           auxiliaryQuantity: row.auxiliaryQuantity || null,
           auxiliaryUnit2Id: row.auxiliaryUnit2Id || null,
@@ -918,7 +921,7 @@
     mode.value = data.mode
     lines.value = []
     documentRows.value = []
-    Object.assign(form, {
+    Object.assign(form.value, {
       id: '',
       documentNo: '保存后自动生成',
       organizationId: '',
@@ -946,19 +949,15 @@
         try {
           if (!data.tenantId) throw new Error('缺少租户')
           await loadOptions(data.tenantId)
-          form.organizationId = organizations.value[0]?.id || ''
-          const code = props.kind === 'gain' ? 'WMS_COUNT_GAIN_STANDARD' : 'WMS_COUNT_LOSS_STANDARD'
-          form.documentTypeId =
-            documentTypes.value.find((row) => row.code === code)?.id ||
-            documentTypes.value[0]?.id ||
-            ''
+          form.value.organizationId = organizations.value[0]?.id || ''
+          form.value.documentTypeId = documentTypes.value.find((row) => row.isDefault)?.id || ''
           selectDefaultBusinessType()
           if (data.documentId) {
             await loadDocument(data.documentId)
             if (data.mode === 'copy') {
-              form.id = ''
-              form.documentNo = '保存后自动生成'
-              form.accountingDate = today()
+              form.value.id = ''
+              form.value.documentNo = '保存后自动生成'
+              form.value.accountingDate = today()
             }
           }
         } finally {
@@ -976,17 +975,20 @@
   :deep(.count-line-table .el-date-editor) {
     width: 100%;
   }
+
   :deep(td.el-table__cell.count-variance-cell) {
     background-color: var(--el-color-warning-light-9) !important;
   }
+
   :deep(td.el-table__cell.count-variance-cell .el-input__inner),
   :deep(td.el-table__cell.count-variance-cell .el-input-number__decrease),
   :deep(td.el-table__cell.count-variance-cell .el-input-number__increase) {
-    color: var(--el-color-danger);
     font-weight: 800;
+    color: var(--el-color-danger);
   }
+
   .count-variance-text {
-    color: var(--el-color-danger);
     font-weight: 800;
+    color: var(--el-color-danger);
   }
 </style>

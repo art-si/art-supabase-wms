@@ -26,13 +26,21 @@
         header-actions-placement="workspace"
         :search-bar-props="{ span: 6, labelWidth: 82 }"
         :table-props="{
-          rowKey: 'id',
+          rowKey: displayMode === 'line' ? 'detailRowId' : 'id',
+          spanMethod: mergeDocumentCells,
           tableLayout: 'fixed',
           emptyText: '当前范围暂无初始库存单',
           emptyDescription: '启用库存组织后，新增初始库存单录入期初物料余额。'
         }"
         focusable
-      />
+      >
+        <template #search-displayMode>
+          <ElRadioGroup v-model="displayMode" aria-label="单据列表展示方式" @change="refresh">
+            <ElRadioButton label="document" value="document">按单据</ElRadioButton>
+            <ElRadioButton label="line" value="line">按明细</ElRadioButton>
+          </ElRadioGroup>
+        </template>
+      </ArtTableQuery>
       <InitialStockDrawer ref="drawerRef" @success="refresh" />
     </div>
   </ArtPermissionGuard>
@@ -59,13 +67,20 @@
   import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type { ColumnOption } from '@/types'
+  import {
+    documentGroupSpan,
+    expandDocumentLines,
+    loadAllLinePages,
+    paginateDetailRows
+  } from '@/utils/business/document-detail-list'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { useUserStore } from '@/store/modules/user'
   import {
     changeWmsInitialStockStatus,
     fetchWmsInitialStockDocument,
     fetchWmsInitialStockPage,
-    type WmsInitialStockDocument
+    type WmsInitialStockDocument,
+    type WmsInitialStockLine
   } from '@wms/api'
   import InitialStockDrawer from './modules/initial-stock-drawer.vue'
 
@@ -81,6 +96,37 @@
   void userStore.ensureDictLoaded('wmsInitialStockType')
   void userStore.ensureDictLoaded('wmsInitialStockCondition')
   const tableRef = ref<ArtTableQueryExpose>()
+  const displayMode = ref<'document' | 'line'>('document')
+  const visibleRows = ref<StockListRow[]>([])
+  const lineProperties = new Set([
+    'materialCode',
+    'materialName',
+    'specificationModel',
+    'inventoryUnitId',
+    'openingQuantity',
+    'batchNo',
+    'warehouseName',
+    'binId',
+    'stockType',
+    'stockStatus',
+    'ownerType'
+  ])
+  function mergeDocumentCells({
+    rowIndex,
+    column
+  }: {
+    rowIndex: number
+    column: { property?: string }
+  }) {
+    return displayMode.value === 'line'
+      ? documentGroupSpan(visibleRows.value, rowIndex, column.property, lineProperties)
+      : ([1, 1] as [number, number])
+  }
+  type StockListRow = WmsInitialStockDocument & {
+    detailRowId?: string
+    detailLine?: WmsInitialStockLine
+    detailGroupStart?: boolean
+  }
   const drawerRef = ref<InstanceType<typeof InitialStockDrawer>>()
   const workingId = ref<string>()
   const search = reactive({ organizationId: '', status: '', keyword: '' })
@@ -97,6 +143,7 @@
     }
   })
   const searchItems: SearchFormItem[] = [
+    { label: '展示方式', key: 'displayMode', type: 'text' },
     {
       label: '单据状态',
       key: 'status',
@@ -166,20 +213,38 @@
   function statusLabel(value: WmsInitialStockDocument['status']): string {
     return { draft: '暂存', submitted: '已提交', approved: '已审核' }[value]
   }
-  function fetchRows(query: {
+  async function fetchRows(query: {
     organizationId?: string
     status?: string
     keyword?: string
     current: number
     size: number
   }) {
-    return fetchWmsInitialStockPage({ ...query, tenantId: effectiveTenantId.value || undefined })
+    const fetchPage = (page: typeof query) =>
+      fetchWmsInitialStockPage({ ...page, tenantId: effectiveTenantId.value || undefined })
+    if (displayMode.value === 'document') {
+      visibleRows.value = []
+      return fetchPage(query)
+    }
+    const documents = await loadAllLinePages(fetchPage, query)
+    const rows = expandDocumentLines(
+      documents,
+      (document) => document.lines,
+      (line, index) => line.id || String(index)
+    )
+    const result = paginateDetailRows(
+      rows,
+      (query.current - 1) * query.size,
+      query.current * query.size - 1
+    )
+    visibleRows.value = result.data
+    return result
   }
   async function refresh(): Promise<void> {
     await tableRef.value?.refreshUpdate()
   }
-  function firstLine(row: WmsInitialStockDocument) {
-    return row.lines[0]
+  function firstLine(row: StockListRow) {
+    return row.detailLine || row.lines[0]
   }
   function dictionaryLabel(code: string, value: string): string {
     return userStore.getDictMap[code]?.find((item) => item.value === value)?.label || value

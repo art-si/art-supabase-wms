@@ -158,7 +158,7 @@ export async function fetchWmsProductionDocumentTypes(
         .from('mdm_document_type')
         .select('id,tenant_id,document_type_code,document_type_name,is_default')
         .eq('tenant_id', tenantId)
-        .eq('menu_id', menu.id)
+        .contains('menu_ids', [menu.id])
         .eq('enabled', true)
         .order('sort_order'),
     readOptions

@@ -123,70 +123,112 @@
         empty-description="生成盘点表后可按库存批次核对明细。"
         @retry="loadLines"
       >
-        <ul class="divide-y divide-[var(--el-border-color-light)]">
-          <li
-            v-for="item in lines"
-            :key="item.id"
-            class="flex min-w-0 flex-wrap items-center gap-3 py-4"
+        <ElScrollbar v-if="lines.length">
+          <ArtTable
+            :data="lines"
+            :columns="lineColumns"
+            :pagination="false"
+            row-key="id"
+            table-layout="fixed"
           >
-            <div class="min-w-0 flex-1">
-              <strong class="block truncate" :title="item.material?.materialName || '物料'">
-                {{ item.material?.materialName || '物料' }}
-              </strong>
-              <p class="mt-1 text-xs text-[var(--el-text-color-secondary)]">
-                {{ item.batch?.batchNo || item.batchId }} · {{ projectName(item.projectId) }}
-                {{ item.constructionNo ? ` / ${item.constructionNo}` : '' }}
-              </p>
-              <p
-                v-if="item.material?.serialManagementEnabled || item.expectedSerialIds.length > 0"
-                class="mt-1 text-xs text-[var(--el-text-color-secondary)]"
-              >
-                SN {{ item.expectedSerialIds.length }} 件 · 新增 {{ item.newSerialNos.length }} 件
-              </p>
-            </div>
-            <div class="grid shrink-0 grid-cols-2 gap-x-4 text-right text-xs tabular-nums">
-              <span class="text-[var(--el-text-color-secondary)]">账面</span>
-              <span class="text-[var(--el-text-color-secondary)]">实盘</span>
-              <strong class="mt-1 text-sm">{{ item.expectedQuantity }}</strong>
-              <strong class="mt-1 text-sm">{{ item.countedQuantity ?? '待录入' }}</strong>
-            </div>
-            <ElButton
-              v-if="plan.status === 'counting'"
-              v-auth="'WmsCount:Count'"
-              size="small"
-              @click="openLine(item)"
+            <template #material="{ row }">
+              <strong class="block truncate">{{ row.material?.materialName || '物料' }}</strong>
+              <small class="text-[var(--el-text-color-secondary)]">{{
+                row.material?.materialCode || '—'
+              }}</small>
+            </template>
+            <template #batch="{ row }">{{ row.batch?.batchNo || row.batchId }}</template>
+            <template #project="{ row }"
+              >{{ projectName(row.projectId)
+              }}{{ row.constructionNo ? ` / ${row.constructionNo}` : '' }}</template
             >
-              {{ item.countedQuantity === null ? '录入' : '复核' }}
-            </ElButton>
-            <ElTag v-else size="small" :type="hasVariance(item) ? 'warning' : 'info'">
-              {{ hasVariance(item) ? '已记差异' : '相符' }}
-            </ElTag>
-          </li>
-        </ul>
+            <template #countedQuantity="{ row }">
+              <ElInputNumber
+                v-if="plan.status === 'counting' && !isSerialLine(row)"
+                v-model="row.countedQuantity"
+                :min="0"
+                :precision="3"
+                :controls="false"
+                class="w-full!"
+              />
+              <span v-else>{{ row.countedQuantity ?? '待录入' }}</span>
+            </template>
+            <template #countedSerialIds="{ row }">
+              <ElSelect
+                v-if="plan.status === 'counting' && isSerialLine(row)"
+                v-model="row.countedSerialIds"
+                multiple
+                filterable
+                collapse-tags
+                placeholder="选择原 SN"
+                class="w-full"
+                @visible-change="($event) => $event && loadSerialOptions(row)"
+                @change="syncSerialQuantity(row)"
+              >
+                <ElOption
+                  v-for="serial in serialOptions[row.batchId] || []"
+                  :key="serial.id"
+                  :label="serial.serialNo"
+                  :value="serial.id"
+                />
+              </ElSelect>
+              <span v-else>{{ row.countedSerialIds.length || '—' }}</span>
+            </template>
+            <template #newSerialNos="{ row }">
+              <ElInput
+                v-if="plan.status === 'counting' && isSerialLine(row)"
+                :model-value="serialDraft[row.id] || ''"
+                placeholder="新增 SN，逗号分隔"
+                @update:model-value="onNewSerialsChange(row, $event)"
+              />
+              <span v-else>{{ row.newSerialNos.join('、') || '—' }}</span>
+            </template>
+            <template #variance="{ row }"
+              ><ElTag size="small" :type="hasVariance(row) ? 'warning' : 'info'">{{
+                hasVariance(row) ? '有差异' : '相符'
+              }}</ElTag></template
+            >
+            <template #operation="{ row }"
+              ><ElButton
+                v-if="plan.status === 'counting'"
+                v-auth="'WmsCount:Count'"
+                link
+                type="primary"
+                :loading="savingLineId === row.id"
+                @click="saveLine(row)"
+                >保存实盘</ElButton
+              ><span v-else>已记账</span></template
+            >
+          </ArtTable>
+        </ElScrollbar>
       </ArtSectionCard>
     </div>
-    <CountLineDialog ref="lineRef" @success="loadLines" />
   </ArtDrawer>
 </template>
 
 <script setup lang="ts">
-  import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { notifyFriendlyError, useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { ElMessage } from 'element-plus'
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
   import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
+  import ArtTable from '@/components/core/tables/art-table/index.vue'
+  import type { ColumnOption } from '@/types'
   import {
+    fetchWmsBatchSerials,
     fetchWmsCountLines,
     fetchWmsCountVarianceDocuments,
     fetchWmsCountVarianceMovements,
     postWmsCountPlan,
+    recordWmsCountLine,
+    type WmsBatchSerial,
     type WmsCountLine,
     type WmsCountPlan,
     type WmsCountVarianceDocument,
     type WmsCountVarianceMovement,
     type WmsProject
   } from '@wms/api'
-  import CountLineDialog from './count-line-dialog.vue'
 
   interface Context {
     plan: WmsCountPlan
@@ -195,10 +237,23 @@
   const emit = defineEmits<{ success: [] }>()
   const { confirmAction } = useArtFeedback()
   const drawerRef = ref<ArtDrawerExpose<Context>>()
-  const lineRef = ref<InstanceType<typeof CountLineDialog>>()
   const plan = shallowRef<WmsCountPlan>()
   const projects = ref<WmsProject[]>([])
   const lines = ref<WmsCountLine[]>([])
+  const serialOptions = reactive<Record<string, WmsBatchSerial[]>>({})
+  const serialDraft = reactive<Record<string, string>>({})
+  const savingLineId = ref<string | null>(null)
+  const lineColumns: ColumnOption<WmsCountLine>[] = [
+    { prop: 'material', label: '物料', minWidth: 195, useSlot: true },
+    { prop: 'batch', label: '库存批次', minWidth: 145, useSlot: true },
+    { prop: 'project', label: '项目 / 施工号', minWidth: 175, useSlot: true },
+    { prop: 'expectedQuantity', label: '账面数量', width: 110, align: 'right' },
+    { prop: 'countedQuantity', label: '实盘数量', width: 145, useSlot: true },
+    { prop: 'countedSerialIds', label: '实盘原 SN', minWidth: 195, useSlot: true },
+    { prop: 'newSerialNos', label: '新增 SN', minWidth: 195, useSlot: true },
+    { prop: 'variance', label: '差异', width: 95, useSlot: true },
+    { prop: 'operation', label: '操作', width: 110, fixed: 'right', useSlot: true }
+  ]
   const documents = ref<WmsCountVarianceDocument[]>([])
   const movements = ref<WmsCountVarianceMovement[]>([])
   const loading = ref(false)
@@ -211,6 +266,64 @@
   )
   const varianceCount = computed(() => lines.value.filter(hasVariance).length)
   const movementById = computed(() => new Map(movements.value.map((row) => [row.id, row])))
+  function isSerialLine(row: WmsCountLine): boolean {
+    return Boolean(row.material?.serialManagementEnabled || row.expectedSerialIds.length)
+  }
+  function onNewSerialsChange(row: WmsCountLine, value: string): void {
+    serialDraft[row.id] = value
+    row.newSerialNos = value
+      .split(/[\r\n,，]+/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+    syncSerialQuantity(row)
+  }
+  function syncSerialQuantity(row: WmsCountLine): void {
+    row.countedQuantity = row.countedSerialIds.length + row.newSerialNos.length
+  }
+  async function loadSerialOptions(row: WmsCountLine): Promise<boolean> {
+    if (serialOptions[row.batchId]) return true
+    try {
+      const options = await fetchWmsBatchSerials(row.batchId)
+      if (options.length !== row.expectedSerialIds.length) {
+        ElMessage.warning('SN 清单已变化，请重新生成盘点方案')
+        return false
+      }
+      serialOptions[row.batchId] = options
+      return true
+    } catch (error) {
+      notifyFriendlyError(error, 'SN 清单加载失败，请重试')
+      return false
+    }
+  }
+  async function saveLine(row: WmsCountLine): Promise<void> {
+    if (savingLineId.value) return
+    if (isSerialLine(row) && !(await loadSerialOptions(row))) return
+    const quantity = isSerialLine(row)
+      ? row.countedSerialIds.length + row.newSerialNos.length
+      : Number(row.countedQuantity)
+    if (!Number.isFinite(quantity) || quantity < 0) {
+      ElMessage.warning('请填写有效的实盘数量')
+      return
+    }
+    if (new Set(row.newSerialNos).size !== row.newSerialNos.length) {
+      ElMessage.warning('新增 SN 不能重复')
+      return
+    }
+    savingLineId.value = row.id
+    try {
+      await recordWmsCountLine({
+        lineId: row.id,
+        countedQuantity: quantity,
+        countedSerialIds: isSerialLine(row) ? row.countedSerialIds : [],
+        newSerialNos: isSerialLine(row) ? row.newSerialNos : []
+      })
+      await loadLines()
+    } catch (error) {
+      notifyFriendlyError(error, '盘点明细保存失败，请检查填写内容和网络后重试')
+    } finally {
+      savingLineId.value = null
+    }
+  }
   function hasVariance(row: WmsCountLine): boolean {
     if (plan.value?.status === 'posted') return Boolean(row.lossMovementId || row.gainMovementId)
     if (row.countedQuantity === null) return false
@@ -245,7 +358,14 @@
     try {
       const loaded = await fetchWmsCountLines(planId)
       if (plan.value?.id !== planId) return
-      lines.value = loaded
+      lines.value = loaded.map((row) => ({
+        ...row,
+        countedSerialIds:
+          row.countedQuantity === null && isSerialLine(row)
+            ? [...row.expectedSerialIds]
+            : row.countedSerialIds
+      }))
+      for (const row of loaded) serialDraft[row.id] = row.newSerialNos.join('\n')
       if (plan.value.status === 'posted') await loadDocuments(loaded)
     } catch {
       if (plan.value?.id === planId) loadError.value = true
@@ -281,9 +401,6 @@
     } finally {
       if (plan.value?.id === planId) documentsLoading.value = false
     }
-  }
-  function openLine(row: WmsCountLine): void {
-    void lineRef.value?.handleOpen(row)
   }
   async function post(): Promise<void> {
     if (!plan.value || posting.value) return

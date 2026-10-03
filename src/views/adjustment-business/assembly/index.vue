@@ -28,13 +28,21 @@
         header-actions-placement="workspace"
         :search-bar-props="{ span: 6, labelWidth: 82 }"
         :table-props="{
-          rowKey: 'id',
+          rowKey: displayMode === 'line' ? 'detailRowId' : 'id',
+          spanMethod: mergeDocumentCells,
           tableLayout: 'fixed',
           emptyText: '当前范围暂无库存组装单',
           emptyDescription: '选择至少两个来源组件，组装成品并记账后在此追溯。'
         }"
         focusable
-      />
+      >
+        <template #search-displayMode>
+          <ElRadioGroup v-model="displayMode" aria-label="单据列表展示方式" @change="refresh">
+            <ElRadioButton label="document" value="document">按单据</ElRadioButton>
+            <ElRadioButton label="line" value="line">按明细</ElRadioButton>
+          </ElRadioGroup>
+        </template>
+      </ArtTableQuery>
       <AssemblyDialog ref="dialogRef" @success="refresh" />
       <AssemblyDetailDrawer ref="detailRef" />
     </div>
@@ -54,13 +62,21 @@
   import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type { ColumnOption } from '@/types'
+  import {
+    documentGroupSpan,
+    expandDocumentLines,
+    loadAllLinePages,
+    paginateDetailRows
+  } from '@/utils/business/document-detail-list'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import {
     fetchWmsAssemblyPage,
+    fetchWmsAssemblyComponentsForDocuments,
     fetchWmsProjectSections,
     fetchWmsProjects,
     fetchWmsWarehouses,
     type WmsAssemblyDocument,
+    type WmsAssemblyComponent,
     type WmsProject,
     type WmsProjectSection,
     type WmsStockQuery,
@@ -72,6 +88,31 @@
   defineOptions({ name: 'WmsAssembly' })
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const tableRef = ref<ArtTableQueryExpose>()
+  const displayMode = ref<'document' | 'line'>('document')
+  type AssemblyListRow = WmsAssemblyDocument & {
+    detailRowId?: string
+    detailLine?: WmsAssemblyComponent
+    detailGroupStart?: boolean
+  }
+  const visibleRows = ref<AssemblyListRow[]>([])
+  const lineProperties = new Set([
+    'detailMaterialCode',
+    'detailMaterialName',
+    'detailBatchNo',
+    'detailQuantity',
+    'detailUnitCost'
+  ])
+  function mergeDocumentCells({
+    rowIndex,
+    column
+  }: {
+    rowIndex: number
+    column: { property?: string }
+  }) {
+    return displayMode.value === 'line'
+      ? documentGroupSpan(visibleRows.value, rowIndex, column.property, lineProperties)
+      : ([1, 1] as [number, number])
+  }
   const dialogRef = ref<InstanceType<typeof AssemblyDialog>>()
   const detailRef = ref<InstanceType<typeof AssemblyDetailDrawer>>()
   const warehouses = ref<WmsWarehouse[]>([])
@@ -91,6 +132,7 @@
     }
   ]
   const searchItems = computed<SearchFormItem[]>(() => [
+    { label: '展示方式', key: 'displayMode', type: 'text' },
     {
       label: '仓库',
       key: 'warehouseId',
@@ -145,8 +187,35 @@
   function projectName(id: string | null): string {
     return id ? projects.value.find((row) => row.id === id)?.projectName || '历史项目' : '公共库存'
   }
-  function fetchRows(query: WmsStockQuery) {
-    return fetchWmsAssemblyPage({ ...query, tenantId: filterTenantId.value })
+  async function fetchRows(query: WmsStockQuery) {
+    const fetchPage = (page: WmsStockQuery) =>
+      fetchWmsAssemblyPage({ ...page, tenantId: filterTenantId.value })
+    if (displayMode.value === 'document') {
+      visibleRows.value = []
+      return fetchPage(query)
+    }
+    const documents = await loadAllLinePages(fetchPage, query)
+    const components = await fetchWmsAssemblyComponentsForDocuments(
+      documents.map((document) => document.id)
+    )
+    const componentsByDocument = new Map<string, WmsAssemblyComponent[]>()
+    for (const component of components) {
+      const group = componentsByDocument.get(component.assemblyId) || []
+      group.push(component)
+      componentsByDocument.set(component.assemblyId, group)
+    }
+    const rows = expandDocumentLines(
+      documents,
+      (document) => componentsByDocument.get(document.id) || [],
+      (line) => line.id
+    )
+    const result = paginateDetailRows(
+      rows,
+      (query.current - 1) * query.size,
+      query.current * query.size - 1
+    )
+    visibleRows.value = result.data
+    return result
   }
   function openCreate(): void {
     void dialogRef.value?.handleOpen({ tenantId: filterTenantId.value, projects: projects.value })
@@ -169,7 +238,7 @@
       optionError.value = true
     }
   }
-  function columnsFactory(): ColumnOption<WmsAssemblyDocument>[] {
+  function columnsFactory(): ColumnOption<AssemblyListRow>[] {
     return [
       {
         prop: 'documentNo',
@@ -220,6 +289,42 @@
           />
         )
       },
+      ...(displayMode.value === 'line'
+        ? [
+            {
+              prop: 'detailMaterialCode',
+              label: '组件编码',
+              minWidth: 145,
+              formatter: (row: AssemblyListRow) => row.detailLine?.material?.materialCode || '—'
+            },
+            {
+              prop: 'detailMaterialName',
+              label: '组件名称',
+              minWidth: 185,
+              formatter: (row: AssemblyListRow) => row.detailLine?.material?.materialName || '—'
+            },
+            {
+              prop: 'detailBatchNo',
+              label: '来源批号',
+              minWidth: 135,
+              formatter: (row: AssemblyListRow) => row.detailLine?.sourceBatch?.batchNo || '—'
+            },
+            {
+              prop: 'detailQuantity',
+              label: '组件数量',
+              width: 115,
+              align: 'right' as const,
+              formatter: (row: AssemblyListRow) => row.detailLine?.quantity ?? 0
+            },
+            {
+              prop: 'detailUnitCost',
+              label: '组件成本',
+              width: 120,
+              align: 'right' as const,
+              formatter: (row: AssemblyListRow) => row.detailLine?.unitCost ?? '—'
+            }
+          ]
+        : []),
       { prop: 'remark', label: '组装说明', minWidth: 185, showOverflowTooltip: true },
       {
         prop: 'operation',

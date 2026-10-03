@@ -145,7 +145,7 @@
   const scanText = ref('')
   const loadError = ref(false)
   const stockScope = ref<'project' | 'public'>('project')
-  const form = reactive({ batchId: '', quantity: 1, serialIds: [] as string[], remark: '' })
+  const form = ref({ batchId: '', quantity: 1, serialIds: [] as string[], remark: '' })
   const remaining = computed(() =>
     Math.max(0, (line.value?.requestedQuantity || 0) - (line.value?.issuedQuantity || 0))
   )
@@ -257,9 +257,9 @@
   }
   function clearSelectedBatch(): void {
     selectedBatch.value = null
-    form.batchId = ''
-    form.quantity = 1
-    form.serialIds = []
+    form.value.batchId = ''
+    form.value.quantity = 1
+    form.value.serialIds = []
     serials.value = []
     scanText.value = ''
     loadError.value = false
@@ -267,20 +267,20 @@
   async function onBatchSelected(rows: DataSelectRecord[]): Promise<void> {
     const row = rows[0]
     selectedBatch.value = row && typeof row.id === 'string' ? (row as BatchOption) : null
-    form.batchId = selectedBatch.value?.id || ''
-    form.serialIds = []
+    form.value.batchId = selectedBatch.value?.id || ''
+    form.value.serialIds = []
     serials.value = []
     scanText.value = ''
     if (!selectedBatch.value) return
-    form.quantity = selectedBatch.value.packId
+    form.value.quantity = selectedBatch.value.packId
       ? selectedBatch.value.quantity
       : Math.min(1, remaining.value, selectedBatch.value.quantity)
     loadError.value = false
     try {
       serials.value = await fetchWmsBatchSerials(selectedBatch.value.id)
-      form.serialIds = eligibleSerials.value
+      form.value.serialIds = eligibleSerials.value
         .filter((row) => row.reservedWorkOrderId === request.value?.workOrderId)
-        .slice(0, Math.min(form.quantity, remaining.value))
+        .slice(0, Math.min(form.value.quantity, remaining.value))
         .map((row) => row.id)
     } catch {
       loadError.value = true
@@ -293,10 +293,10 @@
       (row) => row.serialNo.toLocaleUpperCase() === code.toLocaleUpperCase()
     )
     if (!serial) return void ElMessage.warning('当前批次没有可领用的这个 SN')
-    if (form.serialIds.includes(serial.id)) return void ElMessage.warning('这个 SN 已带入')
-    if (form.serialIds.length >= form.quantity)
+    if (form.value.serialIds.includes(serial.id)) return void ElMessage.warning('这个 SN 已带入')
+    if (form.value.serialIds.length >= form.value.quantity)
       return void ElMessage.warning('已达到本次领料数量，请先调整数量或 SN 清单')
-    form.serialIds.push(serial.id)
+    form.value.serialIds.push(serial.id)
     scanText.value = ''
   }
   async function submit(): Promise<boolean> {
@@ -319,24 +319,24 @@
         ElMessage.warning('来源库存须属于本项目施工号或公共库存，且仓库与物料须一致')
         return false
       }
-      if (form.quantity > remaining.value || form.quantity > batch.quantity) {
+      if (form.value.quantity > remaining.value || form.value.quantity > batch.quantity) {
         ElMessage.warning('领料数量超过申请余额或批次在库数量')
         return false
       }
-      if (batch.packId && form.quantity !== batch.quantity) {
+      if (batch.packId && form.value.quantity !== batch.quantity) {
         ElMessage.warning('垛包只能整包领用')
         return false
       }
-      if (serialManaged.value && form.serialIds.length !== form.quantity) {
+      if (serialManaged.value && form.value.serialIds.length !== form.value.quantity) {
         ElMessage.warning('SN 件数必须与本次领料数量一致')
         return false
       }
       await postWmsIssueRequest({
         lineId: item.id,
         batchId: batch.id,
-        quantity: form.quantity,
-        serialIds: form.serialIds,
-        remark: normalizeNullableText(form.remark)
+        quantity: form.value.quantity,
+        serialIds: form.value.serialIds,
+        remark: normalizeNullableText(form.value.remark)
       })
       emit('success')
       return true
@@ -351,7 +351,7 @@
     projectName.value = data.projectName
     stockScope.value = 'project'
     clearSelectedBatch()
-    Object.assign(form, { batchId: '', quantity: 1, serialIds: [], remark: '' })
+    Object.assign(form.value, { batchId: '', quantity: 1, serialIds: [], remark: '' })
     await dialogRef.value?.handleOpen(data, {
       title: '办理领料出库',
       subtitle: '按批次与 SN 领用，申请余额同步核销',

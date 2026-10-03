@@ -33,7 +33,18 @@
           emptyDescription: '为异地仓库创建调拨申请，调出后在此跟踪在途与收货。'
         }"
         focusable
-      />
+      >
+        <template #search-displayMode>
+          <ElRadioGroup
+            v-model="displayMode"
+            aria-label="单据列表展示方式"
+            @change="tableRef?.refreshContext()"
+          >
+            <ElRadioButton label="document" value="document">按单据</ElRadioButton>
+            <ElRadioButton label="line" value="line">按明细</ElRadioButton>
+          </ElRadioGroup>
+        </template>
+      </ArtTableQuery>
       <TransferCreateDialog ref="createRef" @success="refresh" />
       <TransferReceiveDialog ref="receiveRef" @success="refresh" />
     </div>
@@ -77,6 +88,7 @@
   const { confirmAction } = useArtFeedback()
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const tableRef = ref<ArtTableQueryExpose>()
+  const displayMode = ref<'document' | 'line'>('document')
   const createRef = ref<InstanceType<typeof TransferCreateDialog>>()
   const receiveRef = ref<InstanceType<typeof TransferReceiveDialog>>()
   const projects = ref<WmsProject[]>([])
@@ -95,6 +107,7 @@
   const search = reactive({ status: '', projectId: '', constructionNo: '', keyword: '' })
   const filterTenantId = computed(() => effectiveTenantId.value || undefined)
   const searchItems = computed<SearchFormItem[]>(() => [
+    { label: '展示方式', key: 'displayMode', type: 'text' },
     {
       label: '状态',
       key: 'status',

@@ -168,7 +168,7 @@
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type { ColumnOption } from '@/types'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
-  import { fetchGetEnableOrganizationTree } from '@/api/system-manage'
+  import { fetchEnabledOrganizationTree } from '@/api/system-manage'
   import TreeUtils from '@/utils/tree'
   import {
     fetchWmsProjectSections,
@@ -367,7 +367,7 @@
       const [projectRows, sectionRows, organizationResult] = await Promise.all([
         fetchWmsProjects(),
         fetchWmsProjectSections(),
-        fetchGetEnableOrganizationTree({ tenantId: filterTenantId.value })
+        fetchEnabledOrganizationTree({ tenantId: filterTenantId.value })
       ])
       projects.value = projectRows
       sections.value = sectionRows
