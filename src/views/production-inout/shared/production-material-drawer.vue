@@ -569,6 +569,8 @@
 </template>
 
 <script setup lang="ts">
+  import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
+  import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import dayjs from 'dayjs'
   import { ElMessage } from 'element-plus'
   import type { EmployeeIntegrationItem } from '@/api/integration/employees'
@@ -595,7 +597,7 @@
   } from '@/components/core/forms/art-data-select/types'
   import type { ColumnOption } from '@/types'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
-  import { useTenantScopeStore } from '@/store/modules/tenantScope'
+  import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { storeToRefs } from 'pinia'
   import { cloneDeep } from 'lodash-es'
   import { useBreakpoints } from '@vueuse/core'
@@ -2123,8 +2125,9 @@
       onConfirm: async () => {
         if (!editLine.value) return false
         try {
-          await lineFormRef.value?.validate()
-        } catch {
+          if (!(await validateArtFormForSubmit(lineFormRef.value))) return false
+        } catch (error) {
+          notifyFriendlyError(error, '物料明细校验未完成，请稍后重试', 'warning')
           return false
         }
         const line = editLine.value
@@ -2392,8 +2395,9 @@
   async function save(): Promise<boolean> {
     if (optionError.value) return false
     try {
-      await formRef.value?.validate()
-    } catch {
+      if (!(await validateArtFormForSubmit(formRef.value))) return false
+    } catch (error) {
+      notifyFriendlyError(error, '生产物料单据校验未完成，请稍后重试', 'warning')
       return false
     }
     if (
@@ -2507,7 +2511,8 @@
       await saveWmsProductionMaterial(payload)
       emit('success')
       return true
-    } catch {
+    } catch (error) {
+      notifyFriendlyError(error, '生产物料单据保存失败，请检查明细和库存状态后重试')
       return false
     }
   }

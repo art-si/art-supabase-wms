@@ -128,6 +128,8 @@
 </template>
 
 <script setup lang="ts">
+  import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
+  import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { ElMessage } from 'element-plus'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
@@ -382,7 +384,7 @@
   }
   async function submit(): Promise<boolean> {
     try {
-      await formRef.value?.validate()
+      if (!(await validateArtFormForSubmit(formRef.value))) return false
       if (loadError.value || components.value.length < 2) {
         ElMessage.warning('请添加至少两条有效组件')
         return false
@@ -419,7 +421,8 @@
       await postWmsAssembly(payload)
       emit('success')
       return true
-    } catch {
+    } catch (error) {
+      notifyFriendlyError(error, '组装业务提交失败，请检查填写内容和网络后重试')
       return false
     }
   }

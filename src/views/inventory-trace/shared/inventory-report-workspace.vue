@@ -87,7 +87,7 @@
     formatCurrencyValue,
     formatDateTimeValue
   } from '@/utils/ui/format'
-  import { useTenantScopeStore } from '@/store/modules/tenantScope'
+  import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { useAuth } from '@/hooks/core/useAuth'
   import {
     fetchWmsInventoryLocations,

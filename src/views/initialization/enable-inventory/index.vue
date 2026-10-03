@@ -4,7 +4,7 @@
       <BusinessWorkspaceHeader
         eyebrow="INVENTORY ACTIVATION"
         title="启用库存"
-        description="仅为组织类型为公司的库存组织设置启用日期。已启用的组织才可录入期初业务，启用日期也是期初单据业务日期的上限。"
+        description="为公司库存组织设置启用日期和默认组织。初始库存单新增时自动带出默认组织。"
         icon="ri:toggle-line"
         density="compact"
         :tags="[
@@ -37,7 +37,7 @@
             :description="`将为 ${selectedCount} 个库存组织记录启用日期。`"
           />
           <ElAlert type="info" :closable="false" show-icon>
-            期初单据的业务日期须不晚于此日期。保存后可在组织列表中查看结果。
+            期初单据的业务日期须不晚于此日期。单次启用一个组织时可同时将其设为默认组织。
           </ElAlert>
           <ArtForm
             v-model="activationForm"
@@ -72,10 +72,11 @@
   import BusinessTableIdentityCell from '@/components/business/business-table-identity-cell/index.vue'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type { ColumnOption } from '@/types'
-  import { useTenantScopeStore } from '@/store/modules/tenantScope'
+  import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import {
     fetchWmsInventoryOrganizations,
     setWmsInventoryEnabled,
+    setWmsDefaultInventoryOrganization,
     type WmsInventoryOrganization
   } from '@wms/api'
 
@@ -87,15 +88,32 @@
   const tableRef = ref<ArtTableQueryExpose>()
   const dialogRef = ref<ArtDialogExpose>()
   const selectedCount = ref(0)
-  const activationForm = reactive({ enabledOn: dayjs().format('YYYY-MM-DD') })
-  const activationItems: FormItem[] = [
+  const activationForm = reactive({ enabledOn: dayjs().format('YYYY-MM-DD'), isDefault: true })
+  const activationItems = computed<FormItem[]>(() => [
     {
       key: 'enabledOn',
       label: '启用日期',
       type: 'date',
-      props: { valueFormat: 'YYYY-MM-DD', placeholder: '选择启用日期' }
+      span: 24,
+      props: { valueFormat: 'YYYY-MM-DD', placeholder: '选择启用日期', class: 'w-full!' }
+    },
+    {
+      key: 'isDefault',
+      label: '默认库存组织',
+      type: 'segment',
+      span: 24,
+      props: {
+        options: [
+          { label: '否', value: false },
+          { label: '是', value: true, disabled: selectedCount.value > 1 }
+        ]
+      },
+      description:
+        selectedCount.value > 1
+          ? '批量启用时请在列表中为其中一个组织设置默认。'
+          : '每个租户只能有一个默认库存组织。'
     }
-  ]
+  ])
   const activationRules = {
     enabledOn: [{ required: true, message: '请选择启用日期', trigger: 'change' }]
   }
@@ -133,6 +151,7 @@
     if (!ids.length) return void ElMessage.warning('请先勾选库存组织')
     selectedCount.value = ids.length
     activationForm.enabledOn = dayjs().format('YYYY-MM-DD')
+    activationForm.isDefault = ids.length === 1
     await dialogRef.value?.handleOpen(undefined, {
       title: '设置库存启用日期',
       subtitle: `${ids.length} 个库存组织`,
@@ -141,7 +160,7 @@
           ElMessage.warning('请选择启用日期')
           return false
         }
-        await setWmsInventoryEnabled(ids, activationForm.enabledOn)
+        await setWmsInventoryEnabled(ids, activationForm.enabledOn, activationForm.isDefault)
         await refresh()
         return true
       }
@@ -186,6 +205,16 @@
         )
       },
       {
+        prop: 'isDefault',
+        label: '默认库存组织',
+        width: 135,
+        formatter: (row) => (
+          <ElTag type={row.isDefault ? 'primary' : 'info'} size="small" effect="light">
+            {row.isDefault ? '是' : '否'}
+          </ElTag>
+        )
+      },
+      {
         prop: 'enabledOn',
         label: '启用日期',
         minWidth: 150,
@@ -201,18 +230,32 @@
       {
         prop: 'operation',
         label: '操作',
-        width: 92,
+        width: 170,
         fixed: 'right',
         align: 'center',
         formatter: (row) =>
           row.enabledOn ? (
-            <ArtButtonTable
-              type="delete"
-              icon="ri:close-circle-line"
-              label="反启用"
-              permission="WmsInventoryEnable:Disable"
-              onClick={() => disable([row.id])}
-            />
+            <div class="flex items-center justify-center gap-1">
+              {!row.isDefault && (
+                <ArtButtonTable
+                  type="sign"
+                  icon="ri:star-line"
+                  label="设为默认"
+                  permission="WmsInventoryEnable:Enable"
+                  onClick={async () => {
+                    await setWmsDefaultInventoryOrganization(row.id)
+                    await refresh()
+                  }}
+                />
+              )}
+              <ArtButtonTable
+                type="delete"
+                icon="ri:close-circle-line"
+                label="反启用"
+                permission="WmsInventoryEnable:Disable"
+                onClick={() => disable([row.id])}
+              />
+            </div>
           ) : (
             <ArtButtonTable
               type="sign"

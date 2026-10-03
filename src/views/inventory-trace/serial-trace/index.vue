@@ -91,6 +91,7 @@
             :error="childrenError ? '子件加载失败，请重试' : null"
             :empty="!childrenLoading && !childrenError && children.length === 0"
             empty-title="暂无绑定子件"
+            empty-description="装配时绑定关键子件后可在此追溯。"
             @retry="loadChildren"
           >
             <ul class="divide-y divide-[var(--el-border-color-light)]">
@@ -122,6 +123,7 @@
             :error="movementError ? '流水加载失败，请重试' : null"
             :empty="!movementLoading && !movementError && movements.length === 0"
             empty-title="暂无逐件流水"
+            empty-description="该序列号发生入库、出库或调拨后可在此追溯。"
             @retry="loadMovements"
           >
             <ul class="divide-y divide-[var(--el-border-color-light)]">
@@ -165,7 +167,7 @@
   } from '@/components/core/tables/art-table-query/index.vue'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type { ColumnOption } from '@/types'
-  import { useTenantScopeStore } from '@/store/modules/tenantScope'
+  import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { fetchGetEnableOrganizationTree } from '@/api/system-manage'
   import TreeUtils from '@/utils/tree'
   import {

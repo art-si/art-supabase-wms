@@ -52,7 +52,7 @@
   import BusinessTableIdentityCell from '@/components/business/business-table-identity-cell/index.vue'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type { ColumnOption } from '@/types'
-  import { useTenantScopeStore } from '@/store/modules/tenantScope'
+  import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import {
     fetchWmsAdjustmentPage,
     fetchWmsProjectSections,

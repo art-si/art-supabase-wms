@@ -6,6 +6,7 @@ export interface WmsInventoryOrganization {
   organizationType: string
   status: string
   enabledOn: string | null
+  isDefault: boolean
   initializationClosedAt: string | null
 }
 
@@ -15,6 +16,9 @@ export interface WmsInitializationOption {
   code: string
   tenantId: string
   documentTypeId?: string
+  menuIds?: string[]
+  isDefault?: boolean
+  enabled?: boolean
 }
 
 export interface WmsInitialMaterial extends WmsInitializationOption {

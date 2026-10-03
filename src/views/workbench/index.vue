@@ -111,7 +111,7 @@
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import { useAuth } from '@/hooks/core/useAuth'
-  import { useTenantScopeStore } from '@/store/modules/tenantScope'
+  import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { fetchWmsWorkbenchStats, type WmsWorkbenchStats } from '@wms/api'
 
   defineOptions({ name: 'WmsWorkbench' })

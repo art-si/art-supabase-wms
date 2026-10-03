@@ -1,1 +1,0 @@
-import{Sr as e,dr as t,si as n,xa as r}from"./supabase-DGhqjNwZ.js";import{t as i}from"./wms-purchase-document-workspace-Dn4ECEsr.js";import{n as a}from"./permissions-Sz_iM0GD.js";var o=e({name:`WmsEntrustedProcessingReturn`,__name:`index`,setup(e){let o=a;return(e,a)=>(n(),t(i,{kind:`entrusted_processing_return`,permissions:r(o)},null,8,[`permissions`]))}});export{o as default};

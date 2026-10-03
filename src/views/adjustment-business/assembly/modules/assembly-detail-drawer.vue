@@ -30,6 +30,7 @@
         :error="loadError ? '组件明细加载失败，请重试' : null"
         :empty="!loading && !loadError && components.length === 0"
         empty-title="暂无组件记录"
+        empty-description="录入来源组件后可在此核对批次用量与成本。"
         @retry="loadComponents"
       >
         <ul class="divide-y divide-[var(--el-border-color-light)]">

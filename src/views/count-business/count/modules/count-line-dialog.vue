@@ -43,6 +43,8 @@
 </template>
 
 <script setup lang="ts">
+  import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
+  import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { ElMessage } from 'element-plus'
   import { uniq } from 'lodash-es'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
@@ -129,7 +131,7 @@
   }
   async function submit(): Promise<boolean> {
     try {
-      await formRef.value?.validate()
+      if (!(await validateArtFormForSubmit(formRef.value))) return false
       if (!line.value || loadError.value) return false
       if (uniq(newSerialNos.value).length !== newSerialNos.value.length) {
         ElMessage.warning('新增 SN 不能重复')
@@ -143,7 +145,8 @@
       })
       emit('success')
       return true
-    } catch {
+    } catch (error) {
+      notifyFriendlyError(error, '盘点明细提交失败，请检查填写内容和网络后重试')
       return false
     }
   }

@@ -266,7 +266,7 @@
     DataSelectRecord
   } from '@/components/core/forms/art-data-select/types'
   import { useUserStore } from '@/store/modules/user'
-  import { useTenantScopeStore } from '@/store/modules/tenantScope'
+  import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { fetchGetEnableOrganizationTree } from '@/api/system-manage'
   import {
     fetchWmsBatchSerials,

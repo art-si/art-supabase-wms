@@ -52,6 +52,7 @@
 <script setup lang="tsx">
   import { ElMessage, ElTag } from 'element-plus'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { useTenantScopeFormPolicy } from '@/hooks/core/useTenantScopeFormPolicy'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
@@ -70,7 +71,7 @@
   import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type { ColumnOption } from '@/types'
-  import { useTenantScopeStore } from '@/store/modules/tenantScope'
+  import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import {
     changeWmsTransferRequestStatus,
     fetchWmsInitialOptions,
@@ -85,6 +86,7 @@
   defineOptions({ name: 'WmsTransfer' })
   const { confirmAction } = useArtFeedback()
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
+  const { defaultWriteTenantId } = useTenantScopeFormPolicy()
   const tableRef = ref<ArtTableQueryExpose>()
   const drawerRef = ref<InstanceType<typeof TransferRequestDrawer>>()
   const pushDialogRef = ref<ArtDialogExpose>()
@@ -187,16 +189,19 @@
     await tableRef.value?.refreshUpdate()
   }
   function openCreate(): void {
-    if (effectiveTenantId.value)
-      void drawerRef.value?.handleOpen({ mode: 'create', tenantId: effectiveTenantId.value })
-    else ElMessage.warning('请先选择租户')
+    const tenantId = defaultWriteTenantId.value
+    if (tenantId) void drawerRef.value?.handleOpen({ mode: 'create', tenantId })
+    else ElMessage.warning('无法确定新增单据的目标租户，请刷新后重试')
   }
-  async function openDocument(mode: 'view' | 'edit' | 'copy', documentId: string): Promise<void> {
-    if (!effectiveTenantId.value) {
-      ElMessage.warning('请先选择租户')
-      return
-    }
-    await drawerRef.value?.handleOpen({ mode, documentId, tenantId: effectiveTenantId.value })
+  async function openDocument(
+    mode: 'view' | 'edit' | 'copy',
+    row: WmsTransferRequestRow
+  ): Promise<void> {
+    await drawerRef.value?.handleOpen({
+      mode,
+      documentId: row.documentId,
+      tenantId: row.tenantId
+    })
   }
   async function transition(
     row: WmsTransferRequestRow,
@@ -304,7 +309,7 @@
     ]
   }
   function onMoreAction(item: ButtonMoreItem, row: WmsTransferRequestRow): void {
-    if (item.key === 'copy' || item.key === 'edit') void openDocument(item.key, row.documentId)
+    if (item.key === 'copy' || item.key === 'edit') void openDocument(item.key, row)
     else if (item.key === 'submit' || item.key === 'approve' || item.key === 'delete')
       void transition(row, item.key)
     else if (item.key === 'push') void openPush(row)
@@ -397,7 +402,7 @@
               label="查看"
               icon="ri:eye-line"
               permission="WmsTransfer:View"
-              onClick={() => openDocument('view', row.documentId)}
+              onClick={() => openDocument('view', row)}
             />
             <ArtButtonMore
               list={moreActions(row)}

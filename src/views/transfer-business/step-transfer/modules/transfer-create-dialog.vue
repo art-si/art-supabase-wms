@@ -53,6 +53,8 @@
 </template>
 
 <script setup lang="ts">
+  import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
+  import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { useMediaQuery } from '@vueuse/core'
   import dayjs from 'dayjs'
   import { ElMessage } from 'element-plus'
@@ -280,7 +282,7 @@
   }
   async function submit(): Promise<boolean> {
     try {
-      await formRef.value?.validate()
+      if (!(await validateArtFormForSubmit(formRef.value))) return false
       const batch = selectedBatch.value
       if (!batch || loadError.value) return false
       if (form.quantity > batch.quantity || (batch.packId && form.quantity !== batch.quantity)) {
@@ -305,7 +307,8 @@
       })
       emit('success')
       return true
-    } catch {
+    } catch (error) {
+      notifyFriendlyError(error, '分步调拨创建提交失败，请检查填写内容和网络后重试')
       return false
     }
   }

@@ -40,6 +40,8 @@
 </template>
 
 <script setup lang="ts">
+  import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
+  import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { normalizeNullableText } from '@/utils/form/normalize'
   import { ElMessage } from 'element-plus'
   import { useMediaQuery } from '@vueuse/core'
@@ -49,7 +51,7 @@
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
-  import { useTenantScopeStore } from '@/store/modules/tenantScope'
+  import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import {
     fetchWmsBatchSerials,
     fetchWmsProjectSections,
@@ -211,7 +213,7 @@
 
   async function submit(): Promise<boolean> {
     try {
-      await formRef.value?.validate()
+      if (!(await validateArtFormForSubmit(formRef.value))) return false
       const batch = context.value?.batch
       if (!batch || loadError.value) return false
       if (form.quantity > batch.quantity) {
@@ -251,7 +253,8 @@
       })
       emit('success')
       return true
-    } catch {
+    } catch (error) {
+      notifyFriendlyError(error, '项目库存调拨提交失败，请检查填写内容和网络后重试')
       return false
     }
   }

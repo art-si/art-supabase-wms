@@ -38,6 +38,18 @@
       <ElAlert v-else type="info" :closable="false" show-icon>
         业务日期不得晚于所选库存组织的启用日期；初始库存单审核后将生成在库批次和库存流水。
       </ElAlert>
+      <ElAlert
+        v-if="
+          !optionError &&
+          form.tenantId &&
+          !documentTypes.some((item) => item.enabled && item.menuIds?.includes(initialStockMenuId))
+        "
+        type="warning"
+        :closable="false"
+        show-icon
+      >
+        当前租户没有关联“初始库存单”菜单功能的已启用单据类型，请先在主数据中配置。
+      </ElAlert>
       <ArtSectionCard title="单据表头" subtitle="编号保存时自动生成；记账日期由系统记录。">
         <ArtDescriptions v-if="mode === 'view'" :data="viewData" :items="viewItems" :columns="3" />
         <ArtForm
@@ -74,27 +86,43 @@
         empty-description="从物料编码中多选后，逐行填写期初数量、仓库和库存类型。"
       >
         <template #actions>
-          <ArtTableMultipleSelect
-            v-if="mode !== 'view' && form.tenantId"
-            v-model="materialPickerIds"
-            v-model:selected-data="materialPickerRows"
-            title="选择期初物料"
-            subtitle="支持按物料编码、名称或描述检索，可一次添加多行。"
-            placeholder="添加物料明细"
-            search-placeholder="搜索物料编码或描述"
-            row-key="id"
-            label-key="name"
-            description-key="code"
-            :columns="materialColumns"
-            :api-fn="materialApi"
-            @confirm="addMaterials"
-          >
-            <template #trigger="{ open }">
-              <ElButton type="primary" @click="open">
-                <ArtSvgIcon icon="ri:add-line" />添加物料
-              </ElButton>
-            </template>
-          </ArtTableMultipleSelect>
+          <div class="flex flex-wrap items-center gap-2">
+            <ArtTableMultipleSelect
+              v-if="mode !== 'view' && form.tenantId"
+              v-model="materialPickerIds"
+              v-model:selected-data="materialPickerRows"
+              title="选择期初物料"
+              subtitle="支持按物料编码、名称或描述检索，可一次添加多行。"
+              placeholder="添加物料明细"
+              search-placeholder="搜索物料编码或描述"
+              row-key="id"
+              label-key="name"
+              description-key="code"
+              :columns="materialColumns"
+              :api-fn="materialApi"
+              @confirm="addMaterials"
+            >
+              <template #trigger="{ open }">
+                <ElButton type="primary" @click="open">
+                  <ArtSvgIcon icon="ri:add-line" />新增
+                </ElButton>
+              </template>
+            </ArtTableMultipleSelect>
+            <ElButton :disabled="selectedLines.length !== 1" @click="copySelectedLine"
+              >复制</ElButton
+            >
+            <ElButton :disabled="selectedLines.length !== 1" @click="openSelectedLine"
+              >编制</ElButton
+            >
+            <ElButton :disabled="!selectedLines.length" @click="deleteSelectedLines">删除</ElButton>
+            <ElButton
+              :disabled="
+                selectedLines.length !== 1 || !selectedLines[0]?.material?.serialManagementEnabled
+              "
+              @click="openSelectedLine"
+              >序列号</ElButton
+            >
+          </div>
         </template>
         <ElScrollbar v-if="lines.length">
           <ArtTable
@@ -103,6 +131,7 @@
             :pagination="false"
             row-key="lineNo"
             table-layout="fixed"
+            @selection-change="onLineSelectionChange"
           >
             <template #material="{ row }">
               <strong class="block truncate text-sm">{{ row.material?.name || '物料' }}</strong>
@@ -274,6 +303,8 @@
 </template>
 
 <script setup lang="ts">
+  import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
+  import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import dayjs from 'dayjs'
   import { cloneDeep } from 'lodash-es'
   import { ElMessage } from 'element-plus'
@@ -302,11 +333,13 @@
   } from '@/components/core/forms/art-data-select/types'
   import type { EmployeeIntegrationItem } from '@/api/integration/employees'
   import { fetchGetEnableOrganizationTree } from '@/api/system-manage'
+  import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import type { ColumnOption } from '@/types'
   import {
     fetchWmsBins,
     fetchWmsInitialMaterials,
     fetchWmsInitialOptions,
+    fetchWmsInitialStockMenuId,
     fetchWmsInventoryOrganizations,
     fetchWmsUnitOptions,
     fetchWmsWarehouses,
@@ -328,6 +361,7 @@
   }
   const emit = defineEmits<{ success: [] }>()
   const userStore = useUserStore()
+  const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const drawerRef = ref<ArtDrawerExpose<OpenData>>()
   const lineDialogRef = ref<ArtDialogExpose>()
   const formRef = ref<InstanceType<typeof ArtForm>>()
@@ -345,6 +379,8 @@
   const customers = ref<WmsInitializationOption[]>([])
   const bins = ref<WmsBin[]>([])
   const lines = ref<WmsInitialStockLine[]>([])
+  const selectedLines = ref<WmsInitialStockLine[]>([])
+  const initialStockMenuId = ref('')
   const selectableOrganizationTree = computed(() => {
     const selectableIds = new Set(
       organizations.value
@@ -384,6 +420,7 @@
     }
   ])
   const lineColumns: ColumnOption<WmsInitialStockLine>[] = [
+    { type: 'selection', width: 48, fixed: 'left' },
     { prop: 'lineNo', label: '行号', width: 68 },
     { prop: 'material', label: '物料', minWidth: 220, useSlot: true },
     { prop: 'material.specificationModel', label: '规格型号', minWidth: 130 },
@@ -793,16 +830,21 @@
       label: '单据类型',
       type: 'select',
       options: documentTypes.value
-        .filter((item) => item.code === 'WMS_INITIAL_STOCK')
+        .filter((item) => item.enabled && item.menuIds?.includes(initialStockMenuId.value))
         .map((item) => ({ label: item.name, value: item.id })),
-      props: { disabled: mode.value === 'view' }
+      props: { disabled: mode.value === 'view', onChange: onDocumentTypeChange }
     },
     {
       key: 'businessTypeId',
       label: '业务类型',
       type: 'select',
       options: businessTypes.value
-        .filter((item) => item.documentTypeId === form.documentTypeId)
+        .filter(
+          (item) =>
+            item.enabled &&
+            item.documentTypeId === form.documentTypeId &&
+            item.menuIds?.includes(initialStockMenuId.value)
+        )
         .map((item) => ({ label: item.name, value: item.id })),
       props: { disabled: mode.value === 'view' }
     },
@@ -1008,6 +1050,24 @@
     lines.value.splice(index + 1, 0, cloneDeep(lines.value[index]))
     renumber()
   }
+  function onLineSelectionChange(rows: WmsInitialStockLine[]): void {
+    selectedLines.value = rows
+  }
+  function copySelectedLine(): void {
+    const index = selectedLines.value[0] ? lineIndex(selectedLines.value[0]) : -1
+    if (index >= 0) copyLine(index)
+    selectedLines.value = []
+  }
+  function openSelectedLine(): void {
+    const index = selectedLines.value[0] ? lineIndex(selectedLines.value[0]) : -1
+    if (index >= 0) void openLine(index)
+  }
+  function deleteSelectedLines(): void {
+    const selected = new Set(selectedLines.value)
+    lines.value = lines.value.filter((line) => !selected.has(line))
+    selectedLines.value = []
+    renumber()
+  }
   function removeLine(index: number): void {
     lines.value.splice(index, 1)
     renumber()
@@ -1105,21 +1165,28 @@
     projects.value = projectRows
     suppliers.value = supplierRows
     customers.value = customerRows
-    if (!form.documentTypeId)
-      form.documentTypeId = documentRows.find((item) => item.code === 'WMS_INITIAL_STOCK')?.id ?? ''
-    if (!form.businessTypeId)
-      form.businessTypeId =
-        businessRows.find((item) => item.documentTypeId === form.documentTypeId)?.id ?? ''
+    const availableDocuments = documentRows.filter(
+      (item) => item.enabled && item.menuIds?.includes(initialStockMenuId.value)
+    )
+    if (!availableDocuments.some((item) => item.id === form.documentTypeId))
+      form.documentTypeId =
+        availableDocuments.find((item) => item.isDefault)?.id ?? availableDocuments[0]?.id ?? ''
+    onDocumentTypeChange()
+  }
+  function onDocumentTypeChange(): void {
+    const available = businessTypes.value.filter(
+      (item) =>
+        item.enabled &&
+        item.documentTypeId === form.documentTypeId &&
+        item.menuIds?.includes(initialStockMenuId.value)
+    )
+    if (!available.some((item) => item.id === form.businessTypeId))
+      form.businessTypeId = available.find((item) => item.isDefault)?.id ?? available[0]?.id ?? ''
   }
   async function onOrganizationChange(): Promise<void> {
     const organization = selectedOrganization.value
     form.tenantId = organization?.tenantId ?? ''
-    form.businessDate = organization?.enabledOn
-      ? (dayjs().isAfter(organization.enabledOn, 'day')
-          ? dayjs(organization.enabledOn).subtract(1, 'day')
-          : dayjs()
-        ).format('YYYY-MM-DD')
-      : ''
+    form.businessDate = dayjs().format('YYYY-MM-DD')
     form.documentTypeId = ''
     form.businessTypeId = ''
     lines.value = []
@@ -1128,14 +1195,26 @@
   async function loadOptions(): Promise<void> {
     optionError.value = false
     try {
-      const [orgPage, warehouseRows, organizationResult] = await Promise.all([
-        fetchWmsInventoryOrganizations({ current: 1, size: 2000 }),
+      const tenantId = form.tenantId || effectiveTenantId.value || userStore.getUserInfo.tenantId
+      const [orgPage, warehouseRows, organizationResult, menuId] = await Promise.all([
+        fetchWmsInventoryOrganizations({ current: 1, size: 2000, tenantId }),
         fetchWmsWarehouses(),
-        fetchGetEnableOrganizationTree({ tenantId: form.tenantId })
+        fetchGetEnableOrganizationTree({ tenantId }),
+        fetchWmsInitialStockMenuId()
       ])
       organizations.value = orgPage.data
+      initialStockMenuId.value = menuId
       warehouses.value = warehouseRows
       organizationTree.value = organizationResult.data ?? []
+      if (mode.value === 'create' && !form.organizationId) {
+        const defaultOrganization = orgPage.data.find(
+          (item) => item.enabledOn && item.isDefault && !item.initializationClosedAt
+        )
+        if (defaultOrganization) {
+          form.organizationId = defaultOrganization.id
+          await onOrganizationChange()
+        }
+      }
       if (form.tenantId) await loadTenantOptions(form.tenantId)
     } catch {
       optionError.value = true
@@ -1144,7 +1223,7 @@
   async function save(): Promise<boolean> {
     if (optionError.value) return false
     try {
-      await formRef.value?.validate()
+      if (!(await validateArtFormForSubmit(formRef.value))) return false
       if (
         !selectedOrganization.value?.enabledOn ||
         form.businessDate > selectedOrganization.value.enabledOn
@@ -1182,7 +1261,8 @@
       })
       emit('success')
       return true
-    } catch {
+    } catch (error) {
+      notifyFriendlyError(error, '期初库存提交失败，请检查填写内容和网络后重试')
       return false
     }
   }
@@ -1197,7 +1277,7 @@
       documentNo: data.mode === 'copy' ? '' : (source?.documentNo ?? ''),
       documentTypeId: source?.documentTypeId ?? '',
       businessTypeId: source?.businessTypeId ?? '',
-      businessDate: source?.businessDate ?? '',
+      businessDate: source?.businessDate ?? dayjs().format('YYYY-MM-DD'),
       accountingDate: source?.accountingDate ?? dayjs().format('YYYY-MM-DD'),
       keeperId: source?.keeperId ?? null,
       status: data.mode === 'copy' ? 'draft' : (source?.status ?? 'draft'),

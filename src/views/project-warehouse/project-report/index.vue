@@ -176,7 +176,7 @@
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type { ColumnOption } from '@/types'
   import { formatNumberValue } from '@/utils/ui/format'
-  import { useTenantScopeStore } from '@/store/modules/tenantScope'
+  import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import {
     fetchWmsProjectMovementPage,
     fetchWmsProjectMaterialPage,

@@ -24,8 +24,14 @@ const writeOptions = {
   errorMessage: '库存初始化操作失败，请检查数据与权限'
 }
 
-type OrganizationRow = Omit<WmsInventoryOrganization, 'enabledOn' | 'initializationClosedAt'>
-type InitializationRow = Pick<WmsInventoryOrganization, 'enabledOn' | 'initializationClosedAt'> & {
+type OrganizationRow = Omit<
+  WmsInventoryOrganization,
+  'enabledOn' | 'isDefault' | 'initializationClosedAt'
+>
+type InitializationRow = Pick<
+  WmsInventoryOrganization,
+  'enabledOn' | 'isDefault' | 'initializationClosedAt'
+> & {
   organizationId: string
 }
 
@@ -50,7 +56,7 @@ export async function fetchWmsInventoryOrganizations(query: {
     )
   let initializationRequest = supabase
     .from('wms_inventory_initialization')
-    .select('organization_id,enabled_on,initialization_closed_at')
+    .select('organization_id,enabled_on,is_default,initialization_closed_at')
   if (query.tenantId) initializationRequest = initializationRequest.eq('tenant_id', query.tenantId)
   const [{ data }, { data: initializationData }] = await Promise.all([
     responseHandle<OrganizationRow[]>(() => request.limit(2000), readOptions),
@@ -62,6 +68,7 @@ export async function fetchWmsInventoryOrganizations(query: {
   const rows = (data ?? []).map((row) => ({
     ...row,
     enabledOn: initializationByOrganization.get(row.id)?.enabledOn ?? null,
+    isDefault: initializationByOrganization.get(row.id)?.isDefault ?? false,
     initializationClosedAt: initializationByOrganization.get(row.id)?.initializationClosedAt ?? null
   }))
   const filtered = query.enabled
@@ -75,15 +82,25 @@ export async function fetchWmsInventoryOrganizations(query: {
 
 export async function setWmsInventoryEnabled(
   organizationIds: string[],
-  enabledOn: string | null
+  enabledOn: string | null,
+  isDefault = false
 ): Promise<void> {
   await responseHandle(
     () =>
       supabase.rpc('wms_set_inventory_enabled_secure', {
         p_organization_ids: organizationIds,
-        p_enabled_on: enabledOn
+        p_enabled_on: enabledOn,
+        p_is_default: isDefault
       }),
     { ...writeOptions, message: enabledOn ? '库存组织已启用' : '库存组织已反启用' }
+  )
+}
+
+export async function setWmsDefaultInventoryOrganization(organizationId: string): Promise<void> {
+  await responseHandle(
+    () =>
+      supabase.rpc('wms_set_default_inventory_org_secure', { p_organization_id: organizationId }),
+    { ...writeOptions, message: '默认库存组织已更新' }
   )
 }
 
@@ -192,12 +209,13 @@ export async function fetchWmsInitialOptions(
 ): Promise<WmsInitializationOption[]> {
   const config = {
     mdm_document_type: {
-      fields: 'id,tenant_id,document_type_code,document_type_name',
+      fields: 'id,tenant_id,menu_ids,is_default,enabled,document_type_code,document_type_name',
       code: 'documentTypeCode',
       name: 'documentTypeName'
     },
     mdm_business_type: {
-      fields: 'id,tenant_id,document_type_id,business_type_code,business_type_name',
+      fields:
+        'id,tenant_id,document_type_id,menu_ids,is_default,enabled,business_type_code,business_type_name',
       code: 'businessTypeCode',
       name: 'businessTypeName'
     },
@@ -217,15 +235,39 @@ export async function fetchWmsInitialOptions(
       name: 'customerName'
     }
   }[table]
-  const { data } = await responseHandle<Record<string, string>[]>(
+  const { data } = await responseHandle<Record<string, unknown>[]>(
     () => supabase.from(table).select(config.fields).eq('tenant_id', tenantId).order('id'),
     readOptions
   )
-  return (data ?? []).map((row) => ({
-    id: row.id,
-    tenantId: row.tenantId,
-    code: row[config.code] ?? '',
-    name: row[config.name] ?? '',
-    documentTypeId: row.documentTypeId
-  }))
+  return (data ?? []).map((row) => {
+    const code = row[config.code]
+    const name = row[config.name]
+    return {
+      id: typeof row.id === 'string' ? row.id : '',
+      tenantId: typeof row.tenantId === 'string' ? row.tenantId : '',
+      code: typeof code === 'string' ? code : '',
+      name: typeof name === 'string' ? name : '',
+      documentTypeId: typeof row.documentTypeId === 'string' ? row.documentTypeId : undefined,
+      menuIds: Array.isArray(row.menuIds)
+        ? row.menuIds.filter((id): id is string => typeof id === 'string')
+        : undefined,
+      isDefault: row.isDefault === true,
+      enabled: row.enabled === true
+    }
+  })
+}
+
+export async function fetchWmsInitialStockMenuId(): Promise<string> {
+  const { data } = await responseHandle<{ id: string }>(
+    () =>
+      supabase
+        .from('sys_menu')
+        .select('id')
+        .eq('name', 'WmsInitialStock')
+        .eq('type', 'menu')
+        .single(),
+    readOptions
+  )
+  if (!data?.id) throw new Error('初始库存单菜单功能未配置，请联系管理员')
+  return data.id
 }

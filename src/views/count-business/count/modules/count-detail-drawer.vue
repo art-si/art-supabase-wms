@@ -120,6 +120,7 @@
         :error="loadError ? '盘点表加载失败，请重试' : null"
         :empty="!loading && !loadError && lines.length === 0"
         empty-title="暂无盘点行"
+        empty-description="生成盘点表后可按库存批次核对明细。"
         @retry="loadLines"
       >
         <ul class="divide-y divide-[var(--el-border-color-light)]">

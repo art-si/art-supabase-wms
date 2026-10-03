@@ -28,6 +28,7 @@
         :error="loadError ? '申请明细加载失败，请重试' : null"
         :empty="!loading && !loadError && !lines.length"
         empty-title="暂无申请物料"
+        empty-description="添加申请明细后可按批次查看出库记录。"
         @retry="loadDetail"
       >
         <ul class="divide-y divide-[var(--el-border-color-light)]">

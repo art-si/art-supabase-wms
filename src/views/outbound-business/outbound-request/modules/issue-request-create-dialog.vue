@@ -105,6 +105,8 @@
 </template>
 
 <script setup lang="ts">
+  import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
+  import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { useMediaQuery } from '@vueuse/core'
   import { ElMessage } from 'element-plus'
@@ -331,7 +333,7 @@
   }
   async function submit(): Promise<boolean> {
     try {
-      await formRef.value?.validate()
+      if (!(await validateArtFormForSubmit(formRef.value))) return false
       if (loadError.value || !selectedOrder.value || !selectedWarehouse.value) return false
       if (!lines.value.length || lines.value.some((row) => !row.materialId || row.quantity <= 0)) {
         ElMessage.warning('请填写至少一条有效物料和申请数量')
@@ -352,7 +354,8 @@
       })
       emit('success')
       return true
-    } catch {
+    } catch (error) {
+      notifyFriendlyError(error, '领料申请创建提交失败，请检查填写内容和网络后重试')
       return false
     }
   }

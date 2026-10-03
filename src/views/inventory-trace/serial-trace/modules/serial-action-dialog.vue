@@ -43,6 +43,8 @@
 </template>
 
 <script setup lang="ts">
+  import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
+  import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { ElMessage } from 'element-plus'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
@@ -122,7 +124,7 @@
 
   async function submit(): Promise<boolean> {
     try {
-      await formRef.value?.validate()
+      if (!(await validateArtFormForSubmit(formRef.value))) return false
       const data = context.value
       if (!data || loadError.value) return false
       if (data.action === 'reserve') {
@@ -137,7 +139,8 @@
       }
       emit('success')
       return true
-    } catch {
+    } catch (error) {
+      notifyFriendlyError(error, '序列号操作提交失败，请检查填写内容和网络后重试')
       return false
     }
   }

@@ -53,7 +53,7 @@
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type { ColumnOption } from '@/types'
-  import { useTenantScopeStore } from '@/store/modules/tenantScope'
+  import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { fetchGetEnableOrganizationTree } from '@/api/system-manage'
   import { formatDateTimeValue } from '@/utils/ui/format'
   import {
