@@ -693,6 +693,7 @@
 </template>
 
 <script setup lang="ts">
+  import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import dayjs from 'dayjs'
@@ -1014,7 +1015,12 @@
     { prop: 'materialDescription', label: '物料描述', minWidth: 190 },
     { prop: 'materialCode', label: '物料编码', minWidth: 140 },
     { prop: 'specificationModel', label: '规格型号', minWidth: 130 },
-    { prop: 'inventoryUnitName', label: '库存单位', width: 90 },
+    {
+      prop: 'inventoryUnitName',
+      label: '库存单位',
+      width: 90,
+      formatter: (row) => formatUnitDisplayName(row.inventoryUnitName)
+    },
     { prop: 'quantity', label: '库存量', width: 90, align: 'right' },
     { prop: 'availableQuantity', label: '可用库存量', width: 105, align: 'right' },
     { prop: 'allocatedQuantity', label: '已分配量', width: 95, align: 'right' },
@@ -1380,12 +1386,12 @@
   }
   function unitOptions() {
     return units.value.map((item) => ({
-      label: `${item.unitName} · ${item.unitCode}`,
+      label: `${formatUnitDisplayName(item.unitName)}`,
       value: item.id
     }))
   }
   function unitName(id: string | null | undefined): string {
-    return units.value.find((item) => item.id === id)?.unitName ?? '—'
+    return formatUnitDisplayName(units.value.find((item) => item.id === id)?.unitName)
   }
   function projectName(id: string | null): string {
     return projects.value.find((item) => item.id === id)?.projectName ?? '—'

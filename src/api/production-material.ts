@@ -1,4 +1,5 @@
 import { useSupabase } from '@/hooks'
+import { uniq } from 'lodash-es'
 import { buildOrIlikeFilter } from '@/utils/supabase/search'
 import type { WmsMaterialOption } from './warehouse.types'
 import type { EmployeeIntegrationItem } from '@/api/integration/employees'
@@ -387,9 +388,7 @@ export async function fetchWmsProductionStockPage(params: {
   )
   const ids = (data ?? []).map((row) => row.id)
   if (!ids.length) return { data: [], total: total ?? 0 }
-  const projectIds = [
-    ...new Set((data ?? []).flatMap((row) => (row.projectId ? [row.projectId] : [])))
-  ]
+  const projectIds = uniq((data ?? []).flatMap((row) => (row.projectId ? [row.projectId] : [])))
   const [{ data: reservations }, { data: projects }] = await Promise.all([
     responseHandle<Array<{ batchId: string; reservedQuantity: number }>>(
       () =>

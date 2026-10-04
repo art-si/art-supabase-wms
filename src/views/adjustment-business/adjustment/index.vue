@@ -49,6 +49,7 @@
 </template>
 
 <script setup lang="tsx">
+  import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { ElTag } from 'element-plus'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import ArtTableQuery, {
@@ -178,7 +179,7 @@
         return `${labels[row.sourceBatch?.status || ''] || '来源状态'} → ${labels[row.targetBatch?.status || ''] || '目标状态'}`
       }
       case 'unit_convert':
-        return `${row.targetBatch?.displayQuantity ?? '—'} ${row.targetBatch?.displayUnit?.unitName || ''}`
+        return `${row.targetBatch?.displayQuantity ?? '—'} ${formatUnitDisplayName(row.targetBatch?.displayUnit?.unitName, '')}`
       case 'attribute_convert':
         return (
           [

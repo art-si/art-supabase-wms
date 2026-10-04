@@ -47,6 +47,7 @@
 </template>
 
 <script setup lang="tsx">
+  import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { useRoute, useRouter } from 'vue-router'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { ElMessage, ElTag } from 'element-plus'
@@ -171,13 +172,20 @@
     },
     {
       type: 'export',
-      label: '导出当前页',
+      label: '导出筛选结果',
       permission: 'WmsInitialStock:Export',
       buttonProps: { type: 'warning', plain: true },
       exportFilename: '初始库存单',
       exportData: async () => {
-        const page = await fetchRows({ ...search, current: 1, size: 500 })
-        return page.data.flatMap((document) =>
+        const documents = await loadAllLinePages(
+          (page) =>
+            fetchWmsInitialStockPage({
+              ...page,
+              tenantId: effectiveTenantId.value || undefined
+            }),
+          { ...search, current: 1, size: 500 }
+        )
+        return documents.flatMap((document) =>
           document.lines.map((line) => ({
             documentNo: document.documentNo,
             businessDate: document.businessDate,
@@ -377,7 +385,7 @@
         prop: 'inventoryUnitId',
         label: '库存单位',
         minWidth: 100,
-        formatter: (row) => firstLine(row)?.inventoryUnit?.unitName || '—'
+        formatter: (row) => formatUnitDisplayName(firstLine(row)?.inventoryUnit?.unitName)
       },
       {
         prop: 'openingQuantity',

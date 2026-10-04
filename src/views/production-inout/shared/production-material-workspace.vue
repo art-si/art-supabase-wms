@@ -43,6 +43,7 @@
 </template>
 
 <script setup lang="tsx">
+  import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { formatWithDayjs } from '@/utils/time'
   import { ElMessage, ElTag } from 'element-plus'
@@ -168,6 +169,7 @@
       : [])
   ])
   async function fetchRows(query: {
+    exportAll?: boolean
     status?: string
     documentNo?: string
     workOrderNo?: string
@@ -178,6 +180,7 @@
     current: number
     size: number
   }) {
+    const exportAll = query.exportAll === true
     const fetchPage = (page: typeof query) =>
       fetchWmsProductionMaterialPage({
         ...page,
@@ -185,11 +188,15 @@
         tenantId: effectiveTenantId.value || undefined
       })
     if (displayMode.value === 'line') {
+      if (exportAll) {
+        const data = await loadAllLinePages(fetchPage, query)
+        return { data, total: data.length }
+      }
       const result = await fetchPage(query)
       visibleRows.value = result.data
       return result
     }
-    visibleRows.value = []
+    if (!exportAll) visibleRows.value = []
     const hasMaterialFilter = Boolean(
       query.materialCode?.trim() || query.materialDescription?.trim()
     )
@@ -213,7 +220,13 @@
       materialDescription: `共 ${group.length} 项物料`
     }))
     return {
-      data: documents.slice((query.current - 1) * query.size, query.current * query.size),
+      data: (exportAll
+        ? documents
+        : documents.slice((query.current - 1) * query.size, query.current * query.size)
+      ).map((row) => ({
+        ...row,
+        inventoryUnitName: formatUnitDisplayName(row.inventoryUnitName)
+      })),
       total: documents.length
     }
   }
@@ -325,7 +338,8 @@
       permission: permissions.value.Export,
       buttonProps: { type: 'warning', plain: true },
       exportFilename: title.value,
-      exportData: async () => (await fetchRows({ ...search, current: 1, size: 5000 })).data,
+      exportData: async () =>
+        (await fetchRows({ ...search, current: 1, size: 500, exportAll: true })).data,
       exportColumns: [
         { title: config.value.numberLabel, key: 'documentNo' },
         { title: '生产工单', key: 'workOrderNo' },
@@ -542,7 +556,12 @@
         ? [{ prop: 'materialCode', label: '物料编码', minWidth: 145, showOverflowTooltip: true }]
         : []),
       { prop: 'specificationModel', label: '规格型号', minWidth: 140, showOverflowTooltip: true },
-      { prop: 'inventoryUnitName', label: '库存单位', width: 100 },
+      {
+        prop: 'inventoryUnitName',
+        label: '库存单位',
+        width: 100,
+        formatter: (row) => formatUnitDisplayName(row.inventoryUnitName)
+      },
       ...(!config.value.finished
         ? [{ prop: 'applicantName', label: '申请人', minWidth: 110 }]
         : []),

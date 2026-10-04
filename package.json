@@ -27,7 +27,13 @@
     "art-supabase-pro": "https://gitee.com/wangyanghub/art-supabase-pro/repository/archive/cb23bb2bdf3bddabe6fd6c8a905d841e8014ef59.tar.gz"
   },
   "peerDependencies": {
-    "vue": "^3.5.38"
+    "vue": "^3.5.38",
+    "element-plus": "^2.14.2",
+    "@vueuse/core": "^14.3.0",
+    "dayjs": "^1.11.21",
+    "vue-router": "^5.1.0",
+    "lodash-es": "^4.18.1",
+    "pinia": "3.0.4"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -50,7 +56,8 @@
     "unplugin-element-plus": "^0.11.2",
     "unplugin-vue-components": "^32.1.0",
     "vite": "^8.1.0",
-    "vue-tsc": "~3.3.5"
+    "vue-tsc": "~3.3.5",
+    "@types/lodash-es": "^4.17.12"
   },
   "repository": {
     "type": "git",

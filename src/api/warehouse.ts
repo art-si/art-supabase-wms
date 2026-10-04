@@ -861,7 +861,7 @@ export async function fetchWmsIssueRequestLines(id: string): Promise<WmsIssueReq
 export async function fetchWmsIssueRequestLinesForDocuments(
   documentIds: string[]
 ): Promise<WmsIssueRequestLine[]> {
-  const lines: WmsIssueRequestLine[] = []
+  const lineBatches: WmsIssueRequestLine[][] = []
   for (let offset = 0; offset < documentIds.length; offset += 100) {
     const ids = documentIds.slice(offset, offset + 100)
     const result = await fetchAllRangePages<WmsIssueRequestLine>(({ from, to }) =>
@@ -879,9 +879,9 @@ export async function fetchWmsIssueRequestLinesForDocuments(
       )
     )
     if (result.error) throw result.error
-    lines.push(...(result.data ?? []))
+    lineBatches.push(result.data ?? [])
   }
-  return lines
+  return lineBatches.flat()
 }
 
 export async function fetchWmsIssueRequestAllocations(
@@ -1028,7 +1028,7 @@ export async function fetchWmsCountLines(planId: string): Promise<WmsCountLine[]
 }
 
 export async function fetchWmsCountLinesForPlans(planIds: string[]): Promise<WmsCountLine[]> {
-  const lines: WmsCountLine[] = []
+  const lineBatches: WmsCountLine[][] = []
   for (let offset = 0; offset < planIds.length; offset += 100) {
     const ids = planIds.slice(offset, offset + 100)
     const result = await fetchAllRangePages<WmsCountLine>(({ from, to }) =>
@@ -1046,9 +1046,9 @@ export async function fetchWmsCountLinesForPlans(planIds: string[]): Promise<Wms
       )
     )
     if (result.error) throw result.error
-    lines.push(...(result.data ?? []))
+    lineBatches.push(result.data ?? [])
   }
-  return lines
+  return lineBatches.flat()
 }
 
 export async function fetchWmsCountVarianceDocuments(
@@ -1175,7 +1175,7 @@ export async function fetchWmsAssemblyComponents(id: string): Promise<WmsAssembl
 export async function fetchWmsAssemblyComponentsForDocuments(
   documentIds: string[]
 ): Promise<WmsAssemblyComponent[]> {
-  const components: WmsAssemblyComponent[] = []
+  const componentBatches: WmsAssemblyComponent[][] = []
   for (let offset = 0; offset < documentIds.length; offset += 100) {
     const ids = documentIds.slice(offset, offset + 100)
     const result = await fetchAllRangePages<WmsAssemblyComponent>(({ from, to }) =>
@@ -1193,9 +1193,9 @@ export async function fetchWmsAssemblyComponentsForDocuments(
       )
     )
     if (result.error) throw result.error
-    components.push(...(result.data ?? []))
+    componentBatches.push(result.data ?? [])
   }
-  return components
+  return componentBatches.flat()
 }
 
 export async function postWmsAssembly(payload: WmsAssemblyInput): Promise<string> {

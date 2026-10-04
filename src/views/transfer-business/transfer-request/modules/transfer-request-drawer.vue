@@ -95,13 +95,21 @@
             show-overflow-tooltip
           />
           <ElTableColumn prop="constructionNo" label="施工号" min-width="115" />
-          <ElTableColumn prop="inventoryUnitName" label="库存单位" width="100" />
+          <ElTableColumn prop="inventoryUnitName" label="库存单位" width="100"
+            ><template #default="{ row }">{{
+              formatUnitDisplayName(row.inventoryUnitName)
+            }}</template></ElTableColumn
+          >
           <ElTableColumn label="数量" width="110" align="right"
             ><template #default="{ row }"
               ><strong class="tabular-nums">{{ numberText(row.quantity) }}</strong></template
             ></ElTableColumn
           >
-          <ElTableColumn prop="baseUnitName" label="基本单位" width="100" />
+          <ElTableColumn prop="baseUnitName" label="基本单位" width="100"
+            ><template #default="{ row }">{{
+              formatUnitDisplayName(row.baseUnitName)
+            }}</template></ElTableColumn
+          >
           <ElTableColumn label="基本数量" width="110" align="right"
             ><template #default="{ row }">{{
               numberText(row.baseQuantity)
@@ -132,7 +140,11 @@
           <ElTableColumn label="赠品" width="72" align="center"
             ><template #default="{ row }">{{ row.gift ? '✓' : '—' }}</template></ElTableColumn
           >
-          <ElTableColumn prop="auxiliaryUnitName" label="辅助单位" width="105" />
+          <ElTableColumn prop="auxiliaryUnitName" label="辅助单位" width="105"
+            ><template #default="{ row }">{{
+              formatUnitDisplayName(row.auxiliaryUnitName)
+            }}</template></ElTableColumn
+          >
           <ElTableColumn prop="auxiliaryQuantity" label="辅助数量" width="105" align="right" />
           <ElTableColumn prop="auxiliaryUnit2Name" label="辅助单位2" width="110" />
           <ElTableColumn prop="auxiliaryQuantity2" label="辅助数量2" width="110" align="right" />
@@ -193,7 +205,7 @@
                 ><ElOption
                   v-for="unit in units"
                   :key="unit.id"
-                  :label="unit.unitName"
+                  :label="formatUnitDisplayName(unit.unitName)"
                   :value="unit.id" /></ElSelect
             ></template>
           </ElTableColumn>
@@ -357,6 +369,7 @@
 </template>
 
 <script setup lang="ts">
+  import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { ElMessage } from 'element-plus'

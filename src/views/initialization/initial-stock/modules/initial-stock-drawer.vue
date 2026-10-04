@@ -405,6 +405,7 @@
 </template>
 
 <script setup lang="ts">
+  import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import dayjs from 'dayjs'
@@ -635,7 +636,10 @@
     lines.value.reduce((sum, item) => sum + Number(item.openingQuantity || 0), 0)
   )
   const unitOptions = computed(() =>
-    units.value.map((item) => ({ label: `${item.unitName} · ${item.unitCode}`, value: item.id }))
+    units.value.map((item) => ({
+      label: `${formatUnitDisplayName(item.unitName)}`,
+      value: item.id
+    }))
   )
   const headerItems = computed<FormItem[]>(() => [
     {
@@ -750,7 +754,7 @@
     { prop: 'name', label: '名称', minWidth: 220 }
   ]
   function unitName(id: string | null): string {
-    return units.value.find((item) => item.id === id)?.unitName ?? '—'
+    return formatUnitDisplayName(units.value.find((item) => item.id === id)?.unitName)
   }
   function warehouseName(id: string): string {
     return warehouses.value.find((item) => item.id === id)?.warehouseName ?? '待选择'

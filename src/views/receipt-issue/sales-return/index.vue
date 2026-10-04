@@ -140,14 +140,14 @@
                   <dt class="text-[var(--el-text-color-secondary)]">换算可退</dt>
                   <dd class="min-w-0 text-right tabular-nums font-medium">
                     {{ formatDisplayQuantity(remainingDisplayQuantity) }}
-                    {{ selectedAllocation?.displayUnit?.unitName || '' }}
+                    {{ formatUnitDisplayName(selectedAllocation?.displayUnit?.unitName, '') }}
                   </dd>
                 </div>
                 <div class="flex justify-between gap-3">
                   <dt class="text-[var(--el-text-color-secondary)]">本次换算入库</dt>
                   <dd class="min-w-0 text-right tabular-nums font-medium">
                     {{ formatDisplayQuantity(currentDisplayQuantity ?? 0) }}
-                    {{ selectedAllocation?.displayUnit?.unitName || '' }}
+                    {{ formatUnitDisplayName(selectedAllocation?.displayUnit?.unitName, '') }}
                   </dd>
                 </div>
               </template>
@@ -171,6 +171,7 @@
 </template>
 
 <script setup lang="ts">
+  import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { ElMessage } from 'element-plus'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import BusinessWorkspaceHeader from '@/components/business/business-workspace-header/index.vue'

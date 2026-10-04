@@ -43,7 +43,8 @@
               }}</strong>
               <p class="mt-1 text-xs text-[var(--el-text-color-secondary)]">
                 {{ item.material?.materialCode }} · 已领 {{ item.issuedQuantity }} / 申请
-                {{ item.requestedQuantity }} {{ item.material?.baseUnit?.unitName || '' }}
+                {{ item.requestedQuantity }}
+                {{ formatUnitDisplayName(item.material?.baseUnit?.unitName, '') }}
               </p>
             </div>
             <ElTag
@@ -51,7 +52,7 @@
               size="small"
             >
               待领 {{ Math.max(0, item.requestedQuantity - item.issuedQuantity) }}
-              {{ item.material?.baseUnit?.unitName || '' }}
+              {{ formatUnitDisplayName(item.material?.baseUnit?.unitName, '') }}
             </ElTag>
             <ElButton
               v-if="canIssue && item.issuedQuantity < item.requestedQuantity"
@@ -104,6 +105,7 @@
 </template>
 
 <script setup lang="ts">
+  import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
   import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'

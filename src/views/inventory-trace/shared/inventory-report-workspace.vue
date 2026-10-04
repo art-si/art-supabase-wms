@@ -89,6 +89,7 @@
   } from '@/utils/ui/format'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { useAuth } from '@/hooks/core/useAuth'
+  import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import {
     fetchWmsInventoryLocations,
     fetchWmsInventoryReportPage,
@@ -231,7 +232,16 @@
       tenantId: effectiveTenantId.value || undefined
     })
     if (request === reportRequest) navigation.value = result.navigation
-    return { data: result.data, total: result.total }
+    return {
+      data: result.data.map((row) => ({
+        ...row,
+        inventoryUnit: formatUnitDisplayName(row.inventoryUnit),
+        basicUnit: formatUnitDisplayName(row.basicUnit),
+        auxiliaryUnit: formatUnitDisplayName(row.auxiliaryUnit),
+        auxiliaryUnit2: formatUnitDisplayName(row.auxiliaryUnit2)
+      })),
+      total: result.total
+    }
   }
 
   function selectLocation(node: LocationSelection): void {
@@ -404,7 +414,7 @@
       prop: 'inventoryUnit',
       label: '库存单位',
       minWidth: 105,
-      formatter: (row) => row.inventoryUnit || '—'
+      formatter: (row) => formatUnitDisplayName(row.inventoryUnit)
     })
     if (props.kind === 'stock') {
       columns.push(
@@ -449,7 +459,7 @@
         prop: 'basicUnit',
         label: '基本单位',
         minWidth: 105,
-        formatter: (row) => row.basicUnit || '—'
+        formatter: (row) => formatUnitDisplayName(row.basicUnit)
       },
       {
         prop: 'reservedQuantity',
@@ -476,13 +486,13 @@
         prop: 'auxiliaryUnit',
         label: '辅助单位',
         minWidth: 110,
-        formatter: (row) => row.auxiliaryUnit || '—'
+        formatter: (row) => formatUnitDisplayName(row.auxiliaryUnit)
       },
       {
         prop: 'auxiliaryUnit2',
         label: '辅助单位(2)',
         minWidth: 120,
-        formatter: (row) => row.auxiliaryUnit2 || '—'
+        formatter: (row) => formatUnitDisplayName(row.auxiliaryUnit2)
       },
       {
         prop: 'unitCost',

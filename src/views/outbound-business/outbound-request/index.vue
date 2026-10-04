@@ -49,6 +49,7 @@
 </template>
 
 <script setup lang="tsx">
+  import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { ElTag } from 'element-plus'
   import { useRoute, useRouter } from 'vue-router'
   import { useAuth } from '@/hooks/core/useAuth'
@@ -190,7 +191,8 @@
       permission: 'WmsIssueRequest:Export',
       buttonProps: { type: 'warning', plain: true },
       exportFilename: displayTitle.value,
-      exportData: async () => (await fetchRows({ ...search, current: 1, size: 5000 })).data,
+      exportData: async () =>
+        (await fetchRows({ ...search, current: 1, size: 500, exportAll: true })).data,
       exportColumns: [
         { title: '单据编号', key: 'documentNo' },
         { title: '申请类型', key: 'requestType' },
@@ -264,11 +266,12 @@
   function projectName(id: string | null): string {
     return id ? projects.value.find((row) => row.id === id)?.projectName || '历史项目' : '公共库存'
   }
-  async function fetchRows(query: WmsStockQuery) {
-    const applicationDateRange = Array.isArray(
-      (query as WmsStockQuery & { applicationDateRange?: string[] }).applicationDateRange
-    )
-      ? (query as WmsStockQuery & { applicationDateRange?: string[] }).applicationDateRange
+  async function fetchRows(
+    query: WmsStockQuery & { applicationDateRange?: string[]; exportAll?: boolean }
+  ) {
+    const exportAll = query.exportAll === true
+    const applicationDateRange = Array.isArray(query.applicationDateRange)
+      ? query.applicationDateRange
       : []
     const fetchPage = (page: WmsStockQuery) =>
       fetchWmsIssueRequestPage({
@@ -278,6 +281,10 @@
         tenantId: filterTenantId.value
       })
     if (displayMode.value === 'document') {
+      if (exportAll) {
+        const data = await loadAllLinePages(fetchPage, query)
+        return { data, total: data.length }
+      }
       visibleRows.value = []
       return fetchPage(query)
     }
@@ -296,6 +303,16 @@
       (document) => linesByDocument.get(document.id) || [],
       (line) => line.id
     )
+    if (exportAll) {
+      return {
+        data: rows.map((row) => ({
+          ...row,
+          materialCodes: row.detailLine.material?.materialCode || row.materialCodes,
+          materialDescriptions: row.detailLine.material?.materialName || row.materialDescriptions
+        })),
+        total: rows.length
+      }
+    }
     const result = paginateDetailRows(
       rows,
       (query.current - 1) * query.size,
@@ -504,7 +521,8 @@
               prop: 'detailUnit',
               label: '基本单位',
               minWidth: 100,
-              formatter: (row: IssueListRow) => row.detailLine?.material?.baseUnit?.unitName || '—'
+              formatter: (row: IssueListRow) =>
+                formatUnitDisplayName(row.detailLine?.material?.baseUnit?.unitName)
             }
           ]
         : []),

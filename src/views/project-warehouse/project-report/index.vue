@@ -168,6 +168,7 @@
 </template>
 
 <script setup lang="tsx">
+  import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import BusinessWorkspaceHeader from '@/components/business/business-workspace-header/index.vue'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
@@ -406,7 +407,8 @@
     ]
   }
   function materialColumns(): ColumnOption<WmsProjectMaterial>[] {
-    const quantity = (value: number, unit: string) => `${formatNumberValue(value)} ${unit}`
+    const quantity = (value: number, unit: string) =>
+      `${formatNumberValue(value)} ${formatUnitDisplayName(unit)}`
     return [
       {
         prop: 'materialName',
@@ -420,7 +422,7 @@
             tertiary={
               row.quantityUnitName === row.baseUnitName
                 ? `在库 ${quantity(row.stockQuantity, row.quantityUnitName)} · 已领 ${quantity(row.issuedQuantity, row.quantityUnitName)}`
-                : `按${row.quantityUnitName}计数 · 主数据单位${row.baseUnitName}`
+                : `按${formatUnitDisplayName(row.quantityUnitName)}计数 · 主数据单位${formatUnitDisplayName(row.baseUnitName)}`
             }
             icon="ri:stack-line"
           />

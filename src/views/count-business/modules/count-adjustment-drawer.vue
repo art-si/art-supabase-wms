@@ -98,7 +98,11 @@
           <ElTableColumn label="赠品" width="72" align="center">
             <template #default="{ row }">{{ row.gift ? '✓' : '—' }}</template>
           </ElTableColumn>
-          <ElTableColumn prop="inventoryUnitName" label="库存单位" width="100" />
+          <ElTableColumn prop="inventoryUnitName" label="库存单位" width="100"
+            ><template #default="{ row }">{{
+              formatUnitDisplayName(row.inventoryUnitName)
+            }}</template></ElTableColumn
+          >
           <ElTableColumn label="账存数量(库存)" min-width="135" align="right">
             <template #default="{ row }"
               ><span class="tabular-nums">{{ numberText(row.bookQuantity) }}</span></template
@@ -121,7 +125,11 @@
               }}</strong></template
             >
           </ElTableColumn>
-          <ElTableColumn prop="baseUnitName" label="基本单位" width="100" />
+          <ElTableColumn prop="baseUnitName" label="基本单位" width="100"
+            ><template #default="{ row }">{{
+              formatUnitDisplayName(row.baseUnitName)
+            }}</template></ElTableColumn
+          >
           <ElTableColumn label="基本数量" width="110" align="right">
             <template #default="{ row }">{{ numberText(row.baseQuantity) }}</template>
           </ElTableColumn>
@@ -150,7 +158,11 @@
             }}</template></ElTableColumn
           >
           <ElTableColumn prop="keeperName" label="仓管员" min-width="110" />
-          <ElTableColumn prop="auxiliaryUnitName" label="辅助单位" width="105" />
+          <ElTableColumn prop="auxiliaryUnitName" label="辅助单位" width="105"
+            ><template #default="{ row }">{{
+              formatUnitDisplayName(row.auxiliaryUnitName)
+            }}</template></ElTableColumn
+          >
           <ElTableColumn prop="auxiliaryQuantity" label="辅助数量" width="105" align="right" />
           <ElTableColumn prop="auxiliaryUnit2Name" label="辅助单位2" width="110" />
           <ElTableColumn prop="auxiliaryQuantity2" label="辅助数量2" width="110" align="right" />
@@ -211,7 +223,7 @@
                 ><ElOption
                   v-for="unit in units"
                   :key="unit.id"
-                  :label="unit.unitName"
+                  :label="formatUnitDisplayName(unit.unitName)"
                   :value="unit.id" /></ElSelect></template
           ></ElTableColumn>
           <ElTableColumn label="账存数量(库存)" prop="bookQuantity" min-width="135" align="right"
@@ -244,7 +256,7 @@
                 ><ElOption
                   v-for="unit in units"
                   :key="unit.id"
-                  :label="unit.unitName"
+                  :label="formatUnitDisplayName(unit.unitName)"
                   :value="unit.id" /></ElSelect></template
           ></ElTableColumn>
           <ElTableColumn label="基本数量" min-width="115" align="right"
@@ -393,6 +405,7 @@
 </template>
 
 <script setup lang="ts">
+  import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { ElMessage } from 'element-plus'
@@ -667,7 +680,9 @@
       : Math.max(0, row.bookQuantity - row.varianceQuantity)
   }
   function unitName(id: string): string {
-    return id ? units.value.find((item) => item.id === id)?.unitName || '—' : '—'
+    return id
+      ? formatUnitDisplayName(units.value.find((item) => item.id === id)?.unitName, '') || '—'
+      : '—'
   }
   function ownerOptions(ownerType: DraftLine['ownerType']): WmsInitializationOption[] {
     return ownerType === 'supplier'

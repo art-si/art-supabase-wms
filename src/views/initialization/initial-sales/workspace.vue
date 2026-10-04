@@ -94,6 +94,7 @@
 </template>
 
 <script setup lang="tsx">
+  import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { useRoute, useRouter } from 'vue-router'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { ElMessage, ElTag } from 'element-plus'
@@ -340,6 +341,7 @@
     }
   ]
   async function fetchRows(query: {
+    exportAll?: boolean
     status?: string
     customer?: string
     projectName?: string
@@ -348,6 +350,7 @@
     current: number
     size: number
   }) {
+    const exportAll = query.exportAll === true
     const fetchPage = (page: typeof query) =>
       fetchWmsInitialSalesPage({
         ...page,
@@ -355,11 +358,15 @@
         tenantId: effectiveTenantId.value || undefined
       })
     if (displayMode.value === 'line') {
+      if (exportAll) {
+        const data = await loadAllLinePages(fetchPage, query)
+        return { data, total: data.length }
+      }
       const result = await fetchPage(query)
       visibleRows.value = result.data
       return result
     }
-    visibleRows.value = []
+    if (!exportAll) visibleRows.value = []
     const hasMaterialFilter = Boolean(
       query.materialCode?.trim() || query.materialDescription?.trim()
     )
@@ -386,7 +393,13 @@
       totalAmount: group.reduce((sum, line) => sum + Number(line.totalAmount || 0), 0)
     }))
     return {
-      data: documents.slice((query.current - 1) * query.size, query.current * query.size),
+      data: (exportAll
+        ? documents
+        : documents.slice((query.current - 1) * query.size, query.current * query.size)
+      ).map((row) => ({
+        ...row,
+        inventoryUnitName: formatUnitDisplayName(row.inventoryUnitName)
+      })),
       total: documents.length
     }
   }
@@ -491,7 +504,8 @@
       permission: permission.value.Export,
       buttonProps: { type: 'warning', plain: true },
       exportFilename: title.value,
-      exportData: async () => (await fetchRows({ ...search, current: 1, size: 5000 })).data,
+      exportData: async () =>
+        (await fetchRows({ ...search, current: 1, size: 500, exportAll: true })).data,
       exportColumns: [
         { title: '单据编号', key: 'documentNo' },
         { title: '业务日期', key: 'businessDate' },
@@ -627,7 +641,12 @@
         : []),
       { prop: 'materialDescription', label: '物料描述', minWidth: 175, showOverflowTooltip: true },
       { prop: 'specificationModel', label: '规格型号', minWidth: 130 },
-      { prop: 'inventoryUnitName', label: '库存单位', width: 98 },
+      {
+        prop: 'inventoryUnitName',
+        label: '库存单位',
+        width: 98,
+        formatter: (row) => formatUnitDisplayName(row.inventoryUnitName)
+      },
       {
         prop: 'quantity',
         label: '数量',

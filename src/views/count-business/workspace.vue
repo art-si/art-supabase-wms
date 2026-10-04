@@ -47,6 +47,7 @@
 </template>
 
 <script setup lang="tsx">
+  import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { ElMessage, ElTag } from 'element-plus'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { useTenantScopeFormPolicy } from '@/hooks/core/useTenantScopeFormPolicy'
@@ -212,18 +213,23 @@
       props: { clearable: true, placeholder: '单据编号' }
     }
   ]
-  async function fetchRows(query: WmsStockQuery) {
+  async function fetchRows(query: WmsStockQuery & { exportAll?: boolean }) {
+    const exportAll = query.exportAll === true
     const fetchPage = (page: WmsStockQuery) =>
       fetchWmsCountAdjustmentPage(props.kind, {
         ...page,
         tenantId: effectiveTenantId.value || undefined
       })
     if (displayMode.value === 'line') {
+      if (exportAll) {
+        const data = await loadAllLinePages(fetchPage, query)
+        return { data, total: data.length }
+      }
       const result = await fetchPage(query)
       visibleRows.value = result.data
       return result
     }
-    visibleRows.value = []
+    if (!exportAll) visibleRows.value = []
     const lines = await loadAllLinePages(fetchPage, query)
     const documents = groupDocumentLines(lines, (line) => line.documentId).map(
       ({ first, lines: group }) => ({
@@ -238,7 +244,13 @@
       })
     )
     return {
-      data: documents.slice((query.current - 1) * query.size, query.current * query.size),
+      data: (exportAll
+        ? documents
+        : documents.slice((query.current - 1) * query.size, query.current * query.size)
+      ).map((row) => ({
+        ...row,
+        inventoryUnitName: formatUnitDisplayName(row.inventoryUnitName)
+      })),
       total: documents.length
     }
   }
@@ -305,7 +317,8 @@
       permission: permission.value.Export,
       buttonProps: { type: 'warning', plain: true },
       exportFilename: title.value,
-      exportData: async () => (await fetchRows({ ...search, current: 1, size: 5000 })).data,
+      exportData: async () =>
+        (await fetchRows({ ...search, current: 1, size: 500, exportAll: true })).data,
       exportColumns: [
         { title: '单据编号', key: 'documentNo' },
         { title: '业务日期', key: 'businessDate' },
@@ -404,7 +417,12 @@
       { prop: 'specificationModel', label: '规格型号', minWidth: 125 },
       { prop: 'projectName', label: '项目名称', minWidth: 150, showOverflowTooltip: true },
       { prop: 'constructionNo', label: '施工号', minWidth: 110 },
-      { prop: 'inventoryUnitName', label: '库存单位', width: 98 },
+      {
+        prop: 'inventoryUnitName',
+        label: '库存单位',
+        width: 98,
+        formatter: (row) => formatUnitDisplayName(row.inventoryUnitName)
+      },
       { prop: 'bookQuantity', label: '账存数量(库存)', minWidth: 135, align: 'right' },
       { prop: 'countedQuantity', label: '盘点数量(库存)', minWidth: 135, align: 'right' },
       {

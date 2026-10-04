@@ -508,6 +508,7 @@
 </template>
 
 <script setup lang="ts">
+  import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { parseSerialNumberText } from '@/utils/file/serial-number-text'
@@ -822,7 +823,10 @@
     return isReturn.value && column.property === 'quantity' ? 'sales-return-quantity-cell' : ''
   }
   const salesUnitOptions = computed(() =>
-    units.value.map((item) => ({ label: `${item.unitName} · ${item.unitCode}`, value: item.id }))
+    units.value.map((item) => ({
+      label: `${formatUnitDisplayName(item.unitName)}`,
+      value: item.id
+    }))
   )
   const headerItems = computed<FormItem[]>(() => [
     {
@@ -947,7 +951,7 @@
     )
   }
   function unitName(id: string | null): string {
-    return units.value.find((item) => item.id === id)?.unitName || '—'
+    return formatUnitDisplayName(units.value.find((item) => item.id === id)?.unitName, '') || '—'
   }
   function projectName(id: string | null): string {
     return projects.value.find((item) => item.id === id)?.name || '—'

@@ -71,6 +71,7 @@
 </template>
 
 <script setup lang="ts">
+  import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
@@ -274,7 +275,7 @@
             label: '目标显示单位',
             type: 'select' as const,
             options: availableUnits.value.map((row) => ({
-              label: `${row.unitName} · ${row.unitCode}`,
+              label: `${formatUnitDisplayName(row.unitName)}`,
               value: row.id
             })),
             props: { filterable: true, placeholder: '选择已配置换算关系的单位' },
