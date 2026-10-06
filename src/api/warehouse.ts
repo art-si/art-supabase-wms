@@ -1,7 +1,6 @@
-import { buildSupabasePageRange } from '@/utils/supabase/pagination'
+import { buildSupabasePageRange, fetchAllRangePages } from '@/utils/supabase/pagination'
 import { uniq } from 'lodash-es'
 import { useSupabase } from '@/hooks'
-import { fetchAllRangePages } from '@/utils/supabase/pagination'
 import { loadAllDocumentPages } from '@/utils/business/document-detail-list'
 import { buildOrIlikeFilter } from '@/utils/supabase/search'
 import { normalizeNullableText } from '@/utils/form/normalize'
@@ -139,6 +138,7 @@ export async function fetchWmsMaterialOptions(
   size: number,
   nonSerialOnly = false
 ) {
+  const pageRange = buildSupabasePageRange({ current, size })
   let query = supabase
     .from('mdm_material')
     .select(
@@ -152,7 +152,7 @@ export async function fetchWmsMaterialOptions(
   if (keyword.trim())
     query = query.or(buildOrIlikeFilter(['material_code', 'material_name'], keyword))
   const { data, total } = await responseHandle<WmsMaterialOption[]>(
-    () => query.order('id').range((current - 1) * size, current * size - 1),
+    () => query.order('id').range(pageRange.from, pageRange.to),
     readOptions
   )
   return { data: data ?? [], total: total ?? 0 }
@@ -274,6 +274,7 @@ export async function fetchWmsProjectSections(projectId?: string): Promise<WmsPr
 }
 
 export async function fetchWmsProjectSectionPage(params: WmsSectionQuery) {
+  const pageRange = buildSupabasePageRange(params)
   let query = supabase
     .from('mdm_project_construction')
     .select('*', { count: 'exact' })
@@ -285,8 +286,7 @@ export async function fetchWmsProjectSectionPage(params: WmsSectionQuery) {
     query = query.or(buildOrIlikeFilter(['construction_no', 'section_name'], params.keyword))
   }
   const { data, total } = await responseHandle<WmsProjectSection[]>(
-    () =>
-      query.order('id').range((params.current - 1) * params.size, params.current * params.size - 1),
+    () => query.order('id').range(pageRange.from, pageRange.to),
     readOptions
   )
   return { data: data ?? [], total: total ?? 0 }
@@ -302,6 +302,7 @@ export async function saveWmsProjectSection(input: WmsSectionInput): Promise<str
 }
 
 export async function fetchWmsStockPage(params: WmsStockQuery) {
+  const pageRange = buildSupabasePageRange(params)
   let query = supabase
     .from('wms_inventory_batch')
     .select(
@@ -324,7 +325,7 @@ export async function fetchWmsStockPage(params: WmsStockQuery) {
   if (params.keyword?.trim())
     query = query.or(buildOrIlikeFilter(['batch_no', 'remark'], params.keyword))
   const { data, total } = await responseHandle<WmsStockBatch[]>(
-    () => query.range((params.current - 1) * params.size, params.current * params.size - 1),
+    () => query.range(pageRange.from, pageRange.to),
     readOptions
   )
   return { data: data ?? [], total: total ?? 0 }
@@ -356,6 +357,7 @@ export async function fetchWmsSalesReturnAllocationPage(params: {
   current: number
   size: number
 }) {
+  const pageRange = buildSupabasePageRange(params)
   const keyword = params.keyword.trim()
   const noticeJoin = keyword ? '!inner' : ''
   let query = supabase
@@ -373,8 +375,7 @@ export async function fetchWmsSalesReturnAllocationPage(params: {
     if (params.tenantId) query = query.eq('shippingNotice.tenant_id', params.tenantId)
   }
   const { data, total } = await responseHandle<WmsSalesReturnAllocation[]>(
-    () =>
-      query.order('id').range((params.current - 1) * params.size, params.current * params.size - 1),
+    () => query.order('id').range(pageRange.from, pageRange.to),
     readOptions
   )
   return { data: data ?? [], total: total ?? 0 }
@@ -402,6 +403,7 @@ export async function postWmsSalesReturn(payload: WmsSalesReturnInput): Promise<
 }
 
 export async function fetchWmsMovementPage(params: WmsStockQuery) {
+  const pageRange = buildSupabasePageRange(params)
   let query = supabase
     .from('wms_inventory_movement')
     .select(
@@ -418,14 +420,14 @@ export async function fetchWmsMovementPage(params: WmsStockQuery) {
   if (params.constructionNo) query = query.eq('construction_no', params.constructionNo)
   if (params.keyword?.trim()) query = query.ilike('reference_no', `%${params.keyword.trim()}%`)
   const { data, total } = await responseHandle<WmsMovement[]>(
-    () =>
-      query.order('id').range((params.current - 1) * params.size, params.current * params.size - 1),
+    () => query.order('id').range(pageRange.from, pageRange.to),
     readOptions
   )
   return { data: data ?? [], total: total ?? 0 }
 }
 
 export async function fetchWmsDirectTransferPage(params: WmsStockQuery) {
+  const pageRange = buildSupabasePageRange(params)
   let query = supabase
     .from('wms_inventory_movement')
     .select(
@@ -443,14 +445,14 @@ export async function fetchWmsDirectTransferPage(params: WmsStockQuery) {
   if (params.constructionNo) query = query.eq('construction_no', params.constructionNo)
   if (params.keyword?.trim()) query = query.ilike('reference_no', `%${params.keyword.trim()}%`)
   const { data, total } = await responseHandle<WmsDirectTransfer[]>(
-    () =>
-      query.order('id').range((params.current - 1) * params.size, params.current * params.size - 1),
+    () => query.order('id').range(pageRange.from, pageRange.to),
     readOptions
   )
   return { data: data ?? [], total: total ?? 0 }
 }
 
 export async function fetchWmsSerialPage(params: WmsStockQuery) {
+  const pageRange = buildSupabasePageRange(params)
   if (params.projectId) {
     const { data } = await responseHandle<{ data: WmsSerial[]; total: number }>(
       () =>
@@ -461,7 +463,7 @@ export async function fetchWmsSerialPage(params: WmsStockQuery) {
           p_warehouse_id: params.warehouseId || null,
           p_status: params.status || null,
           p_keyword: normalizeNullableText(params.keyword),
-          p_offset: (params.current - 1) * params.size,
+          p_offset: pageRange.from,
           p_limit: params.size
         }),
       readOptions
@@ -483,8 +485,7 @@ export async function fetchWmsSerialPage(params: WmsStockQuery) {
   if (params.status) query = query.eq('status', params.status)
   if (params.keyword?.trim()) query = query.ilike('serial_no', `%${params.keyword.trim()}%`)
   const { data, total } = await responseHandle<WmsSerial[]>(
-    () =>
-      query.order('id').range((params.current - 1) * params.size, params.current * params.size - 1),
+    () => query.order('id').range(pageRange.from, pageRange.to),
     readOptions
   )
   const rows = data ?? []
@@ -671,6 +672,7 @@ export async function transferWmsProject(payload: WmsProjectTransferInput): Prom
 }
 
 export async function fetchWmsTransferPage(params: WmsStockQuery) {
+  const pageRange = buildSupabasePageRange(params)
   let query = supabase
     .from('wms_transfer_document')
     .select(
@@ -684,8 +686,7 @@ export async function fetchWmsTransferPage(params: WmsStockQuery) {
   if (params.status) query = query.eq('status', params.status)
   if (params.keyword?.trim()) query = query.ilike('document_no', `%${params.keyword.trim()}%`)
   const { data, total } = await responseHandle<WmsTransferDocument[]>(
-    () =>
-      query.order('id').range((params.current - 1) * params.size, params.current * params.size - 1),
+    () => query.order('id').range(pageRange.from, pageRange.to),
     readOptions
   )
   return { data: data ?? [], total: total ?? 0 }
@@ -699,6 +700,7 @@ export async function createWmsTransfer(payload: WmsTransferInput): Promise<void
 }
 
 export async function fetchWmsTransferRequestPage(params: WmsStockQuery) {
+  const pageRange = buildSupabasePageRange(params)
   let query = supabase
     .from('wms_transfer_request_list')
     .select('*', { count: 'exact' })
@@ -718,11 +720,7 @@ export async function fetchWmsTransferRequestPage(params: WmsStockQuery) {
     query = query.ilike('material_code', `%${params.materialCode.trim()}%`)
   if (params.keyword?.trim()) query = query.ilike('document_no', `%${params.keyword.trim()}%`)
   const { data, total } = await responseHandle<WmsTransferRequestRow[]>(
-    () =>
-      query
-        .order('document_id')
-        .order('line_id')
-        .range((params.current - 1) * params.size, params.current * params.size - 1),
+    () => query.order('document_id').order('line_id').range(pageRange.from, pageRange.to),
     readOptions
   )
   return { data: data ?? [], total: total ?? 0 }
@@ -791,6 +789,7 @@ export async function fetchWmsCountAdjustmentPage(
   kind: WmsCountAdjustmentKind,
   params: WmsStockQuery
 ) {
+  const pageRange = buildSupabasePageRange(params)
   let query = supabase
     .from('wms_count_adjustment_list')
     .select('*', { count: 'exact' })
@@ -807,11 +806,7 @@ export async function fetchWmsCountAdjustmentPage(
     query = query.ilike('material_code', `%${params.materialCode.trim()}%`)
   if (params.keyword?.trim()) query = query.ilike('document_no', `%${params.keyword.trim()}%`)
   const { data, total } = await responseHandle<WmsCountAdjustmentRow[]>(
-    () =>
-      query
-        .order('document_id')
-        .order('line_id')
-        .range((params.current - 1) * params.size, params.current * params.size - 1),
+    () => query.order('document_id').order('line_id').range(pageRange.from, pageRange.to),
     readOptions
   )
   return { data: data ?? [], total: total ?? 0 }
@@ -863,6 +858,7 @@ export async function changeWmsCountAdjustmentStatus(
 }
 
 export async function fetchWmsIssueRequestPage(params: WmsStockQuery) {
+  const pageRange = buildSupabasePageRange(params)
   let query = supabase
     .from('wms_issue_request_list')
     .select('*', { count: 'exact' })
@@ -889,8 +885,7 @@ export async function fetchWmsIssueRequestPage(params: WmsStockQuery) {
     )
   if (params.keyword?.trim()) query = query.ilike('document_no', `%${params.keyword.trim()}%`)
   const { data, total } = await responseHandle<WmsIssueRequest[]>(
-    () =>
-      query.order('id').range((params.current - 1) * params.size, params.current * params.size - 1),
+    () => query.order('id').range(pageRange.from, pageRange.to),
     readOptions
   )
   return { data: data ?? [], total: total ?? 0 }
@@ -1052,6 +1047,7 @@ export async function cancelWmsTransfer(id: string): Promise<void> {
 }
 
 export async function fetchWmsCountPlanPage(params: WmsStockQuery) {
+  const pageRange = buildSupabasePageRange(params)
   let query = supabase
     .from('wms_count_plan')
     .select(
@@ -1068,8 +1064,7 @@ export async function fetchWmsCountPlanPage(params: WmsStockQuery) {
   if (params.status) query = query.eq('status', params.status)
   if (params.keyword?.trim()) query = query.ilike('document_no', `%${params.keyword.trim()}%`)
   const { data, total } = await responseHandle<WmsCountPlan[]>(
-    () =>
-      query.order('id').range((params.current - 1) * params.size, params.current * params.size - 1),
+    () => query.order('id').range(pageRange.from, pageRange.to),
     readOptions
   )
   return { data: data ?? [], total: total ?? 0 }
@@ -1174,6 +1169,7 @@ export async function cancelWmsCountPlan(id: string): Promise<void> {
 }
 
 export async function fetchWmsAdjustmentPage(params: WmsStockQuery) {
+  const pageRange = buildSupabasePageRange(params)
   let query = supabase
     .from('wms_adjustment_document')
     .select(
@@ -1187,8 +1183,7 @@ export async function fetchWmsAdjustmentPage(params: WmsStockQuery) {
   if (params.status) query = query.eq('adjustment_type', params.status)
   if (params.keyword?.trim()) query = query.ilike('document_no', `%${params.keyword.trim()}%`)
   const { data, total } = await responseHandle<WmsAdjustmentDocument[]>(
-    () =>
-      query.order('id').range((params.current - 1) * params.size, params.current * params.size - 1),
+    () => query.order('id').range(pageRange.from, pageRange.to),
     readOptions
   )
   return { data: data ?? [], total: total ?? 0 }
@@ -1202,6 +1197,7 @@ export async function postWmsAdjustment(payload: WmsAdjustmentInput): Promise<vo
 }
 
 export async function fetchWmsAssemblyPage(params: WmsStockQuery) {
+  const pageRange = buildSupabasePageRange(params)
   let query = supabase
     .from('wms_assembly_document')
     .select(
@@ -1215,8 +1211,7 @@ export async function fetchWmsAssemblyPage(params: WmsStockQuery) {
   if (params.warehouseId) query = query.eq('warehouse_id', params.warehouseId)
   if (params.keyword?.trim()) query = query.ilike('document_no', `%${params.keyword.trim()}%`)
   const { data, total } = await responseHandle<WmsAssemblyDocument[]>(
-    () =>
-      query.order('id').range((params.current - 1) * params.size, params.current * params.size - 1),
+    () => query.order('id').range(pageRange.from, pageRange.to),
     readOptions
   )
   return { data: data ?? [], total: total ?? 0 }
@@ -1288,6 +1283,7 @@ export async function fetchWmsProjectSummary(
 }
 
 export async function fetchWmsProjectWorkOrderPage(params: WmsStockQuery) {
+  const pageRange = buildSupabasePageRange(params)
   if (!params.projectId) return { data: [] as WmsProjectWorkOrder[], total: 0 }
   let query = supabase
     .from('mes_work_order')
@@ -1302,14 +1298,14 @@ export async function fetchWmsProjectWorkOrderPage(params: WmsStockQuery) {
   if (params.constructionNo) query = query.eq('construction_no', params.constructionNo)
   if (params.keyword?.trim()) query = query.ilike('work_order_no', `%${params.keyword.trim()}%`)
   const { data, total } = await responseHandle<WmsProjectWorkOrder[]>(
-    () =>
-      query.order('id').range((params.current - 1) * params.size, params.current * params.size - 1),
+    () => query.order('id').range(pageRange.from, pageRange.to),
     readOptions
   )
   return { data: data ?? [], total: total ?? 0 }
 }
 
 export async function fetchWmsProjectPackPage(params: WmsStockQuery) {
+  const pageRange = buildSupabasePageRange(params)
   if (!params.projectId) return { data: [] as WmsProjectPack[], total: 0 }
   const { data } = await responseHandle<{ data: WmsProjectPack[]; total: number }>(
     () =>
@@ -1317,7 +1313,7 @@ export async function fetchWmsProjectPackPage(params: WmsStockQuery) {
         p_project_id: params.projectId,
         p_construction_no: params.constructionNo || null,
         p_keyword: normalizeNullableText(params.keyword),
-        p_offset: (params.current - 1) * params.size,
+        p_offset: pageRange.from,
         p_limit: params.size
       }),
     readOptions
@@ -1326,6 +1322,7 @@ export async function fetchWmsProjectPackPage(params: WmsStockQuery) {
 }
 
 export async function fetchWmsProjectMaterialPage(params: WmsStockQuery) {
+  const pageRange = buildSupabasePageRange(params)
   if (!params.projectId) return { data: [] as WmsProjectMaterial[], total: 0 }
   const { data } = await responseHandle<{ data: WmsProjectMaterial[]; total: number }>(
     () =>
@@ -1333,7 +1330,7 @@ export async function fetchWmsProjectMaterialPage(params: WmsStockQuery) {
         p_project_id: params.projectId,
         p_construction_no: params.constructionNo || null,
         p_keyword: normalizeNullableText(params.keyword),
-        p_offset: (params.current - 1) * params.size,
+        p_offset: pageRange.from,
         p_limit: params.size
       }),
     readOptions
@@ -1342,6 +1339,7 @@ export async function fetchWmsProjectMaterialPage(params: WmsStockQuery) {
 }
 
 export async function fetchWmsProjectMovementPage(params: WmsStockQuery) {
+  const pageRange = buildSupabasePageRange(params)
   if (!params.projectId) return { data: [] as WmsMovement[], total: 0 }
   const { data } = await responseHandle<{ data: WmsMovement[]; total: number }>(
     () =>
@@ -1349,7 +1347,7 @@ export async function fetchWmsProjectMovementPage(params: WmsStockQuery) {
         p_project_id: params.projectId,
         p_construction_no: params.constructionNo || null,
         p_keyword: normalizeNullableText(params.keyword),
-        p_offset: (params.current - 1) * params.size,
+        p_offset: pageRange.from,
         p_limit: params.size
       }),
     readOptions
