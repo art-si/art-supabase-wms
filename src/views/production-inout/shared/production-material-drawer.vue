@@ -5,7 +5,15 @@
     :show-footer="mode !== 'view'"
     show-fullscreen-button
   >
-    <div class="min-w-0 space-y-4">
+    <ArtEmptyState
+      v-if="documentError"
+      title="单据加载失败"
+      :description="documentError"
+      size="compact"
+    >
+      <ElButton type="primary" @click="reloadDocument">重新加载</ElButton>
+    </ArtEmptyState>
+    <div v-else class="min-w-0 space-y-4">
       <ArtEntitySummary
         :icon="config.icon"
         :title="form.documentNo || `${mode === 'copy' ? '复制' : '新增'}${title}`"
@@ -32,7 +40,11 @@
         </template>
       </ArtEntitySummary>
       <ElAlert v-if="optionError" type="error" :closable="false" show-icon>
-        基础资料加载失败，请重试后再保存。
+        {{
+          mode === 'view'
+            ? '基础资料加载失败，部分名称暂不可用，请重新加载。'
+            : '基础资料加载失败，请重试后再保存。'
+        }}
         <ElButton link type="primary" @click="loadOptions">重新加载</ElButton>
       </ElAlert>
       <ElAlert
@@ -75,7 +87,15 @@
             : '仓库决定库存组织及租户；项目选定后自动带入客户。'
         "
       >
-        <ArtDescriptions v-if="mode === 'view'" :data="headerViewData" :items="headerViewItems">
+        <ArtDescriptions
+          v-if="mode === 'view'"
+          class="production-header-descriptions"
+          :data="headerViewData"
+          :items="headerViewItems"
+          :columns="2"
+          :label-width="120"
+          border
+        >
           <template #item-status>
             <ElTag
               :type="
@@ -390,6 +410,8 @@
         </template>
         <ElScrollbar v-if="lines.length">
           <ArtTable
+            ref="lineTableRef"
+            class="wms-editable-line-table"
             :data="lines"
             :columns="lineColumns"
             :pagination="false"
@@ -588,7 +610,7 @@
                   :label="owner.name"
                   :value="owner.id" /></ElSelect
               ><span v-else>{{
-                row.ownerType === 'self' ? '自有' : row.ownerId || '—'
+                formatWmsOwnerName(row.ownerType, row.ownerId, suppliers, customers)
               }}</span></template
             >
             <template #stockStatus="{ row }"
@@ -665,13 +687,37 @@
   </ArtDrawer>
 
   <ArtDialog ref="serialDialogRef" size="sm" :show-footer="mode !== 'view'">
+    <ArtEmptyState
+      v-if="serialError"
+      title="序列号加载失败"
+      description="请重新加载当前明细的序列号。"
+      size="compact"
+    >
+      <ElButton type="primary" @click="loadInlineSerialOptions">重新加载</ElButton>
+    </ArtEmptyState>
+    <template v-else-if="mode === 'view'">
+      <ArtEmptyState
+        v-if="!serialText.trim()"
+        title="暂无序列号"
+        description="当前明细尚未登记序列号。"
+        size="compact"
+      />
+      <ElInput
+        v-else
+        v-model="serialText"
+        type="textarea"
+        :rows="10"
+        readonly
+        aria-label="当前明细序列号"
+      />
+    </template>
     <ElSelect
-      v-if="isOutbound"
+      v-else-if="isOutbound"
       v-model="serialIdsDraft"
       multiple
       filterable
       class="w-full"
-      :disabled="mode === 'view'"
+      aria-label="选择来源序列号"
       placeholder="选择来源序列号"
     >
       <ElOption
@@ -686,13 +732,14 @@
       v-model="serialText"
       type="textarea"
       :rows="10"
-      :readonly="mode === 'view'"
       placeholder="每行一个序列号"
+      aria-label="逐行录入序列号"
     />
   </ArtDialog>
 </template>
 
 <script setup lang="ts">
+  import { formatWmsOwnerName } from '@/utils/wms/owner-display'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
@@ -700,6 +747,7 @@
   import { ElMessage } from 'element-plus'
   import type { EmployeeIntegrationItem } from '@/api/integration/employees'
   import { fetchOrganizationOptionsTree } from '@/api/system-manage'
+  import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
   import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
@@ -729,6 +777,7 @@
   import { normalizeNullableText } from '@/utils/form/normalize'
   import {
     fetchWmsBatchSerials,
+    fetchWmsSerialsByIds,
     fetchWmsBins,
     fetchWmsInitialOptions,
     fetchWmsInventoryOrganizations,
@@ -786,8 +835,12 @@
   const drawerRef = ref<ArtDrawerExpose<OpenData>>()
   const serialDialogRef = ref<ArtDialogExpose>()
   const formRef = ref<InstanceType<typeof ArtForm>>()
+  const lineTableRef = ref<InstanceType<typeof ArtTable>>()
   const mode = ref<OpenData['mode']>('create')
   const optionError = ref(false)
+  const documentError = ref('')
+  const openData = shallowRef<OpenData>()
+  let documentRequest = 0
   const importIntent = ref(false)
   const selectIntent = ref(false)
   const currentDocument = shallowRef<WmsProductionMaterialDocument | null>(null)
@@ -808,6 +861,9 @@
   const lines = ref<DraftLine[]>([])
   const editLine = ref<DraftLine | null>(null)
   const serialText = ref('')
+  const serialError = ref(false)
+  const activeSerialLine = shallowRef<DraftLine>()
+  let serialRequest = 0
   const serialIdsDraft = ref<string[]>([])
   const selectedLineIndexes = ref<number[]>([])
   const selectedApplicant = ref<EmployeeIntegrationItem[]>([])
@@ -968,9 +1024,10 @@
     {
       key: 'materialStatus',
       label: isFinished.value ? '办理状态' : isReturn.value ? '状态' : '领料状态',
-      field: 'materialStatus'
+      field: 'materialStatus',
+      span: props.kind === 'finished_return' ? 1 : 2
     },
-    { key: 'remark', label: '备注', field: 'remark', span: 3 }
+    { key: 'remark', label: '备注', field: 'remark', span: 2 }
   ])
   const eligibleWarehouses = computed(() =>
     warehouses.value.filter(
@@ -1071,7 +1128,9 @@
     }))
   )
   const lineColumns = computed<ColumnOption<DraftLine>[]>(() => [
-    { type: 'selection', width: 48, fixed: 'left' },
+    ...(mode.value === 'view'
+      ? []
+      : [{ type: 'selection', width: 48, fixed: 'left' } as ColumnOption<DraftLine>]),
     { prop: 'lineNo', label: '行号', width: 72 },
     { prop: 'materialId', label: '物料描述', minWidth: 245, useSlot: true },
     {
@@ -1091,7 +1150,7 @@
           {
             prop: 'productionUnitId',
             label: '生产单位',
-            minWidth: 105,
+            minWidth: 140,
             useSlot: true
           },
           {
@@ -1121,7 +1180,13 @@
       align: 'right',
       useSlot: true
     },
-    { prop: 'inventoryUnitId', label: '库存单位', width: 105, useSlot: true },
+    {
+      prop: 'inventoryUnitId',
+      label: '库存单位',
+      minWidth: 140,
+      useSlot: true,
+      required: mode.value !== 'view'
+    },
     { prop: 'projectId', label: '项目名称', minWidth: 145, useSlot: true },
     {
       prop: 'projectCode',
@@ -1134,12 +1199,18 @@
     {
       prop: 'baseUnitId',
       label: '基本单位',
-      minWidth: 105,
+      minWidth: 140,
       useSlot: true
     },
     { prop: 'baseQuantity', label: '基本数量', minWidth: 110, align: 'right' },
     { prop: 'batchNo', label: '批号', minWidth: 140, useSlot: true },
-    { prop: 'warehouseId', label: '仓库', minWidth: 120, useSlot: true },
+    {
+      prop: 'warehouseId',
+      label: '仓库',
+      minWidth: 160,
+      useSlot: true,
+      required: mode.value !== 'view'
+    },
     {
       prop: 'binId',
       label: '仓位',
@@ -1169,13 +1240,14 @@
     {
       prop: 'stockType',
       label: '库存类型',
-      minWidth: 105,
-      useSlot: true
+      minWidth: 155,
+      useSlot: true,
+      required: mode.value !== 'view'
     },
     {
       prop: 'ownerType',
       label: '货主类型',
-      minWidth: 105,
+      minWidth: 155,
       useSlot: true
     },
     {
@@ -1187,7 +1259,7 @@
     {
       prop: 'stockStatus',
       label: '库存状态',
-      minWidth: 105,
+      minWidth: 155,
       useSlot: true
     },
     {
@@ -1235,7 +1307,13 @@
     { prop: 'sourceDocument', label: '来源单据', minWidth: 150 },
     { prop: 'sourceLineNo', label: '源行号', minWidth: 95 },
     { prop: 'remark', label: '备注', minWidth: 180, useSlot: true },
-    { prop: 'operation', label: '操作', width: 145, fixed: 'right', useSlot: true }
+    {
+      prop: 'operation',
+      label: '操作',
+      width: 145,
+      fixed: 'right',
+      useSlot: true
+    }
   ])
   const headerItems = computed<FormItem[]>(() => [
     { key: 'documentNo', label: config.value.numberLabel, type: 'input' },
@@ -1878,14 +1956,20 @@
     bins.value = line.warehouseId ? await fetchWmsBins(line.warehouseId) : []
   }
   async function openInlineSerials(line: DraftLine): Promise<void> {
+    activeSerialLine.value = line
+    serialError.value = false
     serialText.value = line.serialNos.join('\n')
     serialIdsDraft.value = [...line.serialIds]
-    serials.value = line.sourceBatchId ? await fetchWmsBatchSerials(line.sourceBatchId) : []
     await serialDialogRef.value?.handleOpen(undefined, {
       title: `第 ${line.lineNo} 行序列号`,
       showFooter: mode.value !== 'view',
       confirmText: '保存序列号',
+      onClose: () => {
+        ++serialRequest
+        return true
+      },
       onConfirm: () => {
+        if (serialError.value) return false
         const serialNos = serialText.value
           .split(/\r?\n/)
           .map((item) => item.trim())
@@ -1903,13 +1987,40 @@
         return true
       }
     })
+    await loadInlineSerialOptions()
+  }
+  async function loadInlineSerialOptions(): Promise<void> {
+    const line = activeSerialLine.value
+    if (!line) return
+    const request = ++serialRequest
+    serialError.value = false
+    serialDialogRef.value?.setLoading(true)
+    serialDialogRef.value?.setOptions({ confirmDisabled: true })
+    try {
+      if (mode.value === 'view' && isOutbound.value) {
+        const records = await fetchWmsSerialsByIds(line.serialIds)
+        if (request !== serialRequest) return
+        if (records.length !== new Set(line.serialIds).size)
+          throw new Error('序列号不存在或无权查看')
+        serialText.value = records.map((record) => record.serialNo).join('\n')
+      } else if (isOutbound.value) {
+        const records = line.sourceBatchId ? await fetchWmsBatchSerials(line.sourceBatchId) : []
+        if (request !== serialRequest) return
+        serials.value = records
+      }
+      if (request === serialRequest) serialDialogRef.value?.setOptions({ confirmDisabled: false })
+    } catch {
+      if (request === serialRequest) serialError.value = true
+    } finally {
+      if (request === serialRequest) serialDialogRef.value?.setLoading(false)
+    }
   }
   async function onDocumentTypeChange(): Promise<void> {
     const documentTypeId = form.value.documentTypeId
     const tenantId = form.value.tenantId
     const businessRows =
       documentTypeId && tenantId
-        ? await fetchWmsProductionBusinessTypes(tenantId, documentTypeId)
+        ? await fetchWmsProductionBusinessTypes(props.kind, tenantId, documentTypeId)
         : []
     if (form.value.documentTypeId !== documentTypeId || form.value.tenantId !== tenantId) return
     businessTypes.value = businessRows
@@ -1942,7 +2053,7 @@
       form.value.documentTypeId = documentRows.find((item) => item.isDefault)?.id || ''
     const documentTypeId = form.value.documentTypeId
     const businessRows = documentTypeId
-      ? await fetchWmsProductionBusinessTypes(tenantId, documentTypeId)
+      ? await fetchWmsProductionBusinessTypes(props.kind, tenantId, documentTypeId)
       : []
     if (form.value.tenantId !== tenantId || form.value.documentTypeId !== documentTypeId) return
     businessTypes.value = businessRows
@@ -1973,8 +2084,10 @@
       const initializedOrganizations = organizations.value.filter(
         (item) => item.initializationClosedAt
       )
-      if (!form.value.organizationId && initializedOrganizations.length === 1)
-        form.value.organizationId = initializedOrganizations[0].id
+      if (!form.value.organizationId)
+        form.value.organizationId =
+          initializedOrganizations.find((item) => item.isDefault)?.id ||
+          (initializedOrganizations.length === 1 ? initializedOrganizations[0].id : '')
       if (!form.value.tenantId && form.value.organizationId)
         form.value.tenantId =
           organizations.value.find((item) => item.id === form.value.organizationId)?.tenantId || ''
@@ -2005,6 +2118,10 @@
       }
     } catch {
       optionError.value = true
+    } finally {
+      drawerRef.value?.setOptions({
+        confirmDisabled: optionError.value || Boolean(documentError.value)
+      })
     }
   }
   async function onOrganizationChange(organizationId: string): Promise<void> {
@@ -2115,7 +2232,7 @@
     }
   }
   async function save(): Promise<boolean> {
-    if (optionError.value) return false
+    if (optionError.value || documentError.value) return false
     try {
       if (!(await validateArtFormForSubmit(formRef.value))) return false
     } catch (error) {
@@ -2151,6 +2268,11 @@
       return false
     }
     const conversionError = lines.value.map(lineUnitConversionError).find(Boolean)
+    const validation = await lineTableRef.value?.validate()
+    if (!validation?.valid) {
+      if (validation?.firstError) ElMessage.warning(validation.firstError.message)
+      return false
+    }
     if (conversionError) {
       ElMessage.warning(conversionError)
       return false
@@ -2261,6 +2383,9 @@
     }
   }
   async function handleOpen(data: OpenData): Promise<void> {
+    ++documentRequest
+    openData.value = data
+    documentError.value = ''
     mode.value = data.mode
     importIntent.value = Boolean(data.importIntent)
     selectIntent.value = Boolean(data.selectIntent)
@@ -2278,12 +2403,26 @@
       loadingText: '正在加载单据资料…',
       showFooter: data.mode !== 'view',
       confirmText: data.mode === 'copy' ? '保存副本' : '保存',
-      onConfirm: save
+      onConfirm: save,
+      onClose: () => {
+        ++documentRequest
+        return true
+      }
     })
+    await reloadDocument()
+  }
+  async function reloadDocument(): Promise<void> {
+    const data = openData.value
+    if (!data) return
+    const currentRequest = ++documentRequest
+    documentError.value = ''
+    drawerRef.value?.setLoading(true)
+    drawerRef.value?.setOptions({ confirmDisabled: true })
     try {
       const source = data.documentId
         ? await fetchWmsProductionMaterialDocument(data.documentId)
         : undefined
+      if (currentRequest !== documentRequest) return
       if (source && source.kind !== props.kind) throw new Error('单据类型不匹配')
       currentDocument.value = source ?? null
       Object.assign(form.value, {
@@ -2319,15 +2458,31 @@
       await loadOptions()
       await nextTick()
       formRef.value?.clearValidate()
+      if (currentRequest !== documentRequest) return
       if (source) drawerRef.value?.setOptions({ subtitle: source.documentNo })
+      drawerRef.value?.setOptions({ confirmDisabled: optionError.value })
+    } catch (error) {
+      if (currentRequest !== documentRequest) return
+      documentError.value = '请重新加载单据；如仍失败，请检查网络和当前单据的查看权限。'
+      notifyFriendlyError(error, '生产单据加载失败，请重新加载')
     } finally {
-      drawerRef.value?.setLoading(false)
+      if (currentRequest === documentRequest) drawerRef.value?.setLoading(false)
     }
   }
   defineExpose({ handleOpen })
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+  @use '@/assets/styles/core/mixin' as layout;
+
+  .wms-editable-line-table {
+    @include layout.fill-editable-table-cells;
+  }
+
+  .production-header-descriptions :deep(.el-descriptions__table) {
+    table-layout: fixed;
+  }
+
   .production-readonly-field {
     display: flex;
     gap: 8px;

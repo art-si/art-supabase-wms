@@ -1,8 +1,6 @@
 <template>
   <ArtPermissionGuard permission="WmsProjectReport:View" resource-name="项目仓储复盘">
-    <div
-      class="business-workspace-page art-full-height min-w-0 max-md:ml-12 max-md:w-[calc(100%-3rem)]"
-    >
+    <div class="business-workspace-page art-full-height min-w-0">
       <BusinessWorkspaceHeader
         eyebrow="PROJECT WAREHOUSE REVIEW"
         title="项目仓储复盘"
@@ -101,7 +99,8 @@
         <ArtTableQuery
           v-if="activeTab === 'stock'"
           :key="`stock-${selectedProjectId}-${selectedConstructionNo}`"
-          v-model="stockSearch"
+          :model-value="stockSearch"
+          @update:model-value="replaceReactiveModel(stockSearch, $event)"
           :api-fn="fetchStockRows"
           :search-items="stockSearchItems"
           :columns-factory="stockColumns"
@@ -111,7 +110,8 @@
         <ArtTableQuery
           v-if="activeTab === 'materials'"
           :key="`materials-${selectedProjectId}-${selectedConstructionNo}`"
-          v-model="materialSearch"
+          :model-value="materialSearch"
+          @update:model-value="replaceReactiveModel(materialSearch, $event)"
           :api-fn="fetchMaterialRows"
           :search-items="materialSearchItems"
           :columns-factory="materialColumns"
@@ -125,7 +125,8 @@
         <ArtTableQuery
           v-if="activeTab === 'packs'"
           :key="`packs-${selectedProjectId}-${selectedConstructionNo}`"
-          v-model="packSearch"
+          :model-value="packSearch"
+          @update:model-value="replaceReactiveModel(packSearch, $event)"
           :api-fn="fetchPackRows"
           :search-items="packSearchItems"
           :columns-factory="packColumns"
@@ -135,7 +136,8 @@
         <ArtTableQuery
           v-if="activeTab === 'orders'"
           :key="`orders-${selectedProjectId}-${selectedConstructionNo}`"
-          v-model="orderSearch"
+          :model-value="orderSearch"
+          @update:model-value="replaceReactiveModel(orderSearch, $event)"
           :api-fn="fetchOrderRows"
           :search-items="orderSearchItems"
           :columns-factory="orderColumns"
@@ -145,7 +147,8 @@
         <ArtTableQuery
           v-if="activeTab === 'movements'"
           :key="`movements-${selectedProjectId}-${selectedConstructionNo}`"
-          v-model="movementSearch"
+          :model-value="movementSearch"
+          @update:model-value="replaceReactiveModel(movementSearch, $event)"
           :api-fn="fetchMovementRows"
           :search-items="movementSearchItems"
           :columns-factory="movementColumns"
@@ -155,7 +158,8 @@
         <ArtTableQuery
           v-if="activeTab === 'serials'"
           :key="`serials-${selectedProjectId}-${selectedConstructionNo}`"
-          v-model="serialSearch"
+          :model-value="serialSearch"
+          @update:model-value="replaceReactiveModel(serialSearch, $event)"
           :api-fn="fetchSerialRows"
           :search-items="serialSearchItems"
           :columns-factory="serialColumns"
@@ -168,6 +172,8 @@
 </template>
 
 <script setup lang="tsx">
+  import { formatWmsMovementType } from '@/utils/wms/movement-display'
+  import { replaceReactiveModel } from '@/utils/form/model'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import BusinessWorkspaceHeader from '@/components/business/business-workspace-header/index.vue'
@@ -176,7 +182,7 @@
   import ArtTableQuery from '@/components/core/tables/art-table-query/index.vue'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type { ColumnOption } from '@/types'
-  import { formatNumberValue } from '@/utils/ui/format'
+  import { formatDateTimeValue, formatNumberValue } from '@/utils/ui/format'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import {
     fetchWmsProjectMovementPage,
@@ -345,6 +351,7 @@
     const requestId = ++summaryRequestId
     summary.value = undefined
     summaryError.value = false
+    summaryLoading.value = false
     if (!projectId) return
     summaryLoading.value = true
     try {
@@ -399,7 +406,12 @@
       { prop: 'materialNameSnapshot', label: '产品', minWidth: 190 },
       { prop: 'specificationSnapshot', label: '规格', minWidth: 160 },
       { prop: 'constructionNo', label: '施工号', minWidth: 145 },
-      { prop: 'orderStatus', label: '状态', minWidth: 100 },
+      {
+        prop: 'orderStatus',
+        label: '状态',
+        minWidth: 120,
+        dict: { code: 'mesWorkOrderStatus', display: 'auto' }
+      },
       { prop: 'orderQuantity', label: '计划数量', minWidth: 100, align: 'right' },
       { prop: 'completedQuantity', label: '已完工', minWidth: 100, align: 'right' },
       { prop: 'warehousedQuantity', label: '已入库', minWidth: 100, align: 'right' },
@@ -642,7 +654,12 @@
   function movementColumns(): ColumnOption<WmsMovement>[] {
     return [
       { prop: 'referenceNo', label: '业务单号', minWidth: 175, fixed: 'left' },
-      { prop: 'movementType', label: '业务类型', minWidth: 130 },
+      {
+        prop: 'movementType',
+        label: '业务类型',
+        minWidth: 130,
+        formatter: (row) => formatWmsMovementType(row.movementType)
+      },
       {
         prop: 'material',
         label: '物料',
@@ -669,7 +686,7 @@
         prop: 'occurredAt',
         label: '发生时间',
         minWidth: 170,
-        formatter: (row) => row.occurredAt?.replace('T', ' ').slice(0, 19) || '—'
+        formatter: (row) => formatDateTimeValue(row.occurredAt)
       }
     ]
   }
@@ -708,12 +725,17 @@
             '—'
           )
       },
-      { prop: 'status', label: '库存状态', minWidth: 100 },
+      {
+        prop: 'status',
+        label: '库存状态',
+        minWidth: 120,
+        dict: { code: 'mdmInventorySerialStatus', display: 'auto' }
+      },
       {
         prop: 'createTime',
         label: '建码时间',
         minWidth: 170,
-        formatter: (row) => row.createTime?.replace('T', ' ').slice(0, 19) || '—'
+        formatter: (row) => formatDateTimeValue(row.createTime)
       }
     ]
   }

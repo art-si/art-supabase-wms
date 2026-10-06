@@ -142,6 +142,22 @@ export async function fetchWmsProductionDocumentTypes(
   kind: WmsProductionMaterialKind,
   tenantId: string
 ): Promise<WmsProductionDocumentTypeOption[]> {
+  const menuId = await fetchWmsProductionMenuId(kind)
+  const { data } = await responseHandle<WmsProductionDocumentTypeOption[]>(
+    () =>
+      supabase
+        .from('mdm_document_type')
+        .select('id,tenant_id,document_type_code,document_type_name,is_default')
+        .eq('tenant_id', tenantId)
+        .contains('menu_ids', [menuId])
+        .eq('enabled', true)
+        .order('sort_order'),
+    readOptions
+  )
+  return data ?? []
+}
+
+async function fetchWmsProductionMenuId(kind: WmsProductionMaterialKind): Promise<string> {
   const menuName = {
     issue: 'WmsProductionIssue',
     return: 'WmsProductionReturn',
@@ -152,32 +168,24 @@ export async function fetchWmsProductionDocumentTypes(
     () => supabase.from('sys_menu').select('id').eq('name', menuName).single(),
     readOptions
   )
-  if (!menu) return []
-  const { data } = await responseHandle<WmsProductionDocumentTypeOption[]>(
-    () =>
-      supabase
-        .from('mdm_document_type')
-        .select('id,tenant_id,document_type_code,document_type_name,is_default')
-        .eq('tenant_id', tenantId)
-        .contains('menu_ids', [menu.id])
-        .eq('enabled', true)
-        .order('sort_order'),
-    readOptions
-  )
-  return data ?? []
+  if (!menu?.id) throw new Error('生产单据菜单功能未配置，请联系管理员')
+  return menu.id
 }
 
 export async function fetchWmsProductionBusinessTypes(
+  kind: WmsProductionMaterialKind,
   tenantId: string,
   documentTypeId: string
 ): Promise<WmsProductionBusinessTypeOption[]> {
+  const menuId = await fetchWmsProductionMenuId(kind)
   const { data } = await responseHandle<WmsProductionBusinessTypeOption[]>(
     () =>
       supabase
         .from('mdm_business_type')
         .select('id,tenant_id,document_type_id,business_type_code,business_type_name,is_default')
         .eq('tenant_id', tenantId)
-        .eq('document_type_id', documentTypeId)
+        .contains('document_type_ids', [documentTypeId])
+        .contains('menu_ids', [menuId])
         .eq('enabled', true)
         .order('sort_order'),
     readOptions

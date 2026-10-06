@@ -285,6 +285,8 @@ export interface WmsStockOperationInput {
   batchId?: string | null
   targetWarehouseId?: string | null
   targetOrganizationId?: string | null
+  documentTypeId?: string | null
+  businessTypeId?: string | null
   targetBinId?: string | null
   workOrderId?: string | null
   packId?: string | null
@@ -353,7 +355,7 @@ export interface WmsSalesReturnAllocation {
   returns: Array<{ quantity: number; serialIds: string[]; returnDisplayQuantity: number | null }>
 }
 
-export interface WmsSalesReturnSerial {
+export interface WmsSerialReference {
   id: string
   serialNo: string
   status: string
@@ -452,6 +454,9 @@ export interface WmsIssueReservationLine {
 }
 
 export interface WmsIssueRequestInput {
+  organizationId: string
+  documentTypeId: string
+  businessTypeId: string
   warehouseId: string
   workOrderId: string
   documentNo?: string | null
@@ -501,6 +506,8 @@ export interface WmsTransferDocument {
 
 export interface WmsTransferInput {
   documentNo: string
+  documentTypeId: string
+  businessTypeId: string
   sourceBatchId: string
   targetWarehouseId: string
   targetOrganizationId: string

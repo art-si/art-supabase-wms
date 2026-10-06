@@ -32,7 +32,11 @@
         </template>
       </ArtEntitySummary>
       <ElAlert v-if="optionError" type="warning" :closable="false" show-icon>
-        基础资料加载失败，请重试后再保存。
+        {{
+          mode === 'view'
+            ? '基础资料加载失败，部分名称暂不可用，请重新加载。'
+            : '基础资料加载失败，请重试后再保存。'
+        }}
         <ElButton link type="primary" @click="loadOptions">重新加载</ElButton>
       </ElAlert>
       <ElAlert v-else type="info" :closable="false" show-icon>
@@ -86,11 +90,15 @@
         empty-description="从物料编码中多选后，逐行填写期初数量、仓库和库存类型。"
       >
         <template #actions>
-          <div class="flex flex-wrap items-center gap-2">
+          <div
+            v-if="mode !== 'view'"
+            class="flex flex-wrap items-center justify-end gap-2 whitespace-nowrap lg:flex-nowrap"
+          >
             <ArtTableMultipleSelect
-              v-if="mode !== 'view' && form.tenantId"
+              v-if="form.tenantId"
               v-model="materialPickerIds"
               v-model:selected-data="materialPickerRows"
+              class="w-auto! shrink-0"
               title="选择期初物料"
               subtitle="支持按物料编码、名称或描述检索，可一次添加多行。"
               placeholder="添加物料明细"
@@ -126,6 +134,8 @@
         </template>
         <ElScrollbar v-if="lines.length">
           <ArtTable
+            ref="lineTableRef"
+            class="wms-editable-line-table"
             :data="lines"
             :columns="lineColumns"
             :pagination="false"
@@ -262,6 +272,8 @@
               ><ElSelect
                 v-if="mode !== 'view'"
                 v-model="row.binId"
+                aria-label="仓位"
+                :placeholder="row.warehouseId ? '选择仓位' : '先选择入库仓库'"
                 filterable
                 clearable
                 :disabled="!row.warehouseId"
@@ -274,7 +286,11 @@
               ><span v-else>{{ row.bin?.binName || row.binId || '—' }}</span></template
             >
             <template #stockType="{ row }"
-              ><ElSelect v-if="mode !== 'view'" v-model="row.stockType"
+              ><ElSelect
+                v-if="mode !== 'view'"
+                v-model="row.stockType"
+                aria-label="库存类型"
+                placeholder="选择库存类型"
                 ><ElOption
                   v-for="option in stockTypes"
                   :key="option.value"
@@ -283,7 +299,11 @@
               ><span v-else>{{ row.stockType }}</span></template
             >
             <template #stockStatus="{ row }"
-              ><ElSelect v-if="mode !== 'view'" v-model="row.stockStatus"
+              ><ElSelect
+                v-if="mode !== 'view'"
+                v-model="row.stockStatus"
+                aria-label="库存状态"
+                placeholder="选择库存状态"
                 ><ElOption
                   v-for="option in stockStatuses"
                   :key="option.value"
@@ -292,7 +312,12 @@
               ><span v-else>{{ row.stockStatus }}</span></template
             >
             <template #ownerType="{ row }"
-              ><ElSelect v-if="mode !== 'view'" v-model="row.ownerType" @change="row.ownerId = null"
+              ><ElSelect
+                v-if="mode !== 'view'"
+                v-model="row.ownerType"
+                aria-label="货主类型"
+                placeholder="选择货主类型"
+                @change="row.ownerId = null"
                 ><ElOption
                   v-for="option in ownerTypes"
                   :key="option.value"
@@ -312,7 +337,7 @@
                 title="选择货主"
                 @update:model-value="row.ownerId = String($event || '') || null"
               /><span v-else>{{
-                row.ownerType === 'self' ? '自有' : row.ownerId || '—'
+                formatWmsOwnerName(row.ownerType, row.ownerId, suppliers, customers)
               }}</span></template
             >
             <template #batchNo="{ row }"
@@ -405,7 +430,9 @@
 </template>
 
 <script setup lang="ts">
+  import { formatWmsOwnerName } from '@/utils/wms/owner-display'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
+  import { isWmsBusinessTypeAvailable } from '@/utils/wms/business-type'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import dayjs from 'dayjs'
@@ -467,6 +494,7 @@
   const drawerRef = ref<ArtDrawerExpose<OpenData>>()
   const serialDialogRef = ref<ArtDialogExpose>()
   const formRef = ref<InstanceType<typeof ArtForm>>()
+  const lineTableRef = ref<InstanceType<typeof ArtTable>>()
   const mode = ref<OpenMode>('create')
   const currentDocument = shallowRef<WmsInitialStockDocument | null>(null)
   const optionError = ref(false)
@@ -521,15 +549,23 @@
       auth: lineEditPermission.value
     }
   ])
-  const lineColumns: ColumnOption<WmsInitialStockLine>[] = [
-    { type: 'selection', width: 48, fixed: 'left' },
+  const lineColumns = computed<ColumnOption<WmsInitialStockLine>[]>(() => [
+    ...(mode.value === 'view'
+      ? []
+      : [{ type: 'selection', width: 48, fixed: 'left' } as ColumnOption<WmsInitialStockLine>]),
     { prop: 'lineNo', label: '行号', width: 68 },
     { prop: 'material', label: '物料', minWidth: 220, useSlot: true },
     { prop: 'material.specificationModel', label: '规格型号', minWidth: 130 },
     { prop: 'projectId', label: '项目', width: 170, useSlot: true },
     { prop: 'constructionNo', label: '施工号', width: 150, useSlot: true },
     { prop: 'gift', label: '赠品', width: 80, useSlot: true },
-    { prop: 'inventoryUnitId', label: '库存单位', width: 135, useSlot: true },
+    {
+      prop: 'inventoryUnitId',
+      label: '库存单位',
+      width: 135,
+      useSlot: true,
+      required: mode.value !== 'view'
+    },
     { prop: 'openingQuantity', label: '期初数量', width: 135, align: 'right', useSlot: true },
     { prop: 'baseUnitId', label: '基本单位', width: 135, useSlot: true },
     { prop: 'baseQuantity', label: '基本数量', width: 110, useSlot: true },
@@ -540,11 +576,23 @@
     { prop: 'openingAuxQuantity', label: '期初辅助数量', width: 120, useSlot: true },
     { prop: 'unitPrice', label: '单价', width: 130, useSlot: true },
     { prop: 'amount', label: '金额(元)', width: 135, align: 'right', useSlot: true },
-    { prop: 'warehouseId', label: '入库仓库', width: 180, useSlot: true },
+    {
+      prop: 'warehouseId',
+      label: '入库仓库',
+      width: 180,
+      useSlot: true,
+      required: mode.value !== 'view'
+    },
     { prop: 'binId', label: '仓位', width: 150, useSlot: true },
-    { prop: 'stockType', label: '库存类型', width: 130, useSlot: true },
-    { prop: 'stockStatus', label: '库存状态', width: 130, useSlot: true },
-    { prop: 'ownerType', label: '货主类型', width: 130, useSlot: true },
+    {
+      prop: 'stockType',
+      label: '库存类型',
+      width: 160,
+      useSlot: true,
+      required: mode.value !== 'view'
+    },
+    { prop: 'stockStatus', label: '库存状态', width: 160, useSlot: true },
+    { prop: 'ownerType', label: '货主类型', width: 160, useSlot: true },
     { prop: 'ownerId', label: '货主', width: 170, useSlot: true },
     { prop: 'batchNo', label: '批号', width: 150, useSlot: true },
     { prop: 'inboundDate', label: '入库日期', width: 165, useSlot: true },
@@ -554,8 +602,14 @@
     { prop: 'trackingNo', label: '跟踪号', width: 150, useSlot: true },
     { prop: 'sourceDocument', label: '源单据', width: 150, useSlot: true },
     { prop: 'remark', label: '备注', width: 180, useSlot: true },
-    { prop: 'operation', label: '操作', width: 135, fixed: 'right', useSlot: true }
-  ]
+    {
+      prop: 'operation',
+      label: '操作',
+      width: 135,
+      fixed: 'right',
+      useSlot: true
+    }
+  ])
   const materialPickerIds = ref<string[]>([])
   const materialPickerRows = ref<DataSelectRecord[]>([])
   const selectedKeeper = ref<EmployeeIntegrationItem[]>([])
@@ -680,11 +734,8 @@
       label: '业务类型',
       type: 'select',
       options: businessTypes.value
-        .filter(
-          (item) =>
-            item.enabled &&
-            item.documentTypeId === form.value.documentTypeId &&
-            item.menuIds?.includes(initialStockMenuId.value)
+        .filter((item) =>
+          isWmsBusinessTypeAvailable(item, form.value.documentTypeId, initialStockMenuId.value)
         )
         .map((item) => ({ label: item.name, value: item.id })),
       props: { disabled: mode.value === 'view' }
@@ -979,11 +1030,8 @@
     onDocumentTypeChange()
   }
   function onDocumentTypeChange(): void {
-    const available = businessTypes.value.filter(
-      (item) =>
-        item.enabled &&
-        item.documentTypeId === form.value.documentTypeId &&
-        item.menuIds?.includes(initialStockMenuId.value)
+    const available = businessTypes.value.filter((item) =>
+      isWmsBusinessTypeAvailable(item, form.value.documentTypeId, initialStockMenuId.value)
     )
     if (!available.some((item) => item.id === form.value.businessTypeId))
       form.value.businessTypeId =
@@ -1042,15 +1090,14 @@
         ElMessage.warning('请至少添加一行物料')
         return false
       }
-      const incomplete = lines.value.find(
-        (line) =>
-          !line.inventoryUnitId ||
-          Number(line.openingQuantity) <= 0 ||
-          !line.warehouseId ||
-          !line.stockType
-      )
+      const validation = await lineTableRef.value?.validate()
+      if (!validation?.valid) {
+        if (validation?.firstError) ElMessage.warning(validation.firstError.message)
+        return false
+      }
+      const incomplete = lines.value.find((line) => Number(line.openingQuantity) <= 0)
       if (incomplete) {
-        ElMessage.warning(`第 ${incomplete.lineNo} 行尚未填写必填信息`)
+        ElMessage.warning(`第 ${incomplete.lineNo} 行“期初数量”必须大于零`)
         return false
       }
       for (const line of lines.value) {
@@ -1144,7 +1191,13 @@
   defineExpose({ handleOpen })
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+  @use '@/assets/styles/core/mixin' as layout;
+
+  .wms-editable-line-table {
+    @include layout.fill-editable-table-cells;
+  }
+
   .initialization-document-stack {
     display: grid;
     gap: 20px;

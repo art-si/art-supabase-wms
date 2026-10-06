@@ -18,7 +18,8 @@
       </BusinessWorkspaceHeader>
       <ArtTableQuery
         ref="tableRef"
-        v-model="search"
+        :model-value="search"
+        @update:model-value="replaceReactiveModel(search, $event)"
         :api-fn="fetchRows"
         :search-items="searchItems"
         :columns-factory="columnsFactory"
@@ -26,7 +27,7 @@
         header-actions-placement="workspace"
         :search-bar-props="{ span: 6, labelWidth: 82 }"
         :table-props="{
-          rowKey: displayMode === 'line' ? 'detailRowId' : 'id',
+          rowKey: getDocumentDetailRowKey,
           spanMethod: mergeDocumentCells,
           tableLayout: 'fixed',
           emptyText: '当前范围暂无初始库存单',
@@ -42,17 +43,21 @@
         </template>
       </ArtTableQuery>
       <InitialStockDrawer ref="drawerRef" @success="refresh" />
+      <MasterDataDeleteGuard ref="deleteGuardRef" />
     </div>
   </ArtPermissionGuard>
 </template>
 
 <script setup lang="tsx">
+  import { replaceReactiveModel } from '@/utils/form/model'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { useRoute, useRouter } from 'vue-router'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { ElMessage, ElTag } from 'element-plus'
   import { useAuth } from '@/hooks/core/useAuth'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
+  import MasterDataDeleteGuard from '@/components/business/master-data-delete-guard/index.vue'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import ArtTableQuery, {
     type ArtTableQueryExpose,
@@ -69,6 +74,7 @@
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type { ColumnOption } from '@/types'
   import {
+    getDocumentDetailRowKey,
     documentGroupSpan,
     expandDocumentLines,
     loadAllLinePages,
@@ -89,6 +95,10 @@
 
   defineOptions({ name: 'WmsInitialStock' })
   const { confirmAction } = useArtFeedback()
+  const { deleteGuardRef, inspectDeleteReferences } = useRecordDeleteGuard(
+    'wms_initial_stock_document',
+    '初始库存单'
+  )
   const { hasAuth } = useAuth()
   const route = useRoute()
   const router = useRouter()
@@ -303,16 +313,21 @@
   ): Promise<void> {
     if (workingId.value) return
     const label = { submit: '提交', approve: '审核入账', delete: '删除' }[action]
+    const resources = [{ id: row.id, label: row.documentNo }]
+    workingId.value = row.id
     try {
+      if (action === 'delete' && (await inspectDeleteReferences(resources))) return
       await confirmAction(
         `确定${label}初始库存单 ${row.documentNo}？${action === 'approve' ? '审核后将生成即时库存和库存流水。' : ''}`,
         `${label}初始库存单`,
         { type: action === 'delete' ? 'warning' : 'info', confirmButtonText: `确定${label}` }
       )
-      workingId.value = row.id
       await changeWmsInitialStockStatus(row.id, action)
       await refresh()
-    } catch {
+    } catch (error) {
+      if (action === 'delete' && error !== 'cancel' && error !== 'close') {
+        await inspectDeleteReferences(resources)
+      }
       // 确认取消与接口错误由相应组件处理。
     } finally {
       workingId.value = undefined

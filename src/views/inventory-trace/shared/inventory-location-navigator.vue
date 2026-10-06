@@ -423,7 +423,7 @@
 
       small {
         margin-top: 2px;
-        font-size: 11px;
+        font-size: 12px;
         color: var(--el-text-color-secondary);
       }
     }
@@ -465,7 +465,7 @@
     &__count {
       min-width: 22px;
       padding: 2px 5px;
-      font-size: 11px;
+      font-size: 12px;
       font-variant-numeric: tabular-nums;
       color: var(--el-text-color-secondary);
       text-align: center;

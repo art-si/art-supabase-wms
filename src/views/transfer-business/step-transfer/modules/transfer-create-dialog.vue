@@ -1,6 +1,6 @@
 <template>
-  <ArtDialog ref="dialogRef" size="lg">
-    <div class="space-y-4">
+  <ArtDialog ref="dialogRef" size="lg" :confirm-disabled="loadError" @close="handleClose">
+    <div class="min-w-0 space-y-4">
       <ArtEntitySummary
         icon="ri:truck-line"
         eyebrow="TWO STEP TRANSFER"
@@ -11,7 +11,8 @@
         调拨单保留来源库存组织、项目、施工号和批次。垛包必须整包调拨，目标仓库收货后沿用原包号。
       </ElAlert>
       <ElAlert v-if="loadError" type="error" :closable="false" show-icon>
-        仓库或序列号加载失败，请重试后办理。
+        仓库、库存组织或序列号加载失败，请重试后办理。
+        <ElButton class="ml-2" size="small" @click="loadCandidates">重新加载</ElButton>
       </ElAlert>
       <ArtForm
         ref="formRef"
@@ -68,18 +69,23 @@
     DataSelectRecord
   } from '@/components/core/forms/art-data-select/types'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
-  import { fetchEnabledOrganizationTree } from '@/api/system-manage'
-  import TreeUtils from '@/utils/tree'
+  import { isWmsBusinessTypeAvailable } from '@/utils/wms/business-type'
   import { normalizeNullableText } from '@/utils/form/normalize'
   import {
     createWmsTransfer,
+    fetchWmsInitialDocumentTypes,
+    fetchWmsInitialMenuId,
+    fetchWmsInitialOptions,
+    fetchWmsInventoryOrganizations,
     fetchWmsBatchSerials,
     fetchWmsStockPage,
     fetchWmsWarehouses,
     type WmsBatchSerial,
     type WmsProject,
     type WmsStockBatch,
-    type WmsWarehouse
+    type WmsWarehouse,
+    type WmsInitializationOption,
+    type WmsInventoryOrganization
   } from '@wms/api'
 
   interface Context {
@@ -92,22 +98,23 @@
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const isNarrowScreen = useMediaQuery('(max-width: 767px)')
   const context = shallowRef<Context>()
+  let generation = 0
   const warehouses = ref<WmsWarehouse[]>([])
-  const organizationTree = ref<Api.SystemManage.OrganizationListItem[]>([])
-  const organizationTreeUtils = new TreeUtils({
-    idKey: 'id',
-    parentKey: 'parentId',
-    childrenKey: 'children'
-  })
-  const organizations = computed(() => organizationTreeUtils.treeToList(organizationTree.value))
+  const organizations = ref<WmsInventoryOrganization[]>([])
+  const documentTypes = ref<WmsInitializationOption[]>([])
+  const businessTypes = ref<WmsInitializationOption[]>([])
+  const menuId = ref('')
   const serials = ref<WmsBatchSerial[]>([])
   const selectedBatch = shallowRef<BatchOption | null>(null)
   const loadError = ref(false)
+  watch(loadError, (value) => dialogRef.value?.setOptions({ confirmDisabled: value }))
   const form = ref({
     documentNo: '',
     sourceBatchId: '',
     targetWarehouseId: '',
     targetOrganizationId: '',
+    documentTypeId: '',
+    businessTypeId: '',
     quantity: 1,
     serialIds: [] as string[],
     remark: ''
@@ -131,6 +138,18 @@
       organizations.value.find((row) => row.id === selectedBatch.value?.organizationId)
         ?.organizationName || '来源组织'
   )
+  const availableBusinessTypes = computed(() =>
+    businessTypes.value.filter((row) =>
+      isWmsBusinessTypeAvailable(row, form.value.documentTypeId, menuId.value)
+    )
+  )
+  const availableOrganizations = computed(() =>
+    organizations.value.filter(
+      (row) =>
+        Boolean(row.enabledOn && row.initializationClosedAt) &&
+        (!selectedBatch.value || row.tenantId === selectedBatch.value.tenantId)
+    )
+  )
   const batchColumns: DataSelectColumn[] = [
     { prop: 'batchLabel', label: '物料 / 批号', minWidth: 260 },
     { prop: 'warehouseName', label: '来源仓库', minWidth: 150 },
@@ -146,6 +165,29 @@
     },
     { key: 'sourceBatchId', label: '来源批次', type: 'input', span: 24 },
     {
+      key: 'documentTypeId',
+      label: '单据类型',
+      type: 'select',
+      options: documentTypes.value.map((row) => ({ label: row.name, value: row.id })),
+      props: {
+        filterable: true,
+        disabled: !selectedBatch.value,
+        placeholder: '选择分步调拨单类型',
+        onChange: onDocumentTypeChange
+      }
+    },
+    {
+      key: 'businessTypeId',
+      label: '业务类型',
+      type: 'select',
+      options: availableBusinessTypes.value.map((row) => ({ label: row.name, value: row.id })),
+      props: {
+        filterable: true,
+        disabled: !form.value.documentTypeId,
+        placeholder: '选择对应的业务类型'
+      }
+    },
+    {
       key: 'targetWarehouseId',
       label: '目标仓库',
       type: 'select',
@@ -158,28 +200,28 @@
         disabled: !selectedBatch.value,
         placeholder: '选择异地目标仓库',
         onChange: () => {
+          const warehouseOrganizationId = warehouses.value.find(
+            (row) => row.id === form.value.targetWarehouseId
+          )?.organizationId
           form.value.targetOrganizationId =
-            warehouses.value.find((row) => row.id === form.value.targetWarehouseId)
-              ?.organizationId || ''
+            availableOrganizations.value.find((row) => row.isDefault)?.id ||
+            availableOrganizations.value.find((row) => row.id === warehouseOrganizationId)?.id ||
+            ''
         }
       }
     },
     {
       key: 'targetOrganizationId',
       label: '目标库存组织',
-      type: 'treeSelect',
-      options: organizationTree.value,
-      valueField: 'id',
-      labelField: 'organizationName',
-      childrenField: 'children',
-      labelFn: (row) => `${row.organizationName ?? ''} · ${row.organizationCode ?? ''}`,
+      type: 'select',
+      options: availableOrganizations.value.map((row) => ({
+        label: `${row.organizationName} · ${row.organizationCode}`,
+        value: row.id
+      })),
       props: {
         filterable: true,
-        checkStrictly: true,
-        defaultExpandAll: true,
-        renderAfterExpand: false,
         disabled: !form.value.targetWarehouseId,
-        placeholder: '选择调入后的归属组织'
+        placeholder: '选择已启用库存的目标组织'
       },
       help: `来源组织：${sourceOrganizationName.value}。跨组织调拨会在流水中保留两端归属。`
     },
@@ -226,6 +268,8 @@
   const rules = {
     documentNo: [{ required: true, message: '请填写调拨单号', trigger: 'blur' }],
     sourceBatchId: [{ required: true, message: '请选择来源批次', trigger: 'change' }],
+    documentTypeId: [{ required: true, message: '请选择单据类型', trigger: 'change' }],
+    businessTypeId: [{ required: true, message: '请选择业务类型', trigger: 'change' }],
     targetWarehouseId: [{ required: true, message: '请选择目标仓库', trigger: 'change' }],
     targetOrganizationId: [{ required: true, message: '请选择目标库存组织', trigger: 'change' }],
     quantity: [
@@ -258,6 +302,7 @@
     }
   }
   async function onBatchSelected(rows: DataSelectRecord[]): Promise<void> {
+    generation++
     const row = rows[0]
     selectedBatch.value =
       row && typeof row.id === 'string' && typeof row.quantity === 'number'
@@ -269,17 +314,53 @@
     serials.value = []
     if (!selectedBatch.value) return
     form.value.quantity = selectedBatch.value.packId ? selectedBatch.value.quantity : 1
+    await loadCandidates()
+  }
+  async function loadCandidates(): Promise<void> {
+    const currentContext = context.value
+    const batch = selectedBatch.value
+    if (!currentContext) return
+    const requestGeneration = ++generation
     loadError.value = false
+    dialogRef.value?.setLoading(true)
     try {
-      const [serialRows, organizationResult] = await Promise.all([
-        fetchWmsBatchSerials(selectedBatch.value.id),
-        fetchEnabledOrganizationTree({ tenantId: selectedBatch.value.tenantId })
-      ])
-      serials.value = serialRows
-      organizationTree.value = organizationResult.data ?? []
+      const warehouseRows = await fetchWmsWarehouses(currentContext.tenantId)
+      if (requestGeneration !== generation) return
+      warehouses.value = warehouseRows
+      if (batch) {
+        const [serialRows, organizationResult, documentRows, businessRows, currentMenuId] =
+          await Promise.all([
+            fetchWmsBatchSerials(batch.id),
+            fetchWmsInventoryOrganizations({
+              tenantId: batch.tenantId,
+              enabled: 'enabled',
+              current: 1,
+              size: 2000
+            }),
+            fetchWmsInitialDocumentTypes(batch.tenantId, 'WmsStepTransfer'),
+            fetchWmsInitialOptions('mdm_business_type', batch.tenantId),
+            fetchWmsInitialMenuId('WmsStepTransfer')
+          ])
+        if (requestGeneration !== generation) return
+        serials.value = serialRows
+        organizations.value = organizationResult.data
+        documentTypes.value = documentRows
+        businessTypes.value = businessRows
+        menuId.value = currentMenuId
+        if (!documentRows.some((row) => row.id === form.value.documentTypeId))
+          form.value.documentTypeId = documentRows.find((row) => row.isDefault)?.id || ''
+        onDocumentTypeChange()
+      }
     } catch {
-      loadError.value = true
+      if (requestGeneration === generation) loadError.value = true
+    } finally {
+      if (requestGeneration === generation) dialogRef.value?.setLoading(false)
     }
+  }
+  function onDocumentTypeChange(): void {
+    if (!availableBusinessTypes.value.some((row) => row.id === form.value.businessTypeId))
+      form.value.businessTypeId =
+        availableBusinessTypes.value.find((row) => row.isDefault)?.id || ''
   }
   async function submit(): Promise<boolean> {
     try {
@@ -303,6 +384,8 @@
       }
       await createWmsTransfer({
         documentNo: form.value.documentNo.trim(),
+        documentTypeId: form.value.documentTypeId,
+        businessTypeId: form.value.businessTypeId,
         sourceBatchId: batch.id,
         targetWarehouseId: form.value.targetWarehouseId,
         targetOrganizationId: form.value.targetOrganizationId,
@@ -318,17 +401,23 @@
     }
   }
   async function handleOpen(data: Context): Promise<void> {
+    generation++
     context.value = data
     selectedBatch.value = null
     serials.value = []
     warehouses.value = []
-    organizationTree.value = []
+    organizations.value = []
+    documentTypes.value = []
+    businessTypes.value = []
+    menuId.value = ''
     loadError.value = false
     Object.assign(form.value, {
       documentNo: `DB-${dayjs().format('YYYYMMDD')}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
       sourceBatchId: '',
       targetWarehouseId: '',
       targetOrganizationId: '',
+      documentTypeId: '',
+      businessTypeId: '',
       quantity: 1,
       serialIds: [],
       remark: ''
@@ -337,17 +426,11 @@
       title: '新建分步调拨单',
       subtitle: '申请 → 调拨出库 → 在途 → 调拨入库',
       onConfirm: submit,
-      onOpen: async (_data, api) => {
-        api.setLoading(true)
-        try {
-          warehouses.value = await fetchWmsWarehouses(data.tenantId)
-        } catch {
-          loadError.value = true
-        } finally {
-          api.setLoading(false)
-        }
-      }
+      onOpen: loadCandidates
     })
+  }
+  function handleClose(): void {
+    generation++
   }
   defineExpose({ handleOpen })
 </script>

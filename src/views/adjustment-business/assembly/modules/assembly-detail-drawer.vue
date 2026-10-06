@@ -1,16 +1,26 @@
 <template>
   <ArtDrawer ref="drawerRef" size="lg" :show-footer="false">
-    <div v-if="document" class="space-y-5">
+    <div v-if="document" class="min-w-0 space-y-5">
       <ArtEntitySummary
         icon="ri:apps-2-add-line"
         eyebrow="ASSEMBLY DOCUMENT"
         :title="document.documentNo"
         :description="`${document.warehouse?.warehouseName || '仓库'} · ${projectName}${document.constructionNo ? ` / ${document.constructionNo}` : ''}`"
       />
+      <ArtSectionCard title="组装信息" subtitle="来源批次与成品保持同一仓库、项目和施工号归属。">
+        <ArtDescriptions
+          :data="document"
+          :items="descriptionItems"
+          :columns="2"
+          label-width="96px"
+        />
+      </ArtSectionCard>
       <div class="grid gap-3 sm:grid-cols-3">
         <div class="rounded-xl bg-[var(--el-fill-color-light)] p-4">
           <small class="text-[var(--el-text-color-secondary)]">来源组件</small>
-          <strong class="mt-1 block text-xl tabular-nums">{{ components.length }}</strong>
+          <strong class="mt-1 block text-xl tabular-nums">{{
+            loading || loadError ? '—' : components.length
+          }}</strong>
         </div>
         <div class="rounded-xl bg-[var(--el-fill-color-light)] p-4">
           <small class="text-[var(--el-text-color-secondary)]">成品数量</small>
@@ -40,7 +50,7 @@
             class="flex min-w-0 items-center gap-3 py-3"
           >
             <div class="min-w-0 flex-1">
-              <strong class="block truncate text-sm">{{
+              <strong class="block truncate text-sm" :title="item.material?.materialName">{{
                 item.material?.materialName || '物料'
               }}</strong>
               <p class="mt-1 truncate text-xs text-[var(--el-text-color-secondary)]">
@@ -55,10 +65,10 @@
       <ArtSectionCard title="成品入库" subtitle="生成独立成品批次，并保留与组装单的关联。">
         <div class="flex min-w-0 flex-wrap items-center justify-between gap-3 py-2">
           <div class="min-w-0">
-            <strong class="block truncate">{{
+            <strong class="block truncate" :title="document.targetMaterial?.materialName">{{
               document.targetMaterial?.materialName || '成品物料'
             }}</strong>
-            <p class="mt-1 text-xs text-[var(--el-text-color-secondary)]">
+            <p class="mt-1 break-words text-xs text-[var(--el-text-color-secondary)]">
               {{ document.targetMaterial?.materialCode }} · {{ document.targetBatch?.batchNo }} ·
               {{ document.targetBatch?.bin?.binCode || '仓库直存' }}
             </p>
@@ -80,9 +90,6 @@
           >
         </div>
       </ArtSectionCard>
-      <p v-if="document.remark" class="rounded-xl bg-[var(--el-fill-color-light)] p-4 text-sm">{{
-        document.remark
-      }}</p>
     </div>
   </ArtDrawer>
 </template>
@@ -92,6 +99,8 @@
   import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
+  import ArtDescriptions from '@/components/core/base/art-descriptions/index.vue'
+  import type { ArtDescriptionItem } from '@/components/core/base/art-descriptions/types'
   import {
     fetchWmsAssemblyComponents,
     type WmsAssemblyComponent,
@@ -101,30 +110,53 @@
   const drawerRef = ref<ArtDrawerExpose<WmsAssemblyDocument>>()
   const document = shallowRef<WmsAssemblyDocument>()
   const projectName = ref('公共库存')
+  const descriptionItems: ArtDescriptionItem<WmsAssemblyDocument>[] = [
+    { key: 'documentNo', label: '组装单号', field: 'documentNo', copyable: true },
+    { key: 'date', label: '创建时间', field: 'createdAt', format: 'datetime' },
+    { key: 'warehouse', label: '仓库', field: 'warehouse.warehouseName' },
+    { key: 'project', label: '项目', value: () => projectName.value },
+    { key: 'constructionNo', label: '施工号', field: 'constructionNo' },
+    { key: 'targetBatch', label: '成品批次', field: 'targetBatch.batchNo', copyable: true },
+    { key: 'remark', label: '组装备注', field: 'remark', span: 2 }
+  ]
   const components = ref<WmsAssemblyComponent[]>([])
   const loading = ref(false)
   const loadError = ref(false)
+  let componentRequest = 0
   async function loadComponents(): Promise<void> {
     if (!document.value) return
+    const version = ++componentRequest
+    const documentId = document.value.id
     loading.value = true
     loadError.value = false
     try {
-      components.value = await fetchWmsAssemblyComponents(document.value.id)
+      const result = await fetchWmsAssemblyComponents(documentId)
+      if (version !== componentRequest || document.value?.id !== documentId) return
+      components.value = result
     } catch {
-      loadError.value = true
+      if (version === componentRequest) loadError.value = true
     } finally {
-      loading.value = false
+      if (version === componentRequest) loading.value = false
     }
   }
   async function handleOpen(row: WmsAssemblyDocument, name: string): Promise<void> {
+    componentRequest += 1
     document.value = row
     projectName.value = name
     components.value = []
+    loadError.value = false
     await drawerRef.value?.handleOpen(row, {
       title: '组装单详情',
       subtitle: '来源组件与成品入库追溯',
-      onOpen: async () => loadComponents()
+      onOpen: async () => loadComponents(),
+      onClose: () => {
+        componentRequest += 1
+        loading.value = false
+      }
     })
   }
+  onBeforeUnmount(() => {
+    componentRequest += 1
+  })
   defineExpose({ handleOpen })
 </script>

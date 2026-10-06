@@ -16,6 +16,7 @@ export interface WmsInitializationOption {
   code: string
   tenantId: string
   documentTypeId?: string
+  documentTypeIds?: string[]
   menuIds?: string[]
   isDefault?: boolean
   enabled?: boolean

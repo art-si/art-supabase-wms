@@ -1,6 +1,14 @@
 <template>
-  <ArtDrawer ref="drawerRef" size="xl" show-fullscreen-button>
-    <div class="space-y-4">
+  <ArtDrawer ref="drawerRef" :size="isMobile ? '100%' : 'xl'" show-fullscreen-button>
+    <ArtEmptyState
+      v-if="loadError"
+      title="单据资料加载失败"
+      :description="loadError"
+      size="compact"
+    >
+      <ElButton type="primary" @click="reloadDocument">重新加载</ElButton>
+    </ArtEmptyState>
+    <div v-else class="space-y-4">
       <ArtEntitySummary
         icon="ri:file-transfer-line"
         eyebrow="TRANSFER REQUEST"
@@ -9,12 +17,21 @@
             ? form.documentNo || '调拨申请单'
             : mode === 'edit'
               ? '编辑调拨申请单'
-              : '新增调拨申请单'
+              : mode === 'copy'
+                ? '复制调拨申请单'
+                : '新增调拨申请单'
         "
         description="按月自动生成三位流水号；一张申请单可同时登记多种物料。"
       />
       <ArtSectionCard title="单据表头" subtitle="编号按月生成；审核后可下推调拨业务。">
-        <ArtDescriptions v-if="mode === 'view'" :data="viewData" :items="viewItems" :columns="3" />
+        <ArtDescriptions
+          v-if="mode === 'view'"
+          class="document-header-descriptions"
+          :data="viewData"
+          :items="viewItems"
+          :columns="2"
+          :label-width="120"
+        />
         <ArtForm
           v-else
           ref="formRef"
@@ -77,8 +94,8 @@
           table-layout="fixed"
           class="transfer-line-table"
         >
-          <ElTableColumn prop="lineNo" label="行号" width="68" fixed="left" />
-          <ElTableColumn label="物料描述" min-width="220" fixed="left">
+          <ElTableColumn prop="lineNo" label="行号" width="68" :fixed="isMobile ? false : 'left'" />
+          <ElTableColumn label="物料描述" min-width="220" :fixed="isMobile ? false : 'left'">
             <template #default="{ row }">
               <strong class="block truncate">{{
                 row.materialDescription || row.materialName
@@ -95,7 +112,7 @@
             show-overflow-tooltip
           />
           <ElTableColumn prop="constructionNo" label="施工号" min-width="115" />
-          <ElTableColumn prop="inventoryUnitName" label="库存单位" width="100"
+          <ElTableColumn prop="inventoryUnitName" label="库存单位" width="140"
             ><template #default="{ row }">{{
               formatUnitDisplayName(row.inventoryUnitName)
             }}</template></ElTableColumn
@@ -105,7 +122,7 @@
               ><strong class="tabular-nums">{{ numberText(row.quantity) }}</strong></template
             ></ElTableColumn
           >
-          <ElTableColumn prop="baseUnitName" label="基本单位" width="100"
+          <ElTableColumn prop="baseUnitName" label="基本单位" width="140"
             ><template #default="{ row }">{{
               formatUnitDisplayName(row.baseUnitName)
             }}</template></ElTableColumn
@@ -140,7 +157,7 @@
           <ElTableColumn label="赠品" width="72" align="center"
             ><template #default="{ row }">{{ row.gift ? '✓' : '—' }}</template></ElTableColumn
           >
-          <ElTableColumn prop="auxiliaryUnitName" label="辅助单位" width="105"
+          <ElTableColumn prop="auxiliaryUnitName" label="辅助单位" width="140"
             ><template #default="{ row }">{{
               formatUnitDisplayName(row.auxiliaryUnitName)
             }}</template></ElTableColumn
@@ -164,10 +181,10 @@
           table-layout="fixed"
           class="transfer-line-table"
         >
-          <ElTableColumn label="行号" width="68" fixed="left">
+          <ElTableColumn label="行号" width="68" :fixed="isMobile ? false : 'left'">
             <template #default="{ $index }">{{ ($index + 1) * 10 }}</template>
           </ElTableColumn>
-          <ElTableColumn label="物料描述" min-width="210" fixed="left">
+          <ElTableColumn label="物料描述" min-width="210" :fixed="isMobile ? false : 'left'">
             <template #default="{ row }">
               <strong class="block truncate">{{
                 row.material?.description || row.material?.materialName
@@ -199,7 +216,7 @@
           <ElTableColumn label="施工号" min-width="130"
             ><template #default="{ row }"><ElInput v-model="row.constructionNo" /></template
           ></ElTableColumn>
-          <ElTableColumn label="库存单位" min-width="130">
+          <ElTableColumn label="库存单位" min-width="140">
             <template #default="{ row }"
               ><ElSelect v-model="row.inventoryUnitId" filterable
                 ><ElOption
@@ -307,7 +324,7 @@
                   :label="`${item.binCode} · ${item.binName}`"
                   :value="item.id" /></ElSelect></template
           ></ElTableColumn>
-          <ElTableColumn label="货主类型" min-width="120"
+          <ElTableColumn label="货主类型" min-width="155"
             ><template #default="{ row }"
               ><ElSelect v-model="row.ownerType"
                 ><ElOption
@@ -316,7 +333,7 @@
                   :label="option.label"
                   :value="option.value" /></ElSelect></template
           ></ElTableColumn>
-          <ElTableColumn label="库存类型" min-width="120"
+          <ElTableColumn label="库存类型" min-width="155"
             ><template #default="{ row }"
               ><ElSelect v-model="row.stockType"
                 ><ElOption
@@ -325,7 +342,7 @@
                   :label="item.label"
                   :value="item.value" /></ElSelect></template
           ></ElTableColumn>
-          <ElTableColumn label="库存状态" min-width="120"
+          <ElTableColumn label="库存状态" min-width="155"
             ><template #default="{ row }"
               ><ElSelect v-model="row.stockStatus"
                 ><ElOption
@@ -357,7 +374,7 @@
           <ElTableColumn label="备注" min-width="160"
             ><template #default="{ row }"><ElInput v-model="row.remark" /></template
           ></ElTableColumn>
-          <ElTableColumn label="操作" width="82" fixed="right"
+          <ElTableColumn label="操作" width="82" :fixed="isMobile ? false : 'right'"
             ><template #default="{ row }"
               ><ElButton link type="danger" @click="removeLine(row.key)">移除</ElButton></template
             ></ElTableColumn
@@ -370,9 +387,12 @@
 
 <script setup lang="ts">
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
+  import { isWmsBusinessTypeAvailable } from '@/utils/wms/business-type'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
+  import { useBreakpoints } from '@vueuse/core'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { ElMessage } from 'element-plus'
+  import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
   import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
   import ArtDescriptions from '@/components/core/base/art-descriptions/index.vue'
@@ -388,14 +408,14 @@
     DataSelectFetchParams,
     DataSelectRecord
   } from '@/components/core/forms/art-data-select/types'
-  import { fetchEnabledOrganizationTree } from '@/api/system-manage'
-  import TreeUtils from '@/utils/tree'
   import { normalizeNullableText } from '@/utils/form/normalize'
   import { useUserStore } from '@/store/modules/user'
   import {
     fetchWmsBins,
     fetchWmsInitialDocumentTypes,
+    fetchWmsInitialMenuId,
     fetchWmsInitialOptions,
+    fetchWmsInventoryOrganizations,
     fetchWmsMaterialOptions,
     fetchWmsProjects,
     fetchWmsTransferRequest,
@@ -404,6 +424,7 @@
     saveWmsTransferRequest,
     type WmsBin,
     type WmsInitializationOption,
+    type WmsInventoryOrganization,
     type WmsMaterialOption,
     type WmsProject,
     type WmsTransferRequestRow,
@@ -457,6 +478,10 @@
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const context = shallowRef<Context>()
   const mode = ref<OpenData['mode']>('create')
+  const isMobile = useBreakpoints({ sm: 640 }).smaller('sm')
+  const loadError = ref('')
+  const openData = shallowRef<OpenData>()
+  let loadRequest = 0
   const lines = ref<DraftLine[]>([])
   const documentRows = ref<WmsTransferRequestRow[]>([])
   const documentTypes = ref<WmsInitializationOption[]>([])
@@ -464,28 +489,18 @@
   const projects = ref<WmsProject[]>([])
   const units = ref<WmsUnitOption[]>([])
   const warehouses = ref<WmsWarehouse[]>([])
-  const organizationTree = ref<Api.SystemManage.OrganizationListItem[]>([])
-  const treeUtils = new TreeUtils({ idKey: 'id', parentKey: 'parentId', childrenKey: 'children' })
-  const organizations = computed(() =>
-    treeUtils
-      .treeToList(organizationTree.value)
-      .filter((row): row is Api.SystemManage.OrganizationListItem & { id: string } =>
-        Boolean(row.id)
-      )
-  )
-  type OrganizationSelectNode = Api.SystemManage.OrganizationListItem & {
+  const organizations = ref<WmsInventoryOrganization[]>([])
+  const availableOrganizations = computed(() => organizations.value.filter((row) => row.enabledOn))
+  const businessMenuId = ref('')
+  type OrganizationSelectNode = WmsInventoryOrganization & {
     organizationLabel: string
-    children?: OrganizationSelectNode[]
   }
-  const organizationSelectTree = computed<OrganizationSelectNode[]>(() => {
-    const decorate = (nodes: Api.SystemManage.OrganizationListItem[]): OrganizationSelectNode[] =>
-      nodes.map((node) => ({
-        ...node,
-        organizationLabel: `${node.organizationName} · ${node.organizationCode}`,
-        children: node.children ? decorate(node.children) : undefined
-      }))
-    return decorate(organizationTree.value)
-  })
+  const organizationSelectTree = computed<OrganizationSelectNode[]>(() =>
+    availableOrganizations.value.map((node) => ({
+      ...node,
+      organizationLabel: `${node.organizationName} · ${node.organizationCode}`
+    }))
+  )
   const organizationTreeProps = {
     value: 'id',
     label: 'organizationLabel',
@@ -545,8 +560,8 @@
     { key: 'applicant', label: '申请人', field: 'applicant' },
     { key: 'department', label: '申请部门', field: 'department' },
     { key: 'status', label: '单据状态', field: 'status' },
-    { key: 'pushedMode', label: '下推状态', field: 'pushedMode' },
-    { key: 'remark', label: '备注', field: 'remark', span: 3 }
+    { key: 'pushedMode', label: '下推状态', field: 'pushedMode', span: 2 },
+    { key: 'remark', label: '备注', field: 'remark', span: 2 }
   ]
   const materialColumns: DataSelectColumn[] = [
     { prop: 'materialCode', label: '物料编码', minWidth: 150 },
@@ -560,7 +575,7 @@
       key: 'organizationId',
       label: '申请组织',
       type: 'treeSelect',
-      options: organizationTree.value,
+      options: availableOrganizations.value,
       valueField: 'id',
       labelField: 'organizationName',
       childrenField: 'children',
@@ -584,8 +599,8 @@
       label: '业务类型',
       type: 'select',
       options: businessTypes.value
-        .filter(
-          (row) => !form.value.documentTypeId || row.documentTypeId === form.value.documentTypeId
+        .filter((row) =>
+          isWmsBusinessTypeAvailable(row, form.value.documentTypeId, businessMenuId.value)
         )
         .map((row) => ({ label: row.name, value: row.id })),
       props: { filterable: true }
@@ -594,14 +609,14 @@
       key: 'applicationDate',
       label: '申请日期',
       type: 'date',
-      props: { valueFormat: 'YYYY-MM-DD' }
+      props: { valueFormat: 'YYYY-MM-DD', class: 'w-full!' }
     },
     { key: 'applicantId', label: '申请人', type: 'slot' },
     {
       key: 'departmentId',
       label: '申请部门',
       type: 'treeSelect',
-      options: organizationTree.value,
+      options: availableOrganizations.value,
       valueField: 'id',
       labelField: 'organizationName',
       childrenField: 'children',
@@ -666,11 +681,15 @@
       form.value.departmentId = rows[0].departmentId
   }
   function selectDefaultBusinessType() {
-    form.value.businessTypeId =
-      businessTypes.value.find((row) => row.documentTypeId === form.value.documentTypeId)?.id || ''
+    const available = businessTypes.value.filter((row) =>
+      isWmsBusinessTypeAvailable(row, form.value.documentTypeId, businessMenuId.value)
+    )
+    if (!available.some((row) => row.id === form.value.businessTypeId))
+      form.value.businessTypeId =
+        available.find((row) => row.isDefault)?.id || available[0]?.id || ''
   }
   function newLine(material: WmsMaterialOption): DraftLine {
-    const orgId = form.value.organizationId || organizations.value[0]?.id || ''
+    const orgId = form.value.organizationId || availableOrganizations.value[0]?.id || ''
     const wh = warehouseOptions(orgId)
     return {
       key: crypto.randomUUID(),
@@ -761,8 +780,9 @@
       serialManagementEnabled: false
     }
   }
-  async function loadDocument(id: string) {
+  async function loadDocument(id: string, request: number) {
     const rows = await fetchWmsTransferRequest(id)
+    if (request !== loadRequest) return
     documentRows.value = rows
     const first = rows[0]
     if (!first) throw new Error('调拨申请不存在')
@@ -777,7 +797,7 @@
       departmentId: first.departmentId || '',
       remark: first.documentRemark || ''
     })
-    lines.value = await Promise.all(
+    const loadedLines = await Promise.all(
       rows.map(async (row) => ({
         key: crypto.randomUUID(),
         materialId: row.materialId,
@@ -807,25 +827,30 @@
         remark: row.lineRemark || ''
       }))
     )
+    if (request === loadRequest) lines.value = loadedLines
   }
-  async function loadOptions(tenantId: string) {
-    const [docRows, businessRows, projectRows, unitRows, warehouseRows, orgResult] =
+  async function loadOptions(tenantId: string, request: number) {
+    const [docRows, businessRows, projectRows, unitRows, warehouseRows, orgPage, menuId] =
       await Promise.all([
         fetchWmsInitialDocumentTypes(tenantId, 'WmsTransfer'),
         fetchWmsInitialOptions('mdm_business_type', tenantId),
         fetchWmsProjects(tenantId),
         fetchWmsUnitOptions(tenantId),
         fetchWmsWarehouses(tenantId),
-        fetchEnabledOrganizationTree({ tenantId })
+        fetchWmsInventoryOrganizations({ tenantId, enabled: 'enabled', current: 1, size: 2000 }),
+        fetchWmsInitialMenuId('WmsTransfer')
       ])
+    if (request !== loadRequest) return
     documentTypes.value = docRows
     businessTypes.value = businessRows
     projects.value = projectRows
     units.value = unitRows
     warehouses.value = warehouseRows
-    organizationTree.value = orgResult.data || []
+    organizations.value = orgPage.data
+    businessMenuId.value = menuId
   }
   async function save(): Promise<boolean> {
+    if (loadError.value) return false
     try {
       if (!(await validateArtFormForSubmit(formRef.value))) return false
       if (!lines.value.length) {
@@ -890,6 +915,9 @@
     }
   }
   async function handleOpen(data: OpenData) {
+    loadRequest += 1
+    openData.value = data
+    loadError.value = ''
     context.value = { tenantId: data.tenantId }
     mode.value = data.mode
     lines.value = []
@@ -916,32 +944,63 @@
               : '新增调拨申请单',
       subtitle: '暂存 → 提交 → 审核 → 下推调拨',
       showFooter: data.mode !== 'view',
+      confirmText: data.mode === 'copy' ? '保存副本' : '保存',
       onConfirm: save,
-      onOpen: async (_data, api) => {
-        api.setLoading(true)
-        try {
-          if (!data.tenantId) throw new Error('缺少租户')
-          await loadOptions(data.tenantId)
-          form.value.organizationId = organizations.value[0]?.id || ''
-          form.value.documentTypeId = documentTypes.value.find((row) => row.isDefault)?.id || ''
-          selectDefaultBusinessType()
-          if (data.documentId) {
-            await loadDocument(data.documentId)
-            if (data.mode === 'copy') {
-              form.value.id = ''
-              form.value.documentNo = '保存后自动生成'
-            }
-          }
-        } finally {
-          api.setLoading(false)
-        }
+      loading: true,
+      confirmDisabled: true,
+      onOpen: reloadDocument,
+      onClose: () => {
+        loadRequest += 1
       }
     })
+  }
+  async function reloadDocument(): Promise<void> {
+    const data = openData.value
+    if (!data) return
+    const request = ++loadRequest
+    loadError.value = ''
+    drawerRef.value?.setLoading(true)
+    drawerRef.value?.setOptions({ confirmDisabled: true })
+    try {
+      if (!data.tenantId) throw new Error('缺少租户')
+      await loadOptions(data.tenantId, request)
+      if (request !== loadRequest) return
+      form.value.organizationId =
+        availableOrganizations.value.find((row) => row.isDefault)?.id ||
+        availableOrganizations.value[0]?.id ||
+        ''
+      form.value.documentTypeId = documentTypes.value.find((row) => row.isDefault)?.id || ''
+      selectDefaultBusinessType()
+      if (data.documentId) {
+        await loadDocument(data.documentId, request)
+        if (request !== loadRequest) return
+        if (data.mode === 'copy') {
+          form.value.id = ''
+          form.value.documentNo = '保存后自动生成'
+        }
+      }
+      await nextTick()
+      if (request !== loadRequest) return
+      formRef.value?.clearValidate()
+    } catch (error) {
+      if (request !== loadRequest) return
+      loadError.value = '请重新加载单据资料；如仍失败，请检查网络和当前单据的查看权限。'
+      notifyFriendlyError(error, '单据资料加载失败，请重试')
+    } finally {
+      if (request === loadRequest) {
+        drawerRef.value?.setLoading(false)
+        drawerRef.value?.setOptions({ confirmDisabled: Boolean(loadError.value) })
+      }
+    }
   }
   defineExpose({ handleOpen })
 </script>
 
 <style scoped>
+  :deep(.document-header-descriptions .el-descriptions__table) {
+    table-layout: fixed;
+  }
+
   :deep(.transfer-line-table .el-input-number),
   :deep(.transfer-line-table .el-select),
   :deep(.transfer-line-table .el-date-editor) {

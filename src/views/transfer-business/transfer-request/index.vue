@@ -17,15 +17,17 @@
       </BusinessWorkspaceHeader>
       <ArtTableQuery
         ref="tableRef"
-        v-model="search"
+        :model-value="search"
+        @update:model-value="replaceReactiveModel(search, $event)"
         :api-fn="fetchRows"
         :search-items="searchItems"
         :columns-factory="columnsFactory"
+        :columns-context-key="displayMode"
         :header-actions="headerActions"
         header-actions-placement="workspace"
-        :search-bar-props="{ span: 5, labelWidth: 76 }"
+        :search-bar-props="{ span: 6, labelWidth: 76 }"
         :table-props="{
-          rowKey: displayMode === 'document' ? 'documentId' : 'lineId',
+          rowKey: 'lineId',
           spanMethod: mergeDocumentCells,
           tableLayout: 'fixed',
           emptyText: '当前范围暂无调拨申请单',
@@ -53,14 +55,18 @@
           <ElButton type="warning" plain @click="push('in_transit')">调出在途</ElButton>
         </div>
       </ArtDialog>
+      <MasterDataDeleteGuard ref="deleteGuardRef" />
     </div>
   </ArtPermissionGuard>
 </template>
 
 <script setup lang="tsx">
+  import { replaceReactiveModel } from '@/utils/form/model'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { ElMessage, ElTag } from 'element-plus'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
+  import MasterDataDeleteGuard from '@/components/business/master-data-delete-guard/index.vue'
   import { useTenantScopeFormPolicy } from '@/hooks/core/useTenantScopeFormPolicy'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
@@ -99,6 +105,10 @@
 
   defineOptions({ name: 'WmsTransfer' })
   const { confirmAction } = useArtFeedback()
+  const { deleteGuardRef, inspectDeleteReferences } = useRecordDeleteGuard(
+    'wms_transfer_request_document',
+    '调拨申请单'
+  )
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const { defaultWriteTenantId } = useTenantScopeFormPolicy()
   const tableRef = ref<ArtTableQueryExpose>()
@@ -290,15 +300,20 @@
   ): Promise<void> {
     if (workingId.value) return
     const label = { submit: '提交', approve: '审核', delete: '删除' }[action]
+    const resources = [{ id: row.documentId, label: row.documentNo }]
+    workingId.value = row.documentId
     try {
+      if (action === 'delete' && (await inspectDeleteReferences(resources))) return
       await confirmAction(`确定${label} ${row.documentNo}？`, `${label}调拨申请单`, {
         type: action === 'delete' ? 'warning' : 'info',
         confirmButtonText: `确定${label}`
       })
-      workingId.value = row.documentId
       await changeWmsTransferRequestStatus(row.documentId, action)
       await refresh()
-    } catch {
+    } catch (error) {
+      if (action === 'delete' && error !== 'cancel' && error !== 'close') {
+        await inspectDeleteReferences(resources)
+      }
       /* 取消和接口错误由组件处理。 */
     } finally {
       workingId.value = undefined

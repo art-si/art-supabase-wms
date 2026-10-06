@@ -1,19 +1,19 @@
 <template>
-  <ArtDialog ref="dialogRef" size="md">
-    <div class="space-y-4">
+  <ArtDialog ref="dialogRef" size="md" @close="handleClose">
+    <div class="min-w-0 space-y-4">
       <ArtEntitySummary
         icon="ri:qr-scan-2-line"
         eyebrow="SERIAL CONTROL"
         :title="context?.action === 'bind' ? '装配 SN 绑定' : '工单 SN 预留'"
         :description="context?.serial.serialNo || ''"
       />
-      <ElAlert
+      <ArtAsyncState
         v-if="loadError"
-        type="error"
-        :closable="false"
-        show-icon
-        title="候选记录加载失败"
-        description="请关闭后重试，当前操作不会提交。"
+        size="compact"
+        :error="loadError"
+        error-title="候选记录加载失败"
+        error-description="请重新加载候选记录后办理，当前操作不会提交。"
+        @retry="loadCandidates"
       />
       <ArtForm
         ref="formRef"
@@ -43,8 +43,11 @@
 </template>
 
 <script setup lang="ts">
+  import { cloneDeep, isEqual } from 'lodash-es'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
+  import { useDetailRecord } from '@/hooks/core/useDetailRecord'
+  import ArtAsyncState from '@/components/core/feedback/art-async-state/index.vue'
   import { ElMessage } from 'element-plus'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
@@ -69,9 +72,36 @@
   const dialogRef = ref<ArtDialogExpose<Context>>()
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const context = shallowRef<Context>()
-  const loadError = ref(false)
-  const orders = ref<WmsSerialReservationOrder[]>([])
-  const children = ref<WmsAssemblyChildCandidate[]>([])
+  let contextVersion = 0
+  const {
+    detail: candidates,
+    loading,
+    loadError,
+    loadDetail,
+    openDetail
+  } = useDetailRecord<{
+    orders: WmsSerialReservationOrder[]
+    children: WmsAssemblyChildCandidate[]
+  }>(async () => {
+    const data = context.value
+    if (!data) throw new Error('操作已关闭，请重新打开')
+    if (data.action === 'reserve') {
+      if (!data.serial.batchId) throw new Error('序列号缺少库存批次，请检查档案后重试')
+      return {
+        data: { orders: await fetchWmsSerialReservationOrders(data.serial.batchId), children: [] }
+      }
+    }
+    if (!data.serial.workOrderId) throw new Error('序列号缺少所属工单，请检查档案后重试')
+    return {
+      data: { orders: [], children: await fetchWmsAssemblyChildCandidates(data.serial.workOrderId) }
+    }
+  }, '候选记录加载失败，请重新加载后办理')
+  const orders = computed(() => candidates.value?.orders ?? [])
+  const children = computed(() => candidates.value?.children ?? [])
+  watch([loading, loadError], () => {
+    dialogRef.value?.setLoading(loading.value)
+    dialogRef.value?.setOptions({ confirmDisabled: loading.value || Boolean(loadError.value) })
+  })
   const form = ref({ workOrderId: '', childSerialIds: [] as string[] })
   const items = computed<FormItem[]>(() =>
     context.value?.action === 'reserve'
@@ -87,7 +117,11 @@
                 label: `${row.workOrder?.workOrderNo}${row.workOrder?.constructionNo ? ` · ${row.workOrder.constructionNo}` : ''}`,
                 value: row.workOrderId
               })),
-            props: { filterable: true, placeholder: '选择已预留该批次的工单' }
+            props: {
+              filterable: true,
+              placeholder: '选择已预留该批次的工单',
+              'aria-label': '预留给工单'
+            }
           }
         ]
       : [
@@ -101,6 +135,7 @@
               value: row.id
             })),
             props: {
+              'aria-label': '已领用的关键件 SN',
               multiple: true,
               filterable: true,
               collapseTags: true,
@@ -123,54 +158,75 @@
   }
 
   async function submit(): Promise<boolean> {
+    const data = context.value
+    if (!data || loading.value || loadError.value) return false
+    const version = contextVersion
+    const selection = cloneDeep(form.value)
+    const serial = cloneDeep(data.serial)
+    const isCurrent = () => contextVersion === version && context.value === data
     try {
       if (!(await validateArtFormForSubmit(formRef.value))) return false
-      const data = context.value
-      if (!data || loadError.value) return false
+      if (!isCurrent() || loading.value || loadError.value) return false
+      if (!isEqual(selection, form.value) || !isEqual(serial, data.serial)) {
+        ElMessage.warning('操作内容已变化，请检查后重新提交')
+        return false
+      }
       if (data.action === 'reserve') {
-        if (!orders.value.some((row) => row.workOrderId === form.value.workOrderId)) {
+        if (
+          !orders.value.some(
+            (row) =>
+              row.workOrderId === selection.workOrderId &&
+              row.workOrder &&
+              ['REL', 'PCNF'].includes(row.workOrder.orderStatus)
+          )
+        ) {
           ElMessage.warning('所选工单没有该批次的有效预留')
           return false
         }
-        await reserveWmsSerial(form.value.workOrderId, data.serial.id)
+        await reserveWmsSerial(selection.workOrderId, serial.id)
       } else {
-        if (!data.serial.workOrderId || form.value.childSerialIds.length === 0) return false
-        await bindWmsAssemblySerials(data.serial.id, form.value.childSerialIds)
+        if (!serial.workOrderId || selection.childSerialIds.length === 0) return false
+        if (
+          !selection.childSerialIds.every(
+            (id) => id !== serial.id && children.value.some((row) => row.id === id)
+          )
+        ) {
+          ElMessage.warning('所选关键件已不在可绑定候选中，请重新选择')
+          return false
+        }
+        await bindWmsAssemblySerials(serial.id, selection.childSerialIds)
       }
       emit('success')
-      return true
+      return isCurrent() && isEqual(selection, form.value)
     } catch (error) {
-      notifyFriendlyError(error, '序列号操作提交失败，请检查填写内容和网络后重试')
+      if (isCurrent()) notifyFriendlyError(error, '序列号操作提交失败，请检查填写内容和网络后重试')
       return false
     }
   }
 
   async function handleOpen(data: Context): Promise<void> {
+    contextVersion += 1
     context.value = data
     form.value.workOrderId = ''
     form.value.childSerialIds = []
-    orders.value = []
-    children.value = []
-    loadError.value = false
+    openDetail('')
     await dialogRef.value?.handleOpen(data, {
       title: data.action === 'bind' ? '绑定装配子件' : '预留关键件 SN',
       subtitle: '所有变更保留工单与序列号追溯关系',
       onConfirm: submit,
-      onOpen: async (_openData, api) => {
-        api.setLoading(true)
-        try {
-          if (data.action === 'reserve' && data.serial.batchId) {
-            orders.value = await fetchWmsSerialReservationOrders(data.serial.batchId)
-          } else if (data.action === 'bind' && data.serial.workOrderId) {
-            children.value = await fetchWmsAssemblyChildCandidates(data.serial.workOrderId)
-          }
-        } catch {
-          loadError.value = true
-        } finally {
-          api.setLoading(false)
-        }
-      }
+      onOpen: loadCandidates
     })
   }
+  async function loadCandidates(): Promise<void> {
+    const data = context.value
+    if (!data) return
+    await loadDetail(`${data.action}:${data.serial.id}`)
+  }
+  function handleClose(): void {
+    contextVersion += 1
+    context.value = undefined
+    openDetail('')
+  }
+  onUnmounted(handleClose)
   defineExpose({ handleOpen })
 </script>

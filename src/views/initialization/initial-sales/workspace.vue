@@ -18,15 +18,17 @@
       </BusinessWorkspaceHeader>
       <ArtTableQuery
         ref="tableRef"
-        v-model="search"
+        :model-value="search"
+        @update:model-value="replaceReactiveModel(search, $event)"
         :api-fn="fetchRows"
         :search-items="searchItems"
         :columns-factory="columnsFactory"
+        :columns-context-key="displayMode"
         :header-actions="headerActions"
         header-actions-placement="workspace"
-        :search-bar-props="{ span: 5, labelWidth: 76 }"
+        :search-bar-props="{ span: 6, labelWidth: 76 }"
         :table-props="{
-          rowKey: displayMode === 'document' ? 'documentId' : 'lineId',
+          rowKey: 'lineId',
           spanMethod: mergeDocumentCells,
           tableLayout: 'fixed',
           cellClassName: salesCellClassName,
@@ -89,17 +91,21 @@
           <ElButton disabled class="w-full!">专用发票</ElButton>
         </div>
       </ArtDialog>
+      <MasterDataDeleteGuard ref="deleteGuardRef" />
     </div>
   </ArtPermissionGuard>
 </template>
 
 <script setup lang="tsx">
+  import { replaceReactiveModel } from '@/utils/form/model'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { useRoute, useRouter } from 'vue-router'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { ElMessage, ElTag } from 'element-plus'
   import { useAuth } from '@/hooks/core/useAuth'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
+  import MasterDataDeleteGuard from '@/components/business/master-data-delete-guard/index.vue'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
@@ -215,6 +221,10 @@
         other_outbound: '其他出库单',
         other_return: '其他出库退回单'
       })[props.kind]
+  )
+  const { deleteGuardRef, inspectDeleteReferences } = useRecordDeleteGuard(
+    'wms_sales_document',
+    title.value
   )
   const description = computed(() =>
     isReturn.value
@@ -453,15 +463,20 @@
   ): Promise<void> {
     if (workingId.value) return
     const label = { submit: '提交', approve: '审核', delete: '删除' }[action]
+    const resources = [{ id: row.documentId, label: row.documentNo }]
+    workingId.value = row.documentId
     try {
+      if (action === 'delete' && (await inspectDeleteReferences(resources))) return
       await confirmAction(`确定${label} ${row.documentNo}？`, `${label}${title.value}`, {
         type: action === 'delete' ? 'warning' : 'info',
         confirmButtonText: `确定${label}`
       })
-      workingId.value = row.documentId
       await changeWmsInitialSalesStatus(row.documentId, action)
       await refresh()
-    } catch {
+    } catch (error) {
+      if (action === 'delete' && error !== 'cancel' && error !== 'close') {
+        await inspectDeleteReferences(resources)
+      }
       /* 取消和接口错误由组件处理。 */
     } finally {
       workingId.value = undefined

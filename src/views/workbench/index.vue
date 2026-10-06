@@ -290,6 +290,7 @@
 
   async function loadStats(): Promise<void> {
     const id = ++requestId
+    stats.value = undefined
     loading.value = true
     loadError.value = false
     try {

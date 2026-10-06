@@ -1,4 +1,5 @@
 import { useSupabase } from '@/hooks'
+import { fetchWmsInventoryOrganizationOptions } from '@/api/wms-inventory-organization'
 import { buildOrIlikeFilter } from '@/utils/supabase/search'
 import type {
   WmsInitialMaterial,
@@ -24,17 +25,6 @@ const writeOptions = {
   errorMessage: '库存初始化操作失败，请检查数据与权限'
 }
 
-type OrganizationRow = Omit<
-  WmsInventoryOrganization,
-  'enabledOn' | 'isDefault' | 'initializationClosedAt'
->
-type InitializationRow = Pick<
-  WmsInventoryOrganization,
-  'enabledOn' | 'isDefault' | 'initializationClosedAt'
-> & {
-  organizationId: string
-}
-
 export async function fetchWmsInventoryOrganizations(query: {
   tenantId?: string
   organizationType?: string
@@ -43,34 +33,11 @@ export async function fetchWmsInventoryOrganizations(query: {
   current: number
   size: number
 }): Promise<{ data: WmsInventoryOrganization[]; total: number }> {
-  let request = supabase
-    .from('mdm_organization')
-    .select('id,tenant_id,organization_code,organization_name,organization_type,status')
-    .eq('status', '1')
-    .order('organization_code')
-  if (query.tenantId) request = request.eq('tenant_id', query.tenantId)
-  if (query.organizationType) request = request.eq('organization_type', query.organizationType)
-  if (query.keyword?.trim())
-    request = request.or(
-      buildOrIlikeFilter(['organization_code', 'organization_name'], query.keyword)
-    )
-  let initializationRequest = supabase
-    .from('wms_inventory_initialization')
-    .select('organization_id,enabled_on,is_default,initialization_closed_at')
-  if (query.tenantId) initializationRequest = initializationRequest.eq('tenant_id', query.tenantId)
-  const [{ data }, { data: initializationData }] = await Promise.all([
-    responseHandle<OrganizationRow[]>(() => request.limit(2000), readOptions),
-    responseHandle<InitializationRow[]>(() => initializationRequest.limit(2000), readOptions)
-  ])
-  const initializationByOrganization = new Map(
-    (initializationData ?? []).map((row) => [row.organizationId, row])
+  const rows = await fetchWmsInventoryOrganizationOptions(
+    query.tenantId,
+    query.organizationType,
+    query.keyword
   )
-  const rows = (data ?? []).map((row) => ({
-    ...row,
-    enabledOn: initializationByOrganization.get(row.id)?.enabledOn ?? null,
-    isDefault: initializationByOrganization.get(row.id)?.isDefault ?? false,
-    initializationClosedAt: initializationByOrganization.get(row.id)?.initializationClosedAt ?? null
-  }))
   const filtered = query.enabled
     ? rows.filter((row) => Boolean(row.enabledOn) === (query.enabled === 'enabled'))
     : rows
@@ -215,7 +182,7 @@ export async function fetchWmsInitialOptions(
     },
     mdm_business_type: {
       fields:
-        'id,tenant_id,document_type_id,menu_ids,is_default,enabled,business_type_code,business_type_name',
+        'id,tenant_id,document_type_id,document_type_ids,menu_ids,is_default,enabled,business_type_code,business_type_name',
       code: 'businessTypeCode',
       name: 'businessTypeName'
     },
@@ -248,6 +215,9 @@ export async function fetchWmsInitialOptions(
       code: typeof code === 'string' ? code : '',
       name: typeof name === 'string' ? name : '',
       documentTypeId: typeof row.documentTypeId === 'string' ? row.documentTypeId : undefined,
+      documentTypeIds: Array.isArray(row.documentTypeIds)
+        ? row.documentTypeIds.filter((id): id is string => typeof id === 'string')
+        : undefined,
       menuIds: Array.isArray(row.menuIds)
         ? row.menuIds.filter((id): id is string => typeof id === 'string')
         : undefined,
@@ -268,6 +238,15 @@ export async function fetchWmsInitialDocumentTypes(
   if (!menu) return []
   const rows = await fetchWmsInitialOptions('mdm_document_type', tenantId)
   return rows.filter((row) => row.enabled && row.menuIds?.includes(menu.id))
+}
+
+export async function fetchWmsInitialMenuId(menuName: string): Promise<string> {
+  const { data } = await responseHandle<{ id: string }>(
+    () => supabase.from('sys_menu').select('id').eq('name', menuName).eq('type', 'menu').single(),
+    readOptions
+  )
+  if (!data?.id) throw new Error('单据菜单功能未配置，请联系管理员')
+  return data.id
 }
 
 export async function fetchWmsInitialStockMenuId(): Promise<string> {

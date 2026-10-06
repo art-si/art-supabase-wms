@@ -20,15 +20,17 @@
       </ElAlert>
       <ArtTableQuery
         ref="tableRef"
-        v-model="search"
+        :model-value="search"
+        @update:model-value="replaceReactiveModel(search, $event)"
         :api-fn="fetchRows"
         :search-items="searchItems"
         :columns-factory="columnsFactory"
+        :columns-context-key="displayMode"
         :header-actions="headerActions"
         header-actions-placement="workspace"
         :search-bar-props="{ span: 6, labelWidth: 82 }"
         :table-props="{
-          rowKey: displayMode === 'line' ? 'detailRowId' : 'id',
+          rowKey: getDocumentDetailRowKey,
           spanMethod: mergeDocumentCells,
           tableLayout: 'fixed',
           emptyText: '当前范围暂无库存组装单',
@@ -50,6 +52,8 @@
 </template>
 
 <script setup lang="tsx">
+  import { formatDateTimeValue } from '@/utils/ui/format'
+  import { replaceReactiveModel } from '@/utils/form/model'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import ArtTableQuery, {
     type ArtTableQueryExpose,
@@ -63,6 +67,7 @@
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type { ColumnOption } from '@/types'
   import {
+    getDocumentDetailRowKey,
     documentGroupSpan,
     expandDocumentLines,
     loadAllLinePages,
@@ -248,7 +253,7 @@
         formatter: (row) => (
           <BusinessTableIdentityCell
             primary={row.documentNo}
-            secondary={row.createdAt?.replace('T', ' ').slice(0, 19)}
+            secondary={formatDateTimeValue(row.createdAt, { emptyText: '' })}
             icon="ri:apps-2-add-line"
           />
         )

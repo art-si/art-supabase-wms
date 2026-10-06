@@ -1,8 +1,6 @@
 <template>
   <ArtPermissionGuard permission="WmsSalesReturn:View" resource-name="销售退货入库">
-    <div
-      class="business-workspace-page art-full-height min-w-0 space-y-4 max-md:ml-12 max-md:w-[calc(100%-3rem)]"
-    >
+    <div class="business-workspace-page art-full-height min-w-0 space-y-4">
       <BusinessWorkspaceHeader
         eyebrow="WAREHOUSE RETURNS"
         title="销售退货入库"
@@ -31,6 +29,8 @@
               :api-fn="allocationApi"
               :columns="allocationColumns"
               title="选择原销售出库"
+              empty-text="当前范围暂无可退的原发货记录"
+              empty-description="核对租户与发货单号；已出库且有剩余可退数量的记录才可选择。"
               subtitle="查看原发货通知单、批次和可退数量"
               placeholder="按发货通知单号选择"
               search-placeholder="输入发货通知单号"
@@ -49,7 +49,8 @@
           <ArtSectionCard title="办理退货回库" subtitle="退回的板材和主机继续归属原项目施工号。">
             <ArtForm
               ref="formRef"
-              v-model="form"
+              :model-value="form"
+              @update:model-value="replaceReactiveModel(form, $event)"
               :items="formItems"
               :rules="rules"
               :span="12"
@@ -90,7 +91,9 @@
                   class="min-w-0 flex-1"
                   @keydown.enter.prevent="applySerialScan"
                 />
-                <ElButton :disabled="!scanText.trim()" @click="applySerialScan"
+                <ElButton
+                  :disabled="serialLoading || serialLoadError || !scanText.trim()"
+                  @click="applySerialScan"
                   >加入退货清单</ElButton
                 >
               </div>
@@ -100,7 +103,10 @@
               </p>
             </div>
             <ElAlert v-if="serialLoadError" type="warning" :closable="false" show-icon class="mt-4">
-              原发货 SN 加载失败，请重新选择发货记录。
+              原发货 SN 加载失败，请重试后再选择退回序列号。
+              <ElButton link type="primary" :loading="serialLoading" @click="loadSerials"
+                >重新加载 SN</ElButton
+              >
             </ElAlert>
             <div
               class="mt-5 flex flex-wrap justify-end gap-3 border-t border-[var(--el-border-color-light)] pt-4"
@@ -111,7 +117,11 @@
                 type="primary"
                 :loading="submitting"
                 :disabled="
-                  loadError || serialLoadError || !selectedAllocation || remainingQuantity <= 0
+                  loadError ||
+                  serialLoading ||
+                  serialLoadError ||
+                  !selectedAllocation ||
+                  remainingQuantity <= 0
                 "
                 @click="submit"
               >
@@ -122,36 +132,7 @@
         </div>
         <div class="min-w-0 space-y-4">
           <ArtSectionCard title="退货核对" subtitle="确认后同时生成批次、流水及退货审计记录。">
-            <dl class="space-y-3 text-sm">
-              <div class="flex justify-between gap-3">
-                <dt class="text-[var(--el-text-color-secondary)]">项目施工号</dt>
-                <dd class="min-w-0 text-right font-medium">{{ scopeLabel }}</dd>
-              </div>
-              <div class="flex justify-between gap-3">
-                <dt class="text-[var(--el-text-color-secondary)]">可退数量</dt>
-                <dd class="tabular-nums font-medium">{{ remainingQuantity }}</dd>
-              </div>
-              <div class="flex justify-between gap-3">
-                <dt class="text-[var(--el-text-color-secondary)]">本次入库</dt>
-                <dd class="tabular-nums font-medium">{{ form.quantity }}</dd>
-              </div>
-              <template v-if="remainingDisplayQuantity !== null">
-                <div class="flex justify-between gap-3">
-                  <dt class="text-[var(--el-text-color-secondary)]">换算可退</dt>
-                  <dd class="min-w-0 text-right tabular-nums font-medium">
-                    {{ formatDisplayQuantity(remainingDisplayQuantity) }}
-                    {{ formatUnitDisplayName(selectedAllocation?.displayUnit?.unitName, '') }}
-                  </dd>
-                </div>
-                <div class="flex justify-between gap-3">
-                  <dt class="text-[var(--el-text-color-secondary)]">本次换算入库</dt>
-                  <dd class="min-w-0 text-right tabular-nums font-medium">
-                    {{ formatDisplayQuantity(currentDisplayQuantity ?? 0) }}
-                    {{ formatUnitDisplayName(selectedAllocation?.displayUnit?.unitName, '') }}
-                  </dd>
-                </div>
-              </template>
-            </dl>
+            <ArtDescriptions :data="{}" :items="reviewItems" :columns="1" :label-width="96" />
           </ArtSectionCard>
           <ArtSectionCard title="后续查询" subtitle="通过原 SN 或项目施工号追溯回库记录。">
             <div class="flex flex-wrap gap-2">
@@ -171,12 +152,17 @@
 </template>
 
 <script setup lang="ts">
+  import { replaceReactiveModel } from '@/utils/form/model'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
+  import { formatDateTimeValue } from '@/utils/ui/format'
   import { ElMessage } from 'element-plus'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import BusinessWorkspaceHeader from '@/components/business/business-workspace-header/index.vue'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
+  import ArtDescriptions from '@/components/core/base/art-descriptions/index.vue'
+  import type { ArtDescriptionItem } from '@/components/core/base/art-descriptions/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
+  import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import WmsBinPicker from '@wms/views/shared/wms-bin-picker.vue'
   import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
   import type {
@@ -189,14 +175,14 @@
     fetchWmsBins,
     fetchWmsProjects,
     fetchWmsSalesReturnAllocationPage,
-    fetchWmsSalesReturnSerials,
+    fetchWmsSerialsByIds,
     fetchWmsWarehouses,
     postWmsSalesReturn,
     type WmsBin,
     type WmsProject,
     type WmsSalesReturnAllocation,
     type WmsSalesReturnInput,
-    type WmsSalesReturnSerial,
+    type WmsSerialReference,
     type WmsWarehouse
   } from '@wms/api'
 
@@ -211,10 +197,14 @@
   const bins = ref<WmsBin[]>([])
   const projects = ref<WmsProject[]>([])
   const selectedAllocation = ref<AllocationRow | null>(null)
-  const serials = ref<WmsSalesReturnSerial[]>([])
+  const serials = ref<WmsSerialReference[]>([])
   const serialLoadError = ref(false)
+  const serialLoading = ref(false)
   const loadError = ref(false)
   const submitting = ref(false)
+  let serialRequest = 0
+  let binRequest = 0
+  let optionRequest = 0
   const scanText = ref('')
   const form = reactive<WmsSalesReturnInput>({
     outboundAllocationId: '',
@@ -260,10 +250,38 @@
     const name = projects.value.find((row) => row.id === projectId)?.projectName || '历史项目'
     return `${name} / ${selectedAllocation.value?.batch?.constructionNo || '施工号缺失'}`
   })
+  const reviewItems = computed<ArtDescriptionItem[]>(() => {
+    const items: ArtDescriptionItem[] = [
+      { key: 'scope', label: '项目施工号', value: scopeLabel.value },
+      { key: 'remainingQuantity', label: '可退数量', value: remainingQuantity.value },
+      { key: 'quantity', label: '本次入库', value: form.quantity }
+    ]
+    if (remainingDisplayQuantity.value !== null) {
+      const unit = formatUnitDisplayName(selectedAllocation.value?.displayUnit?.unitName, '')
+      items.push(
+        {
+          key: 'remainingDisplay',
+          label: '换算可退',
+          value: `${formatDisplayQuantity(remainingDisplayQuantity.value)} ${unit}`
+        },
+        {
+          key: 'currentDisplay',
+          label: '本次换算入库',
+          value: `${formatDisplayQuantity(currentDisplayQuantity.value ?? 0)} ${unit}`
+        }
+      )
+    }
+    return items
+  })
   const allocationColumns: DataSelectColumn[] = [
     { prop: 'displayLabel', label: '通知单 / 物料 / 批次', minWidth: 320 },
     { prop: 'remaining', label: '可退', width: 90, align: 'right' },
-    { prop: 'createdAt', label: '出库时间', minWidth: 170 }
+    {
+      prop: 'createdAt',
+      label: '出库时间',
+      minWidth: 180,
+      formatter: (row) => formatDateTimeValue(row.createdAt)
+    }
   ]
   const formItems = computed<FormItem[]>(() => [
     {
@@ -294,7 +312,7 @@
       label: '本次退货数量',
       type: 'number',
       props: {
-        min: 0.001,
+        min: selectedAllocation.value?.serialIds.length ? 0 : 0.001,
         max: remainingQuantity.value || undefined,
         precision: 3,
         disabled: Boolean(selectedAllocation.value?.serialIds.length),
@@ -312,6 +330,8 @@
             props: {
               multiple: true,
               filterable: true,
+              loading: serialLoading.value,
+              disabled: serialLoading.value || serialLoadError.value,
               collapseTags: true,
               onChange: () => (form.quantity = form.serialIds.length)
             },
@@ -332,7 +352,7 @@
     binId: selectedWarehouse.value?.enableLocations
       ? [{ required: true, message: '请选择退货入库库位', trigger: 'change' }]
       : [],
-    referenceNo: [{ required: true, message: '请填写退货单号', trigger: 'blur' }],
+    referenceNo: [{ required: true, whitespace: true, message: '请填写退货单号', trigger: 'blur' }],
     quantity: [
       {
         required: true,
@@ -364,6 +384,8 @@
     }
   }
   async function onAllocationSelected(rows: DataSelectRecord[]): Promise<void> {
+    ++serialRequest
+    ++binRequest
     const row = rows[0]
     selectedAllocation.value =
       row && typeof row.id === 'string' && Array.isArray(row.returns)
@@ -378,25 +400,44 @@
     form.serialIds = []
     bins.value = []
     serials.value = []
+    scanText.value = ''
+    serialLoading.value = false
+    serialLoadError.value = false
+    formRef.value?.clearValidate()
+    await loadSerials()
+  }
+  async function loadSerials(): Promise<void> {
+    const request = ++serialRequest
     serialLoadError.value = false
     if (!selectedAllocation.value?.serialIds.length) return
+    serialLoading.value = true
     try {
-      serials.value = await fetchWmsSalesReturnSerials(selectedAllocation.value.serialIds)
+      const loaded = await fetchWmsSerialsByIds(selectedAllocation.value.serialIds)
+      if (request !== serialRequest) return
+      serials.value = loaded
     } catch {
-      serialLoadError.value = true
+      if (request === serialRequest) serialLoadError.value = true
+    } finally {
+      if (request === serialRequest) serialLoading.value = false
     }
   }
   async function onWarehouseChange(): Promise<void> {
+    const request = ++binRequest
     form.binId = null
+    bins.value = []
     try {
-      bins.value = form.warehouseId ? await fetchWmsBins(form.warehouseId) : []
+      const loaded = form.warehouseId ? await fetchWmsBins(form.warehouseId) : []
+      if (request !== binRequest) return
+      bins.value = loaded
       loadError.value = false
     } catch {
+      if (request !== binRequest) return
       bins.value = []
       loadError.value = true
     }
   }
   function applySerialScan(): void {
+    if (serialLoading.value || serialLoadError.value) return
     const code = scanText.value.trim()
     if (!code) return
     const serial = availableSerials.value.find((row) => row.serialNo === code)
@@ -408,6 +449,10 @@
     ElMessage.success(`已加入退货 SN：${code}`)
   }
   function clearForm(): void {
+    ++serialRequest
+    ++binRequest
+    serialLoadError.value = false
+    serialLoading.value = false
     selectedAllocation.value = null
     serials.value = []
     bins.value = []
@@ -424,22 +469,25 @@
     formRef.value?.clearValidate()
   }
   async function loadOptions(): Promise<void> {
+    const request = ++optionRequest
     loadError.value = false
     try {
       const [warehouseRows, projectRows] = await Promise.all([
         fetchWmsWarehouses(),
         fetchWmsProjects()
       ])
+      if (request !== optionRequest) return
       warehouses.value = warehouseRows
       projects.value = projectRows
     } catch {
-      loadError.value = true
+      if (request === optionRequest) loadError.value = true
     }
   }
   async function submit(): Promise<void> {
-    if (submitting.value) return
+    if (submitting.value || serialLoading.value || serialLoadError.value) return
     try {
-      await formRef.value?.validate()
+      if (!(await validateArtFormForSubmit(formRef.value))) return
+      formRef.value?.clearValidate()
       if (!selectedAllocation.value || !selectedWarehouse.value) return
       if (selectedWarehouse.value.tenantId !== selectedAllocation.value.tenantId)
         return void ElMessage.warning('退货仓库与原发货记录不属于同一租户')

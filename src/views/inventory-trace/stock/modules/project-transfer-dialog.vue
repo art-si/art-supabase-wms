@@ -1,6 +1,6 @@
 <template>
   <ArtDialog ref="dialogRef" size="md">
-    <div class="space-y-4">
+    <div class="min-w-0 space-y-4">
       <ArtEntitySummary
         icon="ri:swap-2-line"
         eyebrow="PROJECT INVENTORY TRANSFER"
@@ -18,7 +18,7 @@
       </ArtEmptyState>
       <template v-else-if="context">
         <ElAlert
-          title="调拨将生成新库存批次和不可变流水；来源项目归属不会被直接改写。"
+          title="调拨后生成目标库存批次，并保留来源项目和调拨记录。"
           type="info"
           :closable="false"
           show-icon
@@ -43,7 +43,7 @@
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { normalizeNullableText } from '@/utils/form/normalize'
-  import { ElMessage } from 'element-plus'
+  import { ElMessage, type FormRules } from 'element-plus'
   import { useMediaQuery } from '@vueuse/core'
   import dayjs from 'dayjs'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
@@ -120,7 +120,7 @@
       label: '项目调拨单号',
       type: 'input',
       span: isNarrowScreen.value ? 24 : 12,
-      props: { maxlength: 80, placeholder: '用于幂等校验与审计追溯' }
+      props: { maxlength: 80, placeholder: '自动生成，可按业务需要修改' }
     },
     {
       key: 'quantity',
@@ -198,7 +198,7 @@
       props: { type: 'textarea', rows: 2, maxlength: 500, showWordLimit: true }
     }
   ])
-  const rules = {
+  const rules = computed<FormRules>(() => ({
     referenceNo: [{ required: true, message: '请填写项目调拨单号', trigger: 'blur' }],
     quantity: [
       {
@@ -208,8 +208,30 @@
         message: '请输入有效数量',
         trigger: 'change'
       }
+    ],
+    targetConstructionNo: [
+      {
+        required: Boolean(form.value.targetProjectId),
+        message: '请选择目标项目的施工号',
+        trigger: 'change'
+      }
+    ],
+    serialIds: [
+      {
+        validator: (_rule, value: string[], callback) => {
+          if (
+            (context.value?.batch.material?.serialManagementEnabled || serials.value.length > 0) &&
+            value.length !== form.value.quantity
+          ) {
+            callback(new Error('序列号件数必须与调拨数量一致'))
+          } else {
+            callback()
+          }
+        },
+        trigger: 'change'
+      }
     ]
-  }
+  }))
 
   async function submit(): Promise<boolean> {
     try {
@@ -224,22 +246,11 @@
         ElMessage.warning('垛包库存必须整包调拨')
         return false
       }
-      if (form.value.targetProjectId && !form.value.targetConstructionNo) {
-        ElMessage.warning('请选择目标项目的施工号')
-        return false
-      }
       if (
         batch.projectId === (form.value.targetProjectId || null) &&
         batch.constructionNo === (form.value.targetConstructionNo || null)
       ) {
         ElMessage.warning('目标项目和施工号与来源相同，无需调拨')
-        return false
-      }
-      if (
-        (batch.material?.serialManagementEnabled || serials.value.length > 0) &&
-        form.value.serialIds.length !== form.value.quantity
-      ) {
-        ElMessage.warning('序列号件数必须与调拨数量一致')
         return false
       }
       await transferWmsProject({
@@ -312,7 +323,7 @@
     })
     void dialogRef.value?.handleOpen(data, {
       title: '办理项目调拨',
-      subtitle: '保持来源批次与目标批次的完整审计链',
+      subtitle: '调整库存所属项目，保留来源批次和调拨记录',
       loading: true,
       loadingText: '正在加载调拨信息…',
       confirmDisabled: true,

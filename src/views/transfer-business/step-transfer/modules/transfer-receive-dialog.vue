@@ -1,6 +1,6 @@
 <template>
-  <ArtDialog ref="dialogRef" size="md">
-    <div class="space-y-4">
+  <ArtDialog ref="dialogRef" size="md" @close="handleClose">
+    <div class="min-w-0 space-y-4">
       <ArtEntitySummary
         icon="ri:inbox-archive-line"
         eyebrow="TRANSFER ARRIVAL"
@@ -13,11 +13,13 @@
         的目标仓库生成新批次，并将数量 {{ document?.quantity || 0 }} 的在途库存结清。
       </ElAlert>
       <ElAlert v-if="loadError" type="error" :closable="false" show-icon>
-        库位加载失败，请关闭后重试。
+        库位加载失败，请重新加载后办理。
+        <ElButton link type="primary" @click="loadBins">重新加载</ElButton>
       </ElAlert>
       <ArtForm
         ref="formRef"
-        v-model="form"
+        :model-value="form"
+        @update:model-value="replaceReactiveModel(form, $event)"
         :items="items"
         :rules="rules"
         label-position="top"
@@ -45,6 +47,7 @@
 </template>
 
 <script setup lang="ts">
+  import { replaceReactiveModel } from '@/utils/form/model'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
@@ -60,12 +63,15 @@
   const document = shallowRef<WmsTransferDocument>()
   const bins = ref<WmsBin[]>([])
   const loadError = ref(false)
+  let generation = 0
+  watch(loadError, (disabled) => dialogRef.value?.setOptions({ confirmDisabled: disabled }))
   const form = reactive<{ targetBinId: string | null }>({ targetBinId: null })
   const items = computed<FormItem[]>(() => [
     {
       key: 'targetBinId',
       label: '目标库位',
       type: 'slot',
+      span: 24,
       help: document.value?.targetWarehouse?.enableLocations
         ? '自动推荐会校验容量与物料规则；也可手动选择，记账时再次复核。'
         : undefined
@@ -89,6 +95,7 @@
     }
   }
   async function handleOpen(row: WmsTransferDocument): Promise<void> {
+    generation++
     document.value = row
     bins.value = []
     form.targetBinId = null
@@ -97,18 +104,27 @@
       title: '确认调拨入库',
       subtitle: '在途库存将在确认后转入目标仓库',
       onConfirm: submit,
-      onOpen: async (_row, api) => {
-        if (!row.targetWarehouse?.enableLocations) return
-        api.setLoading(true)
-        try {
-          bins.value = await fetchWmsBins(row.targetWarehouseId)
-        } catch {
-          loadError.value = true
-        } finally {
-          api.setLoading(false)
-        }
-      }
+      onOpen: loadBins
     })
+  }
+  async function loadBins(): Promise<void> {
+    const row = document.value
+    if (!row?.targetWarehouse?.enableLocations) return
+    const requestGeneration = ++generation
+    loadError.value = false
+    dialogRef.value?.setLoading(true)
+    try {
+      const rows = await fetchWmsBins(row.targetWarehouseId)
+      if (requestGeneration !== generation) return
+      bins.value = rows
+    } catch {
+      if (requestGeneration === generation) loadError.value = true
+    } finally {
+      if (requestGeneration === generation) dialogRef.value?.setLoading(false)
+    }
+  }
+  function handleClose(): void {
+    generation++
   }
   defineExpose({ handleOpen })
 </script>

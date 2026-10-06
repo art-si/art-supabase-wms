@@ -19,7 +19,8 @@
       </ElAlert>
       <ArtTableQuery
         ref="tableRef"
-        v-model="search"
+        :model-value="search"
+        @update:model-value="replaceReactiveModel(search, $event)"
         :api-fn="fetchRows"
         :search-items="searchItems"
         :columns-factory="columnsFactory"
@@ -32,7 +33,7 @@
         }"
         focusable
       />
-      <ArtDrawer ref="detailRef" size="lg" :show-footer="false">
+      <ArtDrawer ref="detailRef" size="lg" :show-footer="false" @close="clearDetail">
         <div v-if="activeSerial" class="space-y-5">
           <ArtEntitySummary
             icon="ri:qr-scan-2-line"
@@ -130,17 +131,28 @@
               <li
                 v-for="item in movements"
                 :key="item.id"
-                class="flex justify-between gap-3 py-3 text-sm"
+                class="flex min-w-0 flex-col gap-1 py-3 text-sm sm:flex-row sm:justify-between sm:gap-3"
               >
-                <span
-                  >{{ item.movement?.movementType || '库存业务' }} ·
+                <span class="min-w-0 break-all"
+                  >{{ formatWmsMovementType(item.movement?.movementType) }} ·
                   {{ item.movement?.referenceNo || '无单号' }}</span
                 >
                 <time class="shrink-0 text-[var(--el-text-color-secondary)]">{{
-                  item.movement?.occurredAt || item.createdAt
+                  formatDateTimeValue(item.movement?.occurredAt || item.createdAt)
                 }}</time>
               </li>
             </ul>
+            <div v-if="movementTotal > movementPageSize" class="flex justify-center pt-4">
+              <ElPagination
+                :current-page="movementPage"
+                :page-size="movementPageSize"
+                :total="movementTotal"
+                :pager-count="5"
+                @current-change="changeMovementPage"
+                layout="prev, pager, next"
+                :disabled="movementLoading"
+              />
+            </div>
           </ArtSectionCard>
         </div>
       </ArtDrawer>
@@ -150,6 +162,9 @@
 </template>
 
 <script setup lang="tsx">
+  import { formatWmsMovementType } from '@/utils/wms/movement-display'
+  import { formatDateTimeValue } from '@/utils/ui/format'
+  import { replaceReactiveModel } from '@/utils/form/model'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
   import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
@@ -174,7 +189,7 @@
     fetchWmsProjectSections,
     fetchWmsProjects,
     fetchWmsSerialChildren,
-    fetchWmsSerialMovements,
+    fetchWmsSerialMovementPage,
     fetchWmsSerialPage,
     releaseWmsSerial,
     type WmsProject,
@@ -200,6 +215,9 @@
   const childrenLoading = ref(false)
   const childrenError = ref(false)
   const movements = ref<WmsSerialMovement[]>([])
+  const movementPage = ref(1)
+  const movementPageSize = 20
+  const movementTotal = ref(0)
   const movementLoading = ref(false)
   const movementError = ref(false)
   const projects = ref<WmsProject[]>([])
@@ -313,33 +331,71 @@
   }
   async function loadChildren(): Promise<void> {
     if (!activeSerial.value) return
+    const serialId = activeSerial.value.id
+    const request = ++childrenRequest
     childrenLoading.value = true
     childrenError.value = false
     try {
-      children.value = await fetchWmsSerialChildren(activeSerial.value.id)
+      const result = await fetchWmsSerialChildren(serialId)
+      if (request === childrenRequest && activeSerial.value?.id === serialId)
+        children.value = result
     } catch {
-      childrenError.value = true
+      if (request === childrenRequest && activeSerial.value?.id === serialId)
+        childrenError.value = true
     } finally {
-      childrenLoading.value = false
+      if (request === childrenRequest) childrenLoading.value = false
     }
   }
   async function loadMovements(): Promise<void> {
     if (!activeSerial.value) return
+    const serialId = activeSerial.value.id
+    const request = ++movementRequest
     movementLoading.value = true
     movementError.value = false
     try {
-      movements.value = await fetchWmsSerialMovements(activeSerial.value.id)
+      const result = await fetchWmsSerialMovementPage({
+        serialId,
+        current: movementPage.value,
+        size: movementPageSize
+      })
+      if (request === movementRequest && activeSerial.value?.id === serialId) {
+        movements.value = result.data
+        movementTotal.value = result.total
+      }
     } catch {
-      movementError.value = true
+      if (request === movementRequest && activeSerial.value?.id === serialId)
+        movementError.value = true
     } finally {
-      movementLoading.value = false
+      if (request === movementRequest) movementLoading.value = false
     }
   }
+  function changeMovementPage(current: number): void {
+    movementPage.value = current
+    void loadMovements()
+  }
+  let childrenRequest = 0
+  let movementRequest = 0
+  function clearDetail(): void {
+    childrenRequest += 1
+    movementRequest += 1
+    activeSerial.value = undefined
+    children.value = []
+    movements.value = []
+    movementPage.value = 1
+    movementTotal.value = 0
+    childrenError.value = false
+    movementError.value = false
+    childrenLoading.value = false
+    movementLoading.value = false
+  }
   async function openDetail(row: WmsSerial): Promise<void> {
+    clearDetail()
+    const request = childrenRequest
     activeSerial.value = row
     children.value = []
     movements.value = []
     await detailRef.value?.handleOpen(row, { title: row.serialNo })
+    if (request !== childrenRequest || activeSerial.value?.id !== row.id) return
     await Promise.all([loadChildren(), loadMovements()])
   }
   function openAction(action: 'reserve' | 'bind', row: WmsSerial): void {

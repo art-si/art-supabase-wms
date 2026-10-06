@@ -1,6 +1,6 @@
 <template>
   <ArtDialog ref="dialogRef" size="lg">
-    <div class="space-y-4">
+    <div class="min-w-0 space-y-4">
       <ArtEntitySummary
         icon="ri:exchange-box-line"
         eyebrow="INVENTORY ADJUSTMENT"
@@ -11,7 +11,11 @@
         项目与施工号随来源批次保持不变。若要转给另一项目，请使用即时库存中的项目调拨。
       </ElAlert>
       <ElAlert v-if="loadError" type="error" :closable="false" show-icon>
-        库位、单位或序列号加载失败，请重新打开后再办理。
+        库位、单位或序列号加载失败，请重试后再办理。
+        <ElButton class="ml-2" size="small" @click="loadBatchDetails">重新加载</ElButton>
+      </ElAlert>
+      <ElAlert v-if="loadingBatchDetails" type="info" :closable="false" show-icon role="status">
+        正在加载来源批次的库位、单位和序列号，可清空或改选来源，完成后再提交。
       </ElAlert>
       <ArtForm
         ref="formRef"
@@ -123,6 +127,8 @@
   const units = ref<WmsUnitOption[]>([])
   const serials = ref<WmsBatchSerial[]>([])
   const loadError = ref(false)
+  const loadingBatchDetails = ref(false)
+  let batchDetailsRequest = 0
   const form = ref({
     adjustmentType: 'bin_move' as WmsAdjustmentType,
     documentNo: '',
@@ -369,9 +375,21 @@
       form.value.adjustmentType === 'material_convert'
         ? [{ required: true, message: '请选择目标物料', trigger: 'change' }]
         : [],
+    targetQuantity:
+      form.value.adjustmentType === 'material_convert'
+        ? [
+            {
+              required: true,
+              type: 'number' as const,
+              min: 0.001,
+              message: '请输入有效转换后数量',
+              trigger: 'change'
+            }
+          ]
+        : [],
     targetBatchNo:
       form.value.adjustmentType === 'batch_convert'
-        ? [{ required: true, message: '请填写新批号', trigger: 'blur' }]
+        ? [{ required: true, whitespace: true, message: '请填写新批号', trigger: 'blur' }]
         : [],
     targetStatus:
       form.value.adjustmentType === 'status_convert'
@@ -380,6 +398,28 @@
     targetDisplayUnitId:
       form.value.adjustmentType === 'unit_convert'
         ? [{ required: true, message: '请选择目标单位', trigger: 'change' }]
+        : [],
+    auxiliaryAttributesText:
+      form.value.adjustmentType === 'attribute_convert'
+        ? [
+            {
+              validator: (_rule: unknown, value: string, callback: (error?: Error) => void) => {
+                let attributes: unknown
+                try {
+                  attributes = JSON.parse(value.trim() || '{}')
+                } catch {
+                  callback(new Error('辅助属性格式无效，请填写字段名与值组成的对象'))
+                  return
+                }
+                callback(
+                  !attributes || typeof attributes !== 'object' || Array.isArray(attributes)
+                    ? new Error('辅助属性须为字段名与值组成的对象')
+                    : undefined
+                )
+              },
+              trigger: 'blur'
+            }
+          ]
         : []
   }))
   async function batchApi(params: DataSelectFetchParams) {
@@ -427,7 +467,10 @@
     bins.value = []
     units.value = []
     serials.value = []
-    if (!selectedBatch.value) return
+    if (!selectedBatch.value) {
+      onTypeChange()
+      return
+    }
     form.value.sourceBatchId = selectedBatch.value.id
     form.value.quantity = selectedBatch.value.packId ? selectedBatch.value.quantity : 1
     form.value.targetQuantity = form.value.quantity
@@ -437,18 +480,32 @@
     form.value.auxiliaryAttributesText = JSON.stringify(
       selectedBatch.value.auxiliaryAttributes || {}
     )
+    await loadBatchDetails()
+  }
+  async function loadBatchDetails(): Promise<void> {
+    const batch = selectedBatch.value
+    if (!batch) return
+    const version = ++batchDetailsRequest
     loadError.value = false
+    loadingBatchDetails.value = true
+    dialogRef.value?.setOptions({ confirmDisabled: true })
     try {
       const [binRows, unitRows, serialRows] = await Promise.all([
-        fetchWmsBins(selectedBatch.value.warehouseId),
-        fetchWmsUnitOptions(selectedBatch.value.tenantId),
-        fetchWmsBatchSerials(selectedBatch.value.id)
+        fetchWmsBins(batch.warehouseId),
+        fetchWmsUnitOptions(batch.tenantId),
+        fetchWmsBatchSerials(batch.id)
       ])
+      if (version !== batchDetailsRequest || selectedBatch.value !== batch) return
       bins.value = binRows
       units.value = unitRows
       serials.value = serialRows
     } catch {
-      loadError.value = true
+      if (version === batchDetailsRequest && selectedBatch.value === batch) loadError.value = true
+    } finally {
+      if (version === batchDetailsRequest && selectedBatch.value === batch) {
+        loadingBatchDetails.value = false
+        dialogRef.value?.setOptions({ confirmDisabled: loadError.value })
+      }
     }
   }
   function resetTarget(): void {
@@ -461,10 +518,18 @@
     selectedMaterial.value = []
   }
   function onTypeChange(): void {
+    batchDetailsRequest += 1
     selectedBatch.value = null
     form.value.sourceBatchId = ''
     form.value.quantity = 1
     form.value.targetQuantity = 1
+    form.value.productionDate = ''
+    form.value.expiryDate = ''
+    form.value.trackingNo = ''
+    form.value.auxiliaryAttributesText = '{}'
+    loadError.value = false
+    loadingBatchDetails.value = false
+    dialogRef.value?.setOptions({ confirmDisabled: false })
     bins.value = []
     units.value = []
     serials.value = []
@@ -473,8 +538,9 @@
   async function submit(): Promise<boolean> {
     try {
       if (!(await validateArtFormForSubmit(formRef.value))) return false
+      formRef.value?.clearValidate()
       const batch = selectedBatch.value
-      if (!batch || loadError.value) return false
+      if (!batch || loadError.value || loadingBatchDetails.value) return false
       if (
         form.value.quantity > batch.quantity ||
         (batch.packId && form.value.quantity !== batch.quantity)
@@ -551,6 +617,8 @@
     }
   }
   async function handleOpen(data: Context): Promise<void> {
+    batchDetailsRequest += 1
+    loadingBatchDetails.value = false
     context.value = data
     selectedBatch.value = null
     selectedMaterial.value = []
@@ -579,8 +647,16 @@
     await dialogRef.value?.handleOpen(data, {
       title: '办理库存调整',
       subtitle: '来源库存 → 新批次 → 调整流水',
-      onConfirm: submit
+      confirmDisabled: false,
+      onConfirm: submit,
+      onClose: () => {
+        batchDetailsRequest += 1
+        loadingBatchDetails.value = false
+      }
     })
   }
+  onBeforeUnmount(() => {
+    batchDetailsRequest += 1
+  })
   defineExpose({ handleOpen })
 </script>

@@ -4,13 +4,13 @@
       <BusinessWorkspaceHeader
         eyebrow="INVENTORY INITIALIZATION"
         title="结束初始化"
-        description="仅对已启用的公司级库存组织生成期初余额快照。结束后初始化单据进入锁定状态。"
+        description="核对已启用库存组织的期初单据并确认期初余额。结束后，初始化单据将锁定。"
         icon="ri:checkbox-circle-line"
         density="compact"
         :tags="[
           { label: '公司级控制', type: 'primary' },
           { label: '期初余额', type: 'success' },
-          { label: '可安全反初始化', type: 'info' }
+          { label: '支持反初始化', type: 'info' }
         ]"
       >
         <template #actions><BusinessTableWorkspaceActions :table="tableRef" /></template>
@@ -18,7 +18,8 @@
 
       <ArtTableQuery
         ref="tableRef"
-        v-model="search"
+        :model-value="search"
+        @update:model-value="replaceReactiveModel(search, $event)"
         :api-fn="fetchRows"
         :search-items="searchItems"
         :columns-factory="columnsFactory"
@@ -53,13 +54,15 @@
           empty-description="该公司库存组织的初始化单据均已审核，可以返回结束初始化。"
           @retry="loadPendingDocuments"
         >
-          <ElAlert
-            v-if="pendingCloseFailure && pendingDocuments.length === 0"
-            type="warning"
-            :closable="false"
-            :title="pendingCloseFailure"
-            description="当前列表没有查到待处理单据，请刷新后重试；若仍无法结束初始化，请联系管理员核对服务端校验。"
-          />
+          <div v-if="pendingCloseFailure && pendingDocuments.length === 0" class="space-y-3">
+            <ElAlert
+              type="warning"
+              :closable="false"
+              :title="pendingCloseFailure"
+              description="当前列表没有查到待处理单据，请刷新后重试；若仍无法结束初始化，请联系管理员核对服务端校验。"
+            />
+            <ElButton :loading="pendingLoading" @click="loadPendingDocuments">刷新列表</ElButton>
+          </div>
           <div v-else class="min-w-0">
             <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
               <span class="text-sm text-[var(--el-text-color-secondary)]">
@@ -84,6 +87,7 @@
 </template>
 
 <script setup lang="tsx">
+  import { replaceReactiveModel } from '@/utils/form/model'
   import { useRouter } from 'vue-router'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { ElButton, ElMessage, ElTag } from 'element-plus'
@@ -307,7 +311,7 @@
     const message =
       action === 'close'
         ? `确定结束“${row.organizationName}”的库存初始化？系统将校验全部期初单据并生成期初余额。`
-        : `确定对“${row.organizationName}”执行反初始化？系统将清除该组织的期初余额快照。`
+        : `确定对“${row.organizationName}”执行反初始化？系统将清除该组织已确认的期初余额，并重新开放初始化单据。`
     try {
       await confirmAction(message, actionLabel, {
         type: action === 'close' ? 'warning' : 'info',

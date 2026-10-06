@@ -1,6 +1,6 @@
 <template>
   <ArtDialog ref="dialogRef" size="lg">
-    <div class="flex flex-col gap-4">
+    <div class="flex min-w-0 flex-col gap-4">
       <ArtEntitySummary
         icon="ri:apps-2-add-line"
         eyebrow="INVENTORY ASSEMBLY"
@@ -11,27 +11,19 @@
         项目、施工号与货权从来源批次继承。带 SN 的关键件和主机请通过 MES 装配工单办理。
       </ElAlert>
       <ElAlert v-if="loadError" type="error" :closable="false" show-icon>
-        目标库位加载失败，请重新打开单据。
+        组件序列号、仓库或库位加载失败，请重试后继续添加。
+        <ElButton class="ml-2" size="small" @click="retryBatch">重新加载</ElButton>
       </ElAlert>
-      <section
-        aria-label="来源组件"
-        class="rounded-xl border border-[var(--el-border-color-light)] p-4"
+      <ArtSectionCard
+        title="来源组件"
+        :subtitle="`已选 ${components.length} 条；至少两条，最多 50 条，同一批次只能添加一次。`"
       >
-        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h3 class="font-semibold"
-              >来源组件
-              <span class="text-[var(--el-color-primary)]">{{ components.length }}</span></h3
-            >
-            <p class="mt-1 text-xs text-[var(--el-text-color-secondary)]"
-              >至少两条，最多 50 条；同一批次只能添加一次。</p
-            >
-          </div>
+        <template #actions>
           <ElTag v-if="firstBatch" type="success" size="small">
             {{ firstBatch.warehouse?.warehouseName }} · {{ projectName
             }}{{ firstBatch.constructionNo ? ` / ${firstBatch.constructionNo}` : '' }}
           </ElTag>
-        </div>
+        </template>
         <ArtTableSingleSelect
           :key="selectKey"
           :model-value="undefined"
@@ -92,42 +84,48 @@
           :visual-size="84"
           class="min-h-40"
         />
-      </section>
-      <ArtForm
-        ref="formRef"
-        v-model="form"
-        :items="items"
-        :rules="rules"
-        :span="12"
-        :gutter="20"
-        label-position="top"
-        :show-reset="false"
-        :show-submit="false"
+      </ArtSectionCard>
+      <ArtSectionCard
+        title="成品入库"
+        subtitle="选择成品物料，填写本次组装数量、目标库位和批次属性。"
       >
-        <template #targetMaterialId>
-          <ArtTableSingleSelect
-            :model-value="form.targetMaterialId || undefined"
-            :api-fn="materialApi"
-            :selected-data="selectedMaterial"
-            :columns="materialColumns"
-            title="选择成品物料"
-            subtitle="成品物料须不同于所有来源组件"
-            placeholder="选择成品物料"
-            search-placeholder="输入物料编码或名称"
-            label-key="materialName"
-            :show-pagination="true"
-            :page-size="20"
-            :disabled="!firstBatch"
-            @update:selected-data="onMaterialSelected"
-            @update:model-value="form.targetMaterialId = String($event || '')"
-          />
-        </template>
-      </ArtForm>
+        <ArtForm
+          ref="formRef"
+          v-model="form"
+          :items="items"
+          :rules="rules"
+          :span="12"
+          :gutter="20"
+          label-position="top"
+          :show-reset="false"
+          :show-submit="false"
+        >
+          <template #targetMaterialId>
+            <ArtTableSingleSelect
+              :model-value="form.targetMaterialId || undefined"
+              :api-fn="materialApi"
+              :selected-data="selectedMaterial"
+              :columns="materialColumns"
+              title="选择成品物料"
+              subtitle="成品物料须不同于所有来源组件"
+              placeholder="选择成品物料"
+              search-placeholder="输入物料编码或名称"
+              label-key="materialName"
+              :show-pagination="true"
+              :page-size="20"
+              :disabled="!firstBatch"
+              @update:selected-data="onMaterialSelected"
+              @update:model-value="form.targetMaterialId = String($event || '')"
+            />
+          </template>
+        </ArtForm>
+      </ArtSectionCard>
     </div>
   </ArtDialog>
 </template>
 
 <script setup lang="ts">
+  import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { ElMessage } from 'element-plus'
@@ -174,6 +172,7 @@
   const selectedMaterial = ref<WmsMaterialOption[]>([])
   const bins = ref<WmsBin[]>([])
   const loadError = ref(false)
+  const failedBatch = shallowRef<BatchOption | null>(null)
   const warehouseRequiresLocation = ref(false)
   const selectKey = ref(0)
   const form = ref({
@@ -322,6 +321,7 @@
     const row = rows[0]
     if (!row || typeof row.id !== 'string' || typeof row.quantity !== 'number') return
     const batch = row as BatchOption
+    const currentContext = context.value
     if (components.value.some((item) => item.batch.id === batch.id))
       return void ElMessage.warning('该批次已加入组件')
     if (batch.packId || batch.material?.serialManagementEnabled)
@@ -338,14 +338,19 @@
     ) {
       return void ElMessage.warning('组件仓库、库存组织、项目施工号与货权必须一致')
     }
+    loadError.value = false
+    failedBatch.value = null
+    dialogRef.value?.setLoading(true)
     try {
       const serials = await fetchWmsBatchSerials(batch.id)
+      if (context.value !== currentContext) return
       if (serials.length) return void ElMessage.warning('该批次含 SN，请通过 MES 装配工单办理')
       if (!first) {
         const [binRows, warehouseRows] = await Promise.all([
           fetchWmsBins(batch.warehouseId),
           fetchWmsWarehouses(batch.tenantId)
         ])
+        if (context.value !== currentContext) return
         bins.value = binRows
         warehouseRequiresLocation.value = Boolean(
           warehouseRows.find((item) => item.id === batch.warehouseId)?.enableLocations
@@ -355,8 +360,16 @@
       selectKey.value += 1
       loadError.value = false
     } catch {
-      loadError.value = true
+      if (context.value === currentContext) {
+        failedBatch.value = batch
+        loadError.value = true
+      }
+    } finally {
+      if (context.value === currentContext) dialogRef.value?.setLoading(false)
     }
+  }
+  async function retryBatch(): Promise<void> {
+    if (failedBatch.value) await onBatchSelected([failedBatch.value])
   }
   function removeBatch(id: string): void {
     components.value = components.value.filter((item) => item.batch.id !== id)
@@ -427,6 +440,7 @@
     }
   }
   async function handleOpen(data: Context): Promise<void> {
+    failedBatch.value = null
     context.value = data
     components.value = []
     selectedMaterial.value = []

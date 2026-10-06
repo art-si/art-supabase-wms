@@ -20,15 +20,17 @@
       </ElAlert>
       <ArtTableQuery
         ref="tableRef"
-        v-model="search"
+        :model-value="search"
+        @update:model-value="replaceReactiveModel(search, $event)"
         :api-fn="fetchRows"
         :search-items="searchItems"
         :columns-factory="columnsFactory"
+        :columns-context-key="displayMode"
         :header-actions="headerActions"
         header-actions-placement="workspace"
         :search-bar-props="{ span: 6, labelWidth: 82 }"
         :table-props="{
-          rowKey: displayMode === 'line' ? 'detailRowId' : 'id',
+          rowKey: getDocumentDetailRowKey,
           spanMethod: mergeDocumentCells,
           tableLayout: 'fixed',
           emptyText: '当前范围暂无库存调整单',
@@ -49,7 +51,10 @@
 </template>
 
 <script setup lang="tsx">
+  import { formatDateTimeValue } from '@/utils/ui/format'
+  import { replaceReactiveModel } from '@/utils/form/model'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { ElTag } from 'element-plus'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import ArtTableQuery, {
@@ -62,6 +67,7 @@
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type { ColumnOption } from '@/types'
   import {
+    getDocumentDetailRowKey,
     documentGroupSpan,
     expandDocumentLines,
     loadAllLinePages,
@@ -84,6 +90,7 @@
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const tableRef = ref<ArtTableQueryExpose>()
   const displayMode = ref<'document' | 'line'>('document')
+  const conditionOptions = useDictionaryOptions('wmsAdjustmentCondition')
   type AdjustmentListRow = WmsAdjustmentDocument & {
     detailRowId?: string
     detailLine?: 'source' | 'target'
@@ -176,7 +183,10 @@
           quality_hold: '质量待检',
           damaged: '受损'
         }
-        return `${labels[row.sourceBatch?.status || ''] || '来源状态'} → ${labels[row.targetBatch?.status || ''] || '目标状态'}`
+        for (const option of conditionOptions) labels[option.value] = option.label
+        const source = row.sourceBatch?.status
+        const target = row.targetBatch?.status
+        return `${source ? labels[source] || source : '来源状态'} → ${target ? labels[target] || target : '目标状态'}`
       }
       case 'unit_convert':
         return `${row.targetBatch?.displayQuantity ?? '—'} ${formatUnitDisplayName(row.targetBatch?.displayUnit?.unitName, '')}`
@@ -244,7 +254,7 @@
         formatter: (row) => (
           <BusinessTableIdentityCell
             primary={row.documentNo}
-            secondary={row.createdAt?.replace('T', ' ').slice(0, 19)}
+            secondary={formatDateTimeValue(row.createdAt, { emptyText: '' })}
             icon="ri:exchange-box-line"
           />
         )

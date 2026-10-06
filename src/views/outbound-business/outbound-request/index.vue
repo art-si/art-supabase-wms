@@ -19,15 +19,17 @@
       </ElAlert>
       <ArtTableQuery
         ref="tableRef"
-        v-model="search"
+        :model-value="search"
+        @update:model-value="replaceReactiveModel(search, $event)"
         :api-fn="fetchRows"
         :search-items="searchItems"
         :columns-factory="columnsFactory"
+        :columns-context-key="displayMode"
         :header-actions="headerActions"
         header-actions-placement="workspace"
         :search-bar-props="{ span: 6, labelWidth: 82 }"
         :table-props="{
-          rowKey: displayMode === 'line' ? 'detailRowId' : 'id',
+          rowKey: getDocumentDetailRowKey,
           spanMethod: mergeDocumentCells,
           tableLayout: 'fixed',
           emptyText: `当前范围暂无${displayTitle}`,
@@ -44,16 +46,21 @@
       </ArtTableQuery>
       <IssueRequestCreateDialog ref="createRef" @success="refresh" />
       <IssueRequestDetailDrawer ref="detailRef" @success="refresh" />
+      <MasterDataDeleteGuard ref="deleteGuardRef" />
     </div>
   </ArtPermissionGuard>
 </template>
 
 <script setup lang="tsx">
+  import { formatDateTimeValue } from '@/utils/ui/format'
+  import { replaceReactiveModel } from '@/utils/form/model'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
-  import { ElTag } from 'element-plus'
+  import { ElMessage, ElTag } from 'element-plus'
   import { useRoute, useRouter } from 'vue-router'
   import { useAuth } from '@/hooks/core/useAuth'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { recordDeleteGuardOptions } from '@/hooks/core/useRecordDeleteGuard'
+  import MasterDataDeleteGuard from '@/components/business/master-data-delete-guard/index.vue'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import ArtTableQuery, {
     type ArtTableQueryExpose,
@@ -67,6 +74,7 @@
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type { ColumnOption } from '@/types'
   import {
+    getDocumentDetailRowKey,
     documentGroupSpan,
     expandDocumentLines,
     loadAllLinePages,
@@ -78,6 +86,8 @@
     copyWmsIssueRequest,
     deleteWmsIssueRequest,
     fetchWmsIssueRequestPage,
+    fetchWmsIssueRequest,
+    fetchWmsIssueRequestAllocations,
     fetchWmsIssueRequestLinesForDocuments,
     fetchWmsProjectSections,
     fetchWmsProjects,
@@ -106,6 +116,54 @@
       : 'MES 工单提出多物料领料需求，审核后按批次和 SN 分次出库，申请余额随库存流水核销。'
   )
   const { confirmAction } = useArtFeedback()
+  const deleteGuardRef = ref<InstanceType<typeof MasterDataDeleteGuard>>()
+  async function inspectDraftReferences(row: WmsIssueRequest): Promise<boolean> {
+    if (!deleteGuardRef.value) {
+      ElMessage.error('关联校验尚未就绪，请刷新页面后重试删除')
+      return true
+    }
+    const options = recordDeleteGuardOptions(
+      { table: 'wms_issue_request', ids: [row.id] },
+      '出库申请',
+      [{ id: row.id, label: row.documentNo }],
+      {
+        wms_issue_request_allocation: {
+          label: '申请出库记录',
+          routeName: 'WmsIssueRequest',
+          canNavigate: () => hasAuth('WmsIssueRequest:View')
+        }
+      }
+    )
+    const fetchDependencies = options.fetchDependencies
+    if (!fetchDependencies) return true
+    return deleteGuardRef.value.inspect({
+      ...options,
+      fetchDependencies: async (ids) => {
+        const dependencies = await fetchDependencies(ids)
+        const allocations = dependencies.some(
+          (item) => item.dependencyCode === 'wms_issue_request_allocation'
+        )
+          ? await fetchWmsIssueRequestAllocations(row.id)
+          : []
+        // 暂存申请的自有明细由受控删除函数清理；已发生的出库记录仍阻止删除。
+        return dependencies
+          .filter((item) => item.dependencyCode !== 'wms_issue_request_line')
+          .map((item) => {
+            if (item.dependencyCode !== 'wms_issue_request_allocation') return item
+            const allocation = allocations.find((entry) => entry.id === item.targetId)
+            return {
+              ...item,
+              targetId: row.id,
+              recordNo: allocation?.movement?.referenceNo || `${row.documentNo} · 出库记录`,
+              recordSummary: allocation
+                ? `批次 ${allocation.batch?.batchNo || '待核对'} · 已出库 ${allocation.quantity}`
+                : '当前账号无法查看出库明细，请联系有权限的人员核对',
+              recordStatus: '已出库'
+            }
+          })
+      }
+    })
+  }
   const { hasAnyAuth, hasAuth } = useAuth()
   const canPostStock = () => hasAnyAuth(['WmsStockOperation:Issue', 'MdmInventoryBatch:Issue'])
   const route = useRoute()
@@ -392,15 +450,17 @@
   }
   async function removeDraft(row: WmsIssueRequest): Promise<void> {
     if (workingId.value) return
+    workingId.value = row.id
     try {
+      if (await inspectDraftReferences(row)) return
       await confirmAction(`确认删除暂存申请 ${row.documentNo}？`, '删除出库申请', {
         type: 'warning',
         confirmButtonText: '确认删除'
       })
-      workingId.value = row.id
       await deleteWmsIssueRequest(row.id)
       await refresh()
-    } catch {
+    } catch (error) {
+      if (error !== 'cancel' && error !== 'close') await inspectDraftReferences(row)
       // 取消确认与 API 错误由对应组件处理。
     } finally {
       workingId.value = undefined
@@ -432,7 +492,7 @@
         formatter: (row) => (
           <BusinessTableIdentityCell
             primary={row.documentNo}
-            secondary={row.createdAt?.replace('T', ' ').slice(0, 19)}
+            secondary={formatDateTimeValue(row.createdAt, { emptyText: '' })}
             icon="ri:file-list-3-line"
           />
         )
@@ -630,4 +690,23 @@
     })
     await router.replace({ path: route.path, query: { ...route.query, workOrderId: undefined } })
   })
+  watch(
+    () => [route.query.recordId, route.query.resourceType],
+    async ([recordId, resourceType]) => {
+      if (
+        resourceType !== 'wms_issue_request' ||
+        typeof recordId !== 'string' ||
+        !hasAuth('WmsIssueRequest:View')
+      )
+        return
+      try {
+        const request = await fetchWmsIssueRequest(recordId)
+        if (route.query.recordId !== recordId || route.query.resourceType !== resourceType) return
+        await detailRef.value?.handleOpen(request, request.projectName || '未关联项目')
+      } catch {
+        ElMessage.error('关联出库申请加载失败，请检查权限后重试')
+      }
+    },
+    { immediate: true, flush: 'post' }
+  )
 </script>

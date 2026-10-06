@@ -1,6 +1,14 @@
 <template>
-  <ArtDrawer ref="drawerRef" size="xl" show-fullscreen-button>
-    <div class="space-y-4">
+  <ArtDrawer ref="drawerRef" :size="isMobile ? '100%' : 'xl'" show-fullscreen-button>
+    <ArtEmptyState
+      v-if="loadError"
+      title="单据资料加载失败"
+      :description="loadError"
+      size="compact"
+    >
+      <ElButton type="primary" @click="reloadDocument">重新加载</ElButton>
+    </ArtEmptyState>
+    <div v-else class="space-y-4">
       <ArtEntitySummary
         :icon="kind === 'gain' ? 'ri:add-box-line' : 'ri:indeterminate-circle-line'"
         eyebrow="INVENTORY COUNT"
@@ -9,12 +17,21 @@
             ? form.documentNo || title
             : mode === 'edit'
               ? `编辑${title}`
-              : `新增${title}`
+              : mode === 'copy'
+                ? `复制${title}`
+                : `新增${title}`
         "
         description="单据编号按月自动生成三位流水号；账存数量由当前库存汇总。"
       />
       <ArtSectionCard title="单据表头" subtitle="编号按月生成；记账日期由系统记录。">
-        <ArtDescriptions v-if="mode === 'view'" :data="viewData" :items="viewItems" :columns="3" />
+        <ArtDescriptions
+          v-if="mode === 'view'"
+          class="document-header-descriptions"
+          :data="viewData"
+          :items="viewItems"
+          :columns="2"
+          :label-width="120"
+        />
         <ArtForm
           v-else
           ref="formRef"
@@ -77,8 +94,8 @@
           class="count-line-table"
           :cell-class-name="viewLineCellClassName"
         >
-          <ElTableColumn prop="lineNo" label="行号" width="68" fixed="left" />
-          <ElTableColumn label="物料描述" min-width="220" fixed="left">
+          <ElTableColumn prop="lineNo" label="行号" width="68" :fixed="isMobile ? false : 'left'" />
+          <ElTableColumn label="物料描述" min-width="220" :fixed="isMobile ? false : 'left'">
             <template #default="{ row }">
               <strong class="block truncate">{{
                 row.materialDescription || row.materialName
@@ -98,7 +115,7 @@
           <ElTableColumn label="赠品" width="72" align="center">
             <template #default="{ row }">{{ row.gift ? '✓' : '—' }}</template>
           </ElTableColumn>
-          <ElTableColumn prop="inventoryUnitName" label="库存单位" width="100"
+          <ElTableColumn prop="inventoryUnitName" label="库存单位" width="140"
             ><template #default="{ row }">{{
               formatUnitDisplayName(row.inventoryUnitName)
             }}</template></ElTableColumn
@@ -125,7 +142,7 @@
               }}</strong></template
             >
           </ElTableColumn>
-          <ElTableColumn prop="baseUnitName" label="基本单位" width="100"
+          <ElTableColumn prop="baseUnitName" label="基本单位" width="140"
             ><template #default="{ row }">{{
               formatUnitDisplayName(row.baseUnitName)
             }}</template></ElTableColumn
@@ -152,13 +169,18 @@
               ownerTypeLabel(row.ownerType)
             }}</template></ElTableColumn
           >
+          <ElTableColumn label="货主" min-width="160" show-overflow-tooltip>
+            <template #default="{ row }">{{
+              formatWmsOwnerName(row.ownerType, row.ownerId, suppliers, customers)
+            }}</template>
+          </ElTableColumn>
           <ElTableColumn label="库存状态" width="105"
             ><template #default="{ row }">{{
               stockStatusLabel(row.stockStatus)
             }}</template></ElTableColumn
           >
           <ElTableColumn prop="keeperName" label="仓管员" min-width="110" />
-          <ElTableColumn prop="auxiliaryUnitName" label="辅助单位" width="105"
+          <ElTableColumn prop="auxiliaryUnitName" label="辅助单位" width="140"
             ><template #default="{ row }">{{
               formatUnitDisplayName(row.auxiliaryUnitName)
             }}</template></ElTableColumn
@@ -183,10 +205,10 @@
           class="count-line-table"
           :cell-class-name="lineCellClassName"
         >
-          <ElTableColumn label="行号" width="68" fixed="left"
+          <ElTableColumn label="行号" width="68" :fixed="isMobile ? false : 'left'"
             ><template #default="{ $index }">{{ ($index + 1) * 10 }}</template></ElTableColumn
           >
-          <ElTableColumn label="物料描述" min-width="210" fixed="left"
+          <ElTableColumn label="物料描述" min-width="210" :fixed="isMobile ? false : 'left'"
             ><template #default="{ row }"
               ><strong class="block truncate">{{
                 row.material?.description || row.material?.materialName
@@ -217,7 +239,7 @@
           <ElTableColumn label="赠品" width="78" align="center"
             ><template #default="{ row }"><ElCheckbox v-model="row.gift" /></template
           ></ElTableColumn>
-          <ElTableColumn label="库存单位" min-width="125"
+          <ElTableColumn label="库存单位" min-width="140"
             ><template #default="{ row }"
               ><ElSelect v-model="row.inventoryUnitId" filterable
                 ><ElOption
@@ -250,7 +272,7 @@
                 :disabled="false"
                 class="w-full!" /></template
           ></ElTableColumn>
-          <ElTableColumn label="基本单位" min-width="115"
+          <ElTableColumn label="基本单位" min-width="140"
             ><template #default="{ row }"
               ><ElSelect v-model="row.baseUnitId" clearable filterable
                 ><ElOption
@@ -306,7 +328,7 @@
                   :label="`${item.binCode} · ${item.binName}`"
                   :value="item.id" /></ElSelect></template
           ></ElTableColumn>
-          <ElTableColumn label="库存类型" min-width="120"
+          <ElTableColumn label="库存类型" min-width="155"
             ><template #default="{ row }"
               ><ElSelect v-model="row.stockType"
                 ><ElOption
@@ -315,7 +337,7 @@
                   :label="item.label"
                   :value="item.value" /></ElSelect></template
           ></ElTableColumn>
-          <ElTableColumn label="货主类型" min-width="115"
+          <ElTableColumn label="货主类型" min-width="155"
             ><template #default="{ row }"
               ><ElSelect v-model="row.ownerType" :disabled="false" @change="row.ownerId = ''"
                 ><ElOption
@@ -337,7 +359,7 @@
                   :label="item.name"
                   :value="item.id" /></ElSelect></template
           ></ElTableColumn>
-          <ElTableColumn label="库存状态" min-width="115"
+          <ElTableColumn label="库存状态" min-width="155"
             ><template #default="{ row }"
               ><ElSelect v-model="row.stockStatus"
                 ><ElOption
@@ -353,7 +375,7 @@
                 :tenant-id="context?.tenantId"
                 placeholder="选择仓管员" /></template
           ></ElTableColumn>
-          <ElTableColumn label="辅助单位" min-width="115"
+          <ElTableColumn label="辅助单位" min-width="140"
             ><template #default="{ row }">{{
               unitName(row.auxiliaryUnitId)
             }}</template></ElTableColumn
@@ -363,7 +385,7 @@
               numberText(row.auxiliaryQuantity)
             }}</template></ElTableColumn
           >
-          <ElTableColumn label="辅助单位2" min-width="115"
+          <ElTableColumn label="辅助单位2" min-width="140"
             ><template #default="{ row }">{{
               unitName(row.auxiliaryUnit2Id)
             }}</template></ElTableColumn
@@ -393,7 +415,7 @@
           <ElTableColumn label="备注" min-width="150"
             ><template #default="{ row }"><ElInput v-model="row.remark" /></template
           ></ElTableColumn>
-          <ElTableColumn label="操作" width="82" fixed="right"
+          <ElTableColumn label="操作" width="82" :fixed="isMobile ? false : 'right'"
             ><template #default="{ row }"
               ><ElButton link type="danger" @click="removeLine(row.key)">移除</ElButton></template
             ></ElTableColumn
@@ -405,10 +427,14 @@
 </template>
 
 <script setup lang="ts">
+  import { formatWmsOwnerName } from '@/utils/wms/owner-display'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
+  import { isWmsBusinessTypeAvailable } from '@/utils/wms/business-type'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
+  import { useBreakpoints } from '@vueuse/core'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { ElMessage } from 'element-plus'
+  import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
   import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
   import ArtDescriptions from '@/components/core/base/art-descriptions/index.vue'
@@ -424,15 +450,15 @@
     DataSelectFetchParams,
     DataSelectRecord
   } from '@/components/core/forms/art-data-select/types'
-  import { fetchEnabledOrganizationTree } from '@/api/system-manage'
-  import TreeUtils from '@/utils/tree'
   import { normalizeNullableText } from '@/utils/form/normalize'
   import { useUserStore } from '@/store/modules/user'
   import {
     fetchWmsBins,
     fetchWmsCountAdjustment,
     fetchWmsInitialDocumentTypes,
+    fetchWmsInitialMenuId,
     fetchWmsInitialOptions,
+    fetchWmsInventoryOrganizations,
     fetchWmsMaterialOptions,
     fetchWmsProjects,
     fetchWmsUnitOptions,
@@ -442,6 +468,7 @@
     type WmsCountAdjustmentKind,
     type WmsCountAdjustmentRow,
     type WmsInitializationOption,
+    type WmsInventoryOrganization,
     type WmsMaterialOption,
     type WmsProject,
     type WmsUnitOption,
@@ -499,6 +526,10 @@
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const context = shallowRef<Context>()
   const mode = ref<OpenData['mode']>('create')
+  const isMobile = useBreakpoints({ sm: 640 }).smaller('sm')
+  const loadError = ref('')
+  const openData = shallowRef<OpenData>()
+  let loadRequest = 0
   const lines = ref<DraftLine[]>([])
   const documentRows = ref<WmsCountAdjustmentRow[]>([])
   const documentTypes = ref<WmsInitializationOption[]>([])
@@ -508,15 +539,9 @@
   const warehouses = ref<WmsWarehouse[]>([])
   const suppliers = ref<WmsInitializationOption[]>([])
   const customers = ref<WmsInitializationOption[]>([])
-  const organizationTree = ref<Api.SystemManage.OrganizationListItem[]>([])
-  const treeUtils = new TreeUtils({ idKey: 'id', parentKey: 'parentId', childrenKey: 'children' })
-  const organizations = computed(() =>
-    treeUtils
-      .treeToList(organizationTree.value)
-      .filter((row): row is Api.SystemManage.OrganizationListItem & { id: string } =>
-        Boolean(row.id)
-      )
-  )
+  const organizations = ref<WmsInventoryOrganization[]>([])
+  const availableOrganizations = computed(() => organizations.value.filter((row) => row.enabledOn))
+  const businessMenuId = ref('')
   const today = () => new Date().toISOString().slice(0, 10)
   const form = ref({
     id: '',
@@ -577,7 +602,7 @@
     { key: 'accountingDate', label: '记账日期', field: 'accountingDate' },
     { key: 'keeper', label: '仓管员', field: 'keeper' },
     { key: 'status', label: '单据状态', field: 'status' },
-    { key: 'remark', label: '备注', field: 'remark', span: 3 }
+    { key: 'remark', label: '备注', field: 'remark', span: 2 }
   ]
   const materialColumns: DataSelectColumn[] = [
     { prop: 'materialCode', label: '物料编码', minWidth: 150 },
@@ -591,7 +616,7 @@
       key: 'organizationId',
       label: '库存组织',
       type: 'treeSelect',
-      options: organizationTree.value,
+      options: availableOrganizations.value,
       valueField: 'id',
       labelField: 'organizationName',
       childrenField: 'children',
@@ -616,18 +641,23 @@
       label: '业务类型',
       type: 'select',
       options: businessTypes.value
-        .filter(
-          (row) => !form.value.documentTypeId || row.documentTypeId === form.value.documentTypeId
+        .filter((row) =>
+          isWmsBusinessTypeAvailable(row, form.value.documentTypeId, businessMenuId.value)
         )
         .map((row) => ({ label: row.name, value: row.id })),
       props: { filterable: true }
     },
-    { key: 'businessDate', label: '业务日期', type: 'date', props: { valueFormat: 'YYYY-MM-DD' } },
+    {
+      key: 'businessDate',
+      label: '业务日期',
+      type: 'date',
+      props: { valueFormat: 'YYYY-MM-DD', class: 'w-full!' }
+    },
     {
       key: 'accountingDate',
       label: '记账日期',
       type: 'date',
-      props: { valueFormat: 'YYYY-MM-DD', disabled: true }
+      props: { valueFormat: 'YYYY-MM-DD', disabled: true, class: 'w-full!' }
     },
     { key: 'keeperId', label: '仓管员', type: 'slot' },
     {
@@ -701,8 +731,12 @@
     for (const row of lines.value) if (!row.keeperId) row.keeperId = form.value.keeperId
   }
   function selectDefaultBusinessType(): void {
-    form.value.businessTypeId =
-      businessTypes.value.find((row) => row.documentTypeId === form.value.documentTypeId)?.id || ''
+    const available = businessTypes.value.filter((row) =>
+      isWmsBusinessTypeAvailable(row, form.value.documentTypeId, businessMenuId.value)
+    )
+    if (!available.some((row) => row.id === form.value.businessTypeId))
+      form.value.businessTypeId =
+        available.find((row) => row.isDefault)?.id || available[0]?.id || ''
   }
   function onOrganizationChange(): void {
     for (const row of lines.value) {
@@ -787,8 +821,9 @@
       unitConversions: []
     }
   }
-  async function loadDocument(id: string): Promise<void> {
+  async function loadDocument(id: string, request: number): Promise<void> {
     const rows = await fetchWmsCountAdjustment(id)
+    if (request !== loadRequest) return
     documentRows.value = rows
     const first = rows[0]
     if (!first) throw new Error(`${title.value}不存在`)
@@ -803,7 +838,7 @@
       keeperId: first.headerKeeperId || '',
       remark: first.documentRemark || ''
     })
-    lines.value = await Promise.all(
+    const loadedLines = await Promise.all(
       rows.map(async (row) => ({
         key: crypto.randomUUID(),
         materialId: row.materialId,
@@ -837,8 +872,9 @@
         remark: row.lineRemark || ''
       }))
     )
+    if (request === loadRequest) lines.value = loadedLines
   }
-  async function loadOptions(tenantId: string): Promise<void> {
+  async function loadOptions(tenantId: string, request: number): Promise<void> {
     const [
       docRows,
       businessRows,
@@ -847,7 +883,8 @@
       warehouseRows,
       supplierRows,
       customerRows,
-      orgResult
+      orgPage,
+      menuId
     ] = await Promise.all([
       fetchWmsInitialDocumentTypes(
         tenantId,
@@ -859,8 +896,10 @@
       fetchWmsWarehouses(tenantId),
       fetchWmsInitialOptions('mdm_supplier', tenantId),
       fetchWmsInitialOptions('mdm_customer', tenantId),
-      fetchEnabledOrganizationTree({ tenantId })
+      fetchWmsInventoryOrganizations({ tenantId, enabled: 'enabled', current: 1, size: 2000 }),
+      fetchWmsInitialMenuId(props.kind === 'gain' ? 'WmsCountGain' : 'WmsCountLoss')
     ])
+    if (request !== loadRequest) return
     documentTypes.value = docRows
     businessTypes.value = businessRows
     projects.value = projectRows
@@ -868,9 +907,11 @@
     warehouses.value = warehouseRows
     suppliers.value = supplierRows
     customers.value = customerRows
-    organizationTree.value = orgResult.data || []
+    organizations.value = orgPage.data
+    businessMenuId.value = menuId
   }
   async function save(): Promise<boolean> {
+    if (loadError.value) return false
     try {
       if (!(await validateArtFormForSubmit(formRef.value))) return false
       if (!lines.value.length) {
@@ -932,6 +973,9 @@
     }
   }
   async function handleOpen(data: OpenData): Promise<void> {
+    loadRequest += 1
+    openData.value = data
+    loadError.value = ''
     context.value = { tenantId: data.tenantId }
     mode.value = data.mode
     lines.value = []
@@ -958,33 +1002,64 @@
               : `新增${title.value}`,
       subtitle: '暂存 → 提交 → 审核',
       showFooter: data.mode !== 'view',
+      confirmText: data.mode === 'copy' ? '保存副本' : '保存',
       onConfirm: save,
-      onOpen: async (_data, api) => {
-        api.setLoading(true)
-        try {
-          if (!data.tenantId) throw new Error('缺少租户')
-          await loadOptions(data.tenantId)
-          form.value.organizationId = organizations.value[0]?.id || ''
-          form.value.documentTypeId = documentTypes.value.find((row) => row.isDefault)?.id || ''
-          selectDefaultBusinessType()
-          if (data.documentId) {
-            await loadDocument(data.documentId)
-            if (data.mode === 'copy') {
-              form.value.id = ''
-              form.value.documentNo = '保存后自动生成'
-              form.value.accountingDate = today()
-            }
-          }
-        } finally {
-          api.setLoading(false)
-        }
+      loading: true,
+      confirmDisabled: true,
+      onOpen: reloadDocument,
+      onClose: () => {
+        loadRequest += 1
       }
     })
+  }
+  async function reloadDocument(): Promise<void> {
+    const data = openData.value
+    if (!data) return
+    const request = ++loadRequest
+    loadError.value = ''
+    drawerRef.value?.setLoading(true)
+    drawerRef.value?.setOptions({ confirmDisabled: true })
+    try {
+      if (!data.tenantId) throw new Error('缺少租户')
+      await loadOptions(data.tenantId, request)
+      if (request !== loadRequest) return
+      form.value.organizationId =
+        availableOrganizations.value.find((row) => row.isDefault)?.id ||
+        availableOrganizations.value[0]?.id ||
+        ''
+      form.value.documentTypeId = documentTypes.value.find((row) => row.isDefault)?.id || ''
+      selectDefaultBusinessType()
+      if (data.documentId) {
+        await loadDocument(data.documentId, request)
+        if (request !== loadRequest) return
+        if (data.mode === 'copy') {
+          form.value.id = ''
+          form.value.documentNo = '保存后自动生成'
+          form.value.accountingDate = today()
+        }
+      }
+      await nextTick()
+      if (request !== loadRequest) return
+      formRef.value?.clearValidate()
+    } catch (error) {
+      if (request !== loadRequest) return
+      loadError.value = '请重新加载单据资料；如仍失败，请检查网络和当前单据的查看权限。'
+      notifyFriendlyError(error, '单据资料加载失败，请重试')
+    } finally {
+      if (request === loadRequest) {
+        drawerRef.value?.setLoading(false)
+        drawerRef.value?.setOptions({ confirmDisabled: Boolean(loadError.value) })
+      }
+    }
   }
   defineExpose({ handleOpen })
 </script>
 
 <style scoped>
+  :deep(.document-header-descriptions .el-descriptions__table) {
+    table-layout: fixed;
+  }
+
   :deep(.count-line-table .el-input-number),
   :deep(.count-line-table .el-select),
   :deep(.count-line-table .el-date-editor) {

@@ -1,6 +1,6 @@
 <template>
-  <ArtDialog ref="dialogRef" size="xl">
-    <div class="flex flex-col gap-4">
+  <ArtDialog ref="dialogRef" size="xl" :confirm-disabled="loadError">
+    <div class="flex min-w-0 flex-col gap-4">
       <ArtEntitySummary
         icon="ri:file-list-3-line"
         eyebrow="MATERIAL ISSUE REQUEST"
@@ -11,7 +11,16 @@
         项目、施工号与库存组织从 MES 工单继承。工单预留物料会自动带入，可补充其他物料。
       </ElAlert>
       <ElAlert v-if="loadError" type="error" :closable="false" show-icon>
-        工单或预留物料加载失败，请重新选择仓库与工单。
+        库存组织、类型、工单或预留物料加载失败，请重试后办理。
+        <ElButton class="ml-2" size="small" @click="retryOptions">重新加载</ElButton>
+      </ElAlert>
+      <ElAlert
+        v-if="!loadError && !availableOrganizations.length"
+        type="warning"
+        :closable="false"
+        show-icon
+      >
+        当前范围没有已启用库存的组织。请先在 WMS「启用库存」配置库存组织，再登记出库申请。
       </ElAlert>
       <ElAlert v-if="!eligibleWarehouses.length" type="warning" :closable="false" show-icon>
         当前租户没有可领料仓库。请先在 MDM「仓库定义」启用仓库，并将业务应用范围包含「拣货」。
@@ -24,21 +33,23 @@
       >
         该仓库暂无可领料工单。请检查 MES 工单是否已下达，以及工单组织和允许的领料仓库类型。
       </ElAlert>
-      <ArtForm
-        ref="formRef"
-        v-model="form"
-        :items="items"
-        :rules="rules"
-        :span="12"
-        :gutter="20"
-        label-position="top"
-        :show-reset="false"
-        :show-submit="false"
-      >
-        <template #scope>
-          <span class="flex min-h-9 items-center text-sm">{{ scopeLabel }}</span>
-        </template>
-      </ArtForm>
+      <ArtSectionCard title="申请信息" subtitle="选择领料仓库与工单，确认申请日期及项目归属。">
+        <ArtForm
+          ref="formRef"
+          v-model="form"
+          :items="items"
+          :rules="rules"
+          :span="12"
+          :gutter="20"
+          label-position="top"
+          :show-reset="false"
+          :show-submit="false"
+        >
+          <template #scope>
+            <span class="flex min-h-9 items-center text-sm">{{ scopeLabel }}</span>
+          </template>
+        </ArtForm>
+      </ArtSectionCard>
       <ArtSectionCard
         title="申请物料"
         :subtitle="`已列 ${lines.length} 种物料；最多 50 种，同一物料只需一行。`"
@@ -122,12 +133,19 @@
     DataSelectRecord
   } from '@/components/core/forms/art-data-select/types'
   import { normalizeNullableText } from '@/utils/form/normalize'
+  import { isWmsBusinessTypeAvailable } from '@/utils/wms/business-type'
   import {
     createWmsIssueRequest,
+    fetchWmsInitialDocumentTypes,
+    fetchWmsInitialMenuId,
+    fetchWmsInitialOptions,
+    fetchWmsInventoryOrganizations,
     fetchWmsIssueReservationLines,
     fetchWmsMaterialOptions,
     fetchWmsWorkOrderOptions,
     type WmsMaterialOption,
+    type WmsInitializationOption,
+    type WmsInventoryOrganization,
     type WmsProject,
     type WmsWarehouse,
     type WmsWorkOrderOption
@@ -152,11 +170,19 @@
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const context = shallowRef<Context>()
   const orders = ref<WmsWorkOrderOption[]>([])
+  const organizations = ref<WmsInventoryOrganization[]>([])
+  const documentTypes = ref<WmsInitializationOption[]>([])
+  const businessTypes = ref<WmsInitializationOption[]>([])
+  const businessMenuId = ref('')
   const ordersLoaded = ref(false)
   const lines = ref<DraftLine[]>([])
   const loadError = ref(false)
+  watch(loadError, (value) => dialogRef.value?.setOptions({ confirmDisabled: value }))
   const isNarrowViewport = useMediaQuery('(max-width: 767px)')
   const form = ref({
+    organizationId: '',
+    documentTypeId: '',
+    businessTypeId: '',
     warehouseId: '',
     workOrderId: '',
     documentNo: '',
@@ -172,11 +198,25 @@
       (row) =>
         row.status === 'enabled' &&
         row.businessScopes.includes('picking') &&
+        (!form.value.organizationId || row.organizationId === form.value.organizationId) &&
         (!context.value?.tenantId || row.tenantId === context.value.tenantId)
     )
   )
   const selectedOrder = computed(() =>
     orders.value.find((row) => row.id === form.value.workOrderId)
+  )
+  const availableOrganizations = computed(() =>
+    organizations.value.filter(
+      (row) =>
+        row.enabledOn &&
+        row.initializationClosedAt &&
+        (!context.value?.tenantId || row.tenantId === context.value.tenantId)
+    )
+  )
+  const availableBusinessTypes = computed(() =>
+    businessTypes.value.filter((row) =>
+      isWmsBusinessTypeAvailable(row, form.value.documentTypeId, businessMenuId.value)
+    )
   )
   const scopeLabel = computed(() => {
     const order = selectedOrder.value
@@ -205,7 +245,22 @@
       label: '申请日期',
       type: 'date',
       span: isNarrowViewport.value ? 24 : 12,
-      props: { valueFormat: 'YYYY-MM-DD', placeholder: '选择申请日期' }
+      props: { valueFormat: 'YYYY-MM-DD', placeholder: '选择申请日期', class: 'w-full!' }
+    },
+    {
+      key: 'organizationId',
+      label: '库存组织',
+      type: 'select',
+      span: isNarrowViewport.value ? 24 : 12,
+      options: availableOrganizations.value.map((row) => ({
+        label: `${row.organizationName} · ${row.organizationCode}`,
+        value: row.id
+      })),
+      props: {
+        filterable: true,
+        placeholder: '选择已启用库存的组织',
+        onChange: onOrganizationChange
+      }
     },
     {
       key: 'warehouseId',
@@ -237,6 +292,31 @@
       }
     },
     {
+      key: 'documentTypeId',
+      label: '单据类型',
+      type: 'select',
+      span: isNarrowViewport.value ? 24 : 12,
+      options: documentTypes.value.map((row) => ({ label: row.name, value: row.id })),
+      props: {
+        filterable: true,
+        disabled: !form.value.warehouseId,
+        placeholder: '选择出库申请单类型',
+        onChange: onDocumentTypeChange
+      }
+    },
+    {
+      key: 'businessTypeId',
+      label: '业务类型',
+      type: 'select',
+      span: isNarrowViewport.value ? 24 : 12,
+      options: availableBusinessTypes.value.map((row) => ({ label: row.name, value: row.id })),
+      props: {
+        filterable: true,
+        disabled: !form.value.documentTypeId,
+        placeholder: '选择对应的业务类型'
+      }
+    },
+    {
       key: 'documentNo',
       label: '申请单号',
       type: 'input',
@@ -258,35 +338,80 @@
     }
   ])
   const rules = {
+    organizationId: [{ required: true, message: '请选择库存组织', trigger: 'change' }],
+    documentTypeId: [{ required: true, message: '请选择单据类型', trigger: 'change' }],
+    businessTypeId: [{ required: true, message: '请选择业务类型', trigger: 'change' }],
     requestType: [{ required: true, message: '请选择申请类型', trigger: 'change' }],
     applicationDate: [{ required: true, message: '请选择申请日期', trigger: 'change' }],
     warehouseId: [{ required: true, message: '请选择领料仓库', trigger: 'change' }],
     workOrderId: [{ required: true, message: '请选择 MES 工单', trigger: 'change' }]
   }
+  async function loadMasterDataOptions(tenantId: string, warehouseId: string): Promise<void> {
+    const [documentRows, businessRows, menuId] = await Promise.all([
+      fetchWmsInitialDocumentTypes(tenantId, 'WmsIssueRequest'),
+      fetchWmsInitialOptions('mdm_business_type', tenantId),
+      fetchWmsInitialMenuId('WmsIssueRequest')
+    ])
+    if (form.value.warehouseId !== warehouseId) return
+    documentTypes.value = documentRows
+    businessTypes.value = businessRows
+    businessMenuId.value = menuId
+    if (!documentTypes.value.some((row) => row.id === form.value.documentTypeId))
+      form.value.documentTypeId = documentTypes.value.find((row) => row.isDefault)?.id || ''
+    onDocumentTypeChange()
+  }
+  function onDocumentTypeChange(): void {
+    if (!availableBusinessTypes.value.some((row) => row.id === form.value.businessTypeId))
+      form.value.businessTypeId =
+        availableBusinessTypes.value.find((row) => row.isDefault)?.id || ''
+  }
+  function onOrganizationChange(): void {
+    form.value.warehouseId = ''
+    form.value.workOrderId = ''
+    form.value.documentTypeId = ''
+    form.value.businessTypeId = ''
+    orders.value = []
+    documentTypes.value = []
+    businessTypes.value = []
+    lines.value = []
+  }
   async function searchOrders(keyword = ''): Promise<void> {
-    if (!form.value.warehouseId) return
+    const warehouseId = form.value.warehouseId
+    if (!warehouseId) return
     loadError.value = false
     ordersLoaded.value = false
     try {
       const warehouse = selectedWarehouse.value
-      orders.value = warehouse
-        ? (await fetchWmsWorkOrderOptions(form.value.warehouseId, keyword)).filter(
+      const rows = warehouse
+        ? (await fetchWmsWorkOrderOptions(warehouseId, keyword)).filter(
             (row) =>
               row.organizationId === warehouse.organizationId &&
               row.allowedIssueWarehouseTypes.includes(warehouse.warehouseType)
           )
         : []
+      if (form.value.warehouseId !== warehouseId) return
+      orders.value = rows
       ordersLoaded.value = true
     } catch {
-      loadError.value = true
+      if (form.value.warehouseId === warehouseId) loadError.value = true
     }
   }
   async function onWarehouseChange(): Promise<void> {
+    const warehouse = selectedWarehouse.value
+    if (warehouse && form.value.organizationId !== warehouse.organizationId)
+      form.value.organizationId = warehouse.organizationId
     form.value.workOrderId = ''
     orders.value = []
     ordersLoaded.value = false
     lines.value = []
-    await searchOrders(context.value?.workOrderId)
+    try {
+      if (warehouse) await loadMasterDataOptions(warehouse.tenantId, warehouse.id)
+      if (selectedWarehouse.value?.id !== warehouse?.id) return
+      await searchOrders(context.value?.workOrderId)
+    } catch {
+      if (selectedWarehouse.value?.id === warehouse?.id) loadError.value = true
+      return
+    }
     const requestedId = context.value?.workOrderId
     if (requestedId && orders.value.some((row) => row.id === requestedId)) {
       form.value.workOrderId = requestedId
@@ -349,6 +474,9 @@
         return false
       }
       await createWmsIssueRequest({
+        organizationId: form.value.organizationId,
+        documentTypeId: form.value.documentTypeId,
+        businessTypeId: form.value.businessTypeId,
         warehouseId: form.value.warehouseId,
         workOrderId: form.value.workOrderId,
         documentNo: normalizeNullableText(form.value.documentNo),
@@ -371,6 +499,9 @@
     lines.value = []
     loadError.value = false
     Object.assign(form.value, {
+      organizationId: '',
+      documentTypeId: '',
+      businessTypeId: '',
       warehouseId: '',
       workOrderId: '',
       documentNo: '',
@@ -378,11 +509,47 @@
       applicationDate: new Date().toISOString().slice(0, 10),
       remark: ''
     })
+    organizations.value = []
+    documentTypes.value = []
+    businessTypes.value = []
+    businessMenuId.value = ''
     await dialogRef.value?.handleOpen(data, {
       title: '新增出库申请单',
       subtitle: '暂存 → 提交 → 审核 → 分批出库',
-      onConfirm: submit
+      onConfirm: submit,
+      onOpen: retryOptions
     })
+  }
+  async function retryOptions(): Promise<void> {
+    const currentContext = context.value
+    if (!currentContext) return
+    loadError.value = false
+    dialogRef.value?.setLoading(true)
+    try {
+      const result = await fetchWmsInventoryOrganizations({
+        tenantId: currentContext.tenantId,
+        enabled: 'enabled',
+        current: 1,
+        size: 2000
+      })
+      if (context.value !== currentContext) return
+      organizations.value = result.data
+      if (!availableOrganizations.value.some((row) => row.id === form.value.organizationId)) {
+        form.value.organizationId =
+          availableOrganizations.value.find((row) => row.isDefault)?.id || ''
+        onOrganizationChange()
+      }
+      const warehouse = selectedWarehouse.value
+      if (warehouse) {
+        await loadMasterDataOptions(warehouse.tenantId, warehouse.id)
+        await searchOrders()
+        if (form.value.workOrderId && !lines.value.length) await onOrderChange()
+      }
+    } catch {
+      if (context.value === currentContext) loadError.value = true
+    } finally {
+      if (context.value === currentContext) dialogRef.value?.setLoading(false)
+    }
   }
   defineExpose({ handleOpen })
 </script>

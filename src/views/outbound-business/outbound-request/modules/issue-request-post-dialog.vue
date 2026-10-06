@@ -1,6 +1,6 @@
 <template>
   <ArtDialog ref="dialogRef" size="lg">
-    <div class="flex flex-col gap-4">
+    <div class="flex min-w-0 flex-col gap-4">
       <ArtEntitySummary
         icon="ri:logout-box-r-line"
         eyebrow="MATERIAL ISSUE"
@@ -9,13 +9,18 @@
       />
       <p class="text-sm text-[var(--el-text-color-secondary)]">
         归属：{{ projectName }}{{ request?.constructionNo ? ` / ${request.constructionNo}` : '' }} ·
-        {{ request?.workOrder?.workOrderNo || 'MES 工单' }}
+        {{ request?.workOrder?.workOrderNo || request?.workOrderNo || 'MES 工单' }}
       </p>
       <ElAlert type="info" :closable="false" show-icon>
         仓库、工单、项目与施工号沿用已审核申请；优先领用本项目库存，也可领用未被其他工单占用的公共库存。
       </ElAlert>
       <ElAlert v-if="loadError" type="error" :closable="false" show-icon>
-        来源序列号加载失败，请重新选择批次。
+        <div class="flex flex-wrap items-center gap-2">
+          <span>来源序列号加载失败，请重新加载。</span>
+          <ElButton size="small" :loading="loadingSerials" @click="loadBatchSerials"
+            >重新加载</ElButton
+          >
+        </div>
       </ElAlert>
       <div v-if="request?.projectId" class="flex flex-wrap items-center gap-3">
         <span class="text-sm font-medium">库存来源</span>
@@ -144,6 +149,8 @@
   const serials = ref<WmsBatchSerial[]>([])
   const scanText = ref('')
   const loadError = ref(false)
+  const loadingSerials = ref(false)
+  let serialRequest = 0
   const stockScope = ref<'project' | 'public'>('project')
   const form = ref({ batchId: '', quantity: 1, serialIds: [] as string[], remark: '' })
   const remaining = computed(() =>
@@ -256,6 +263,9 @@
     }
   }
   function clearSelectedBatch(): void {
+    ++serialRequest
+    loadingSerials.value = false
+    dialogRef.value?.setOptions({ confirmDisabled: false })
     selectedBatch.value = null
     form.value.batchId = ''
     form.value.quantity = 1
@@ -265,6 +275,10 @@
     loadError.value = false
   }
   async function onBatchSelected(rows: DataSelectRecord[]): Promise<void> {
+    ++serialRequest
+    loadingSerials.value = false
+    loadError.value = false
+    dialogRef.value?.setOptions({ confirmDisabled: false })
     const row = rows[0]
     selectedBatch.value = row && typeof row.id === 'string' ? (row as BatchOption) : null
     form.value.batchId = selectedBatch.value?.id || ''
@@ -275,15 +289,31 @@
     form.value.quantity = selectedBatch.value.packId
       ? selectedBatch.value.quantity
       : Math.min(1, remaining.value, selectedBatch.value.quantity)
+    await loadBatchSerials()
+  }
+  async function loadBatchSerials(): Promise<void> {
+    const batch = selectedBatch.value
+    const doc = request.value
+    if (!batch || !doc) return
+    const currentRequest = ++serialRequest
     loadError.value = false
+    loadingSerials.value = true
+    dialogRef.value?.setOptions({ confirmDisabled: true })
     try {
-      serials.value = await fetchWmsBatchSerials(selectedBatch.value.id)
+      const result = await fetchWmsBatchSerials(batch.id)
+      if (currentRequest !== serialRequest) return
+      serials.value = result
       form.value.serialIds = eligibleSerials.value
-        .filter((row) => row.reservedWorkOrderId === request.value?.workOrderId)
+        .filter((row) => row.reservedWorkOrderId === doc.workOrderId)
         .slice(0, Math.min(form.value.quantity, remaining.value))
         .map((row) => row.id)
     } catch {
-      loadError.value = true
+      if (currentRequest === serialRequest) loadError.value = true
+    } finally {
+      if (currentRequest === serialRequest) {
+        loadingSerials.value = false
+        dialogRef.value?.setOptions({ confirmDisabled: loadError.value })
+      }
     }
   }
   function scanSerial(): void {
@@ -305,7 +335,7 @@
       const doc = request.value
       const item = line.value
       const batch = selectedBatch.value
-      if (!doc || !item || !batch || loadError.value) return false
+      if (!doc || !item || !batch || loadError.value || loadingSerials.value) return false
       const matchingProject =
         batch.projectId === doc.projectId && batch.constructionNo === doc.constructionNo
       const publicStock = batch.projectId === null && batch.constructionNo === null
@@ -355,7 +385,11 @@
     await dialogRef.value?.handleOpen(data, {
       title: '办理领料出库',
       subtitle: '按批次与 SN 领用，申请余额同步核销',
-      onConfirm: submit
+      onConfirm: submit,
+      onClose: () => {
+        ++serialRequest
+        return true
+      }
     })
   }
   defineExpose({ handleOpen })

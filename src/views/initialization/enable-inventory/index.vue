@@ -16,7 +16,8 @@
       </BusinessWorkspaceHeader>
       <ArtTableQuery
         ref="tableRef"
-        v-model="search"
+        :model-value="search"
+        @update:model-value="replaceReactiveModel(search, $event)"
         :api-fn="fetchRows"
         :search-items="searchItems"
         :columns-factory="columnsFactory"
@@ -40,7 +41,9 @@
             期初单据的业务日期须不晚于此日期。单次启用一个组织时可同时将其设为默认组织。
           </ElAlert>
           <ArtForm
-            v-model="activationForm"
+            ref="activationFormRef"
+            :model-value="activationForm"
+            @update:model-value="replaceReactiveModel(activationForm, $event)"
             :items="activationItems"
             :rules="activationRules"
             :show-reset="false"
@@ -54,6 +57,8 @@
 </template>
 
 <script setup lang="tsx">
+  import { replaceReactiveModel } from '@/utils/form/model'
+  import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import dayjs from 'dayjs'
   import { ElTag, ElMessage } from 'element-plus'
@@ -87,7 +92,9 @@
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const tableRef = ref<ArtTableQueryExpose>()
   const dialogRef = ref<ArtDialogExpose>()
+  const activationFormRef = ref<InstanceType<typeof ArtForm>>()
   const selectedCount = ref(0)
+  const defaultOrganizationLoading = ref(false)
   const activationForm = reactive({ enabledOn: dayjs().format('YYYY-MM-DD'), isDefault: true })
   const activationItems = computed<FormItem[]>(() => [
     {
@@ -155,16 +162,26 @@
     await dialogRef.value?.handleOpen(undefined, {
       title: '设置库存启用日期',
       subtitle: `${ids.length} 个库存组织`,
+      onOpen: () => activationFormRef.value?.clearValidate(),
       onConfirm: async () => {
-        if (!activationForm.enabledOn) {
-          ElMessage.warning('请选择启用日期')
-          return false
-        }
+        if (!(await validateArtFormForSubmit(activationFormRef.value))) return false
         await setWmsInventoryEnabled(ids, activationForm.enabledOn, activationForm.isDefault)
         await refresh()
         return true
       }
     })
+  }
+  async function setDefaultOrganization(id: string): Promise<void> {
+    if (defaultOrganizationLoading.value) return
+    defaultOrganizationLoading.value = true
+    try {
+      await setWmsDefaultInventoryOrganization(id)
+      await refresh()
+    } catch {
+      // API provider 已展示业务错误，保留列表供重试。
+    } finally {
+      defaultOrganizationLoading.value = false
+    }
   }
   async function disable(ids: string[]): Promise<void> {
     if (!ids.length) return void ElMessage.warning('请先勾选库存组织')
@@ -242,10 +259,8 @@
                   icon="ri:star-line"
                   label="设为默认"
                   permission="WmsInventoryEnable:Enable"
-                  onClick={async () => {
-                    await setWmsDefaultInventoryOrganization(row.id)
-                    await refresh()
-                  }}
+                  loading={defaultOrganizationLoading.value}
+                  onClick={() => setDefaultOrganization(row.id)}
                 />
               )}
               <ArtButtonTable

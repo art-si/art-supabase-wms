@@ -22,15 +22,17 @@
       </ElAlert>
       <ArtTableQuery
         ref="tableRef"
-        v-model="search"
+        :model-value="search"
+        @update:model-value="replaceReactiveModel(search, $event)"
         :api-fn="fetchRows"
         :search-items="searchItems"
         :columns-factory="columnsFactory"
+        :columns-context-key="displayMode"
         :header-actions="headerActions"
         header-actions-placement="workspace"
         :search-bar-props="{ span: 6, labelWidth: 82 }"
         :table-props="{
-          rowKey: displayMode === 'line' ? 'detailRowId' : 'id',
+          rowKey: getDocumentDetailRowKey,
           spanMethod: mergeDocumentCells,
           tableLayout: 'fixed',
           emptyText: '当前范围暂无盘点方案',
@@ -52,6 +54,8 @@
 </template>
 
 <script setup lang="tsx">
+  import { formatDateTimeValue } from '@/utils/ui/format'
+  import { replaceReactiveModel } from '@/utils/form/model'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { ElTag } from 'element-plus'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
@@ -68,6 +72,7 @@
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type { ColumnOption } from '@/types'
   import {
+    getDocumentDetailRowKey,
     documentGroupSpan,
     expandDocumentLines,
     loadAllLinePages,
@@ -307,7 +312,7 @@
         formatter: (row) => (
           <BusinessTableIdentityCell
             primary={row.documentNo}
-            secondary={row.snapshotAt?.replace('T', ' ').slice(0, 19)}
+            secondary={formatDateTimeValue(row.snapshotAt, { emptyText: '' })}
             icon="ri:survey-line"
           />
         )
@@ -400,7 +405,7 @@
         prop: 'postedAt',
         label: '记账时间',
         minWidth: 165,
-        formatter: (row) => row.postedAt?.replace('T', ' ').slice(0, 19) || '—'
+        formatter: (row) => formatDateTimeValue(row.postedAt, { emptyText: '—' })
       },
       {
         prop: 'operation',

@@ -1,6 +1,6 @@
 <template>
-  <ArtDrawer ref="drawerRef" size="lg" :show-footer="false">
-    <div v-if="plan" class="space-y-5">
+  <ArtDrawer ref="drawerRef" size="88%" :show-footer="false" show-fullscreen-button>
+    <div v-if="plan" class="min-w-0 space-y-5">
       <ArtEntitySummary
         icon="ri:survey-line"
         eyebrow="COUNT SHEET"
@@ -61,7 +61,7 @@
                   {{ document.documentNo }}</strong
                 >
                 <p class="mt-1 text-xs text-[var(--el-text-color-secondary)]">
-                  {{ document.postedAt.replace('T', ' ').slice(0, 19) }} ·
+                  {{ formatDateTimeValue(document.postedAt) }} ·
                   {{ documentLines(document.kind).length }} 条差异
                 </p>
               </div>
@@ -125,6 +125,7 @@
       >
         <ElScrollbar v-if="lines.length">
           <ArtTable
+            class="wms-editable-line-table"
             :data="lines"
             :columns="lineColumns"
             :pagination="false"
@@ -207,6 +208,7 @@
 </template>
 
 <script setup lang="ts">
+  import { formatDateTimeValue } from '@/utils/ui/format'
   import { notifyFriendlyError, useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { ElMessage } from 'element-plus'
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
@@ -243,17 +245,22 @@
   const serialOptions = reactive<Record<string, WmsBatchSerial[]>>({})
   const serialDraft = reactive<Record<string, string>>({})
   const savingLineId = ref<string | null>(null)
-  const lineColumns: ColumnOption<WmsCountLine>[] = [
-    { prop: 'material', label: '物料', minWidth: 195, useSlot: true },
-    { prop: 'batch', label: '库存批次', minWidth: 145, useSlot: true },
-    { prop: 'project', label: '项目 / 施工号', minWidth: 175, useSlot: true },
-    { prop: 'expectedQuantity', label: '账面数量', width: 110, align: 'right' },
-    { prop: 'countedQuantity', label: '实盘数量', width: 145, useSlot: true },
-    { prop: 'countedSerialIds', label: '实盘原 SN', minWidth: 195, useSlot: true },
-    { prop: 'newSerialNos', label: '新增 SN', minWidth: 195, useSlot: true },
-    { prop: 'variance', label: '差异', width: 95, useSlot: true },
-    { prop: 'operation', label: '操作', width: 110, fixed: 'right', useSlot: true }
-  ]
+  const lineColumns = computed<ColumnOption<WmsCountLine>[]>(() => {
+    const columns: ColumnOption<WmsCountLine>[] = [
+      { prop: 'material', label: '物料', minWidth: 195, useSlot: true },
+      { prop: 'batch', label: '库存批次', minWidth: 145, useSlot: true },
+      { prop: 'project', label: '项目 / 施工号', minWidth: 175, useSlot: true },
+      { prop: 'expectedQuantity', label: '账面数量', width: 110, align: 'right' },
+      { prop: 'countedQuantity', label: '实盘数量', width: 145, useSlot: true },
+      { prop: 'countedSerialIds', label: '实盘原 SN', minWidth: 195, useSlot: true },
+      { prop: 'newSerialNos', label: '新增 SN', minWidth: 195, useSlot: true },
+      { prop: 'variance', label: '差异', width: 95, useSlot: true },
+      { prop: 'operation', label: '操作', width: 110, fixed: 'right', useSlot: true }
+    ]
+    return columns.filter(
+      (column) => column.prop !== 'operation' || plan.value?.status === 'counting'
+    )
+  })
   const documents = ref<WmsCountVarianceDocument[]>([])
   const movements = ref<WmsCountVarianceMovement[]>([])
   const loading = ref(false)
@@ -298,6 +305,10 @@
   async function saveLine(row: WmsCountLine): Promise<void> {
     if (savingLineId.value) return
     if (isSerialLine(row) && !(await loadSerialOptions(row))) return
+    if (!isSerialLine(row) && row.countedQuantity === null) {
+      ElMessage.warning('请填写实盘数量，实盘为零时请明确输入 0')
+      return
+    }
     const quantity = isSerialLine(row)
       ? row.countedSerialIds.length + row.newSerialNos.length
       : Number(row.countedQuantity)
@@ -439,3 +450,11 @@
   }
   defineExpose({ handleOpen })
 </script>
+
+<style scoped lang="scss">
+  @use '@/assets/styles/core/mixin' as layout;
+
+  .wms-editable-line-table {
+    @include layout.fill-editable-table-cells;
+  }
+</style>

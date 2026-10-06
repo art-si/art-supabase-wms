@@ -4,7 +4,7 @@
       <ArtEntitySummary
         icon="ri:building-2-line"
         eyebrow="PROJECT DELIVERY SCOPE"
-        :title="form.id ? '维护施工号' : '新建施工号'"
+        :title="form.id ? form.sectionName || '维护施工号' : '新建施工号'"
         description="施工号归属于一个项目；关闭后保留历史库存和单据，但不能再建立新的业务记录。"
       />
       <ArtForm
@@ -86,7 +86,7 @@
     {
       key: 'status',
       label: '状态',
-      type: 'select',
+      type: 'segment',
       options: wmsProjectSectionStatusOptions,
       props: { disabled: !form.value.id }
     },
@@ -100,8 +100,12 @@
   ])
   const rules = {
     projectId: [{ required: true, message: '请选择项目', trigger: 'change' }],
-    constructionNo: [{ required: true, message: '请输入施工号', trigger: 'blur' }],
-    sectionName: [{ required: true, message: '请输入施工分项名称', trigger: 'blur' }]
+    constructionNo: [
+      { required: true, whitespace: true, message: '请输入施工号', trigger: 'blur' }
+    ],
+    sectionName: [
+      { required: true, whitespace: true, message: '请输入施工分项名称', trigger: 'blur' }
+    ]
   }
 
   async function submit(): Promise<boolean> {

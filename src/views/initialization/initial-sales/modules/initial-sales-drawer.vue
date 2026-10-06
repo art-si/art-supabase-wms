@@ -1,9 +1,17 @@
 <template>
   <ArtDrawer ref="drawerRef" size="88%" :show-footer="mode !== 'view'">
-    <div class="initialization-document-stack min-w-0">
+    <ArtEmptyState
+      v-if="documentError"
+      title="单据加载失败"
+      :description="documentError"
+      size="compact"
+    >
+      <ElButton type="primary" @click="reloadDocument">重新加载</ElButton>
+    </ArtEmptyState>
+    <div v-else class="initialization-document-stack min-w-0">
       <ArtEntitySummary
         :icon="isReturn ? 'ri:arrow-go-back-line' : 'ri:logout-box-r-line'"
-        eyebrow="OPENING SALES DOCUMENT"
+        :eyebrow="isInitial ? 'OPENING SALES DOCUMENT' : 'SALES INVENTORY DOCUMENT'"
         :title="form.documentNo || `${mode === 'copy' ? '复制' : '新增'}${title}`"
         description="按单据表头、物料明细、税价和仓储信息依次填写。编号在保存时生成。"
       >
@@ -21,12 +29,16 @@
         >
       </ArtEntitySummary>
       <ElAlert v-if="optionError" type="warning" :closable="false" show-icon>
-        基础资料加载失败，请重试后再保存。<ElButton link type="primary" @click="loadOptions"
-          >重新加载</ElButton
-        >
+        {{
+          mode === 'view'
+            ? '基础资料加载失败，部分名称暂不可用，请重新加载。'
+            : '基础资料加载失败，请重试后再保存。'
+        }}<ElButton link type="primary" @click="loadOptions">重新加载</ElButton>
       </ElAlert>
       <ElAlert v-else type="info" :closable="false" show-icon>
-        业务日期不得晚于库存组织启用日期。物料价格、税额、折扣与辅助数量由系统核算；退货以负数入账。
+        {{
+          isInitial ? '业务日期不得晚于库存组织启用日期。' : ''
+        }}物料价格、税额、折扣与辅助数量由系统核算；退货以负数入账。
       </ElAlert>
       <ElAlert v-if="importIntent" type="success" :closable="false" show-icon>
         先选择库存组织及客户，再在“物料明细”中点击“导入明细”；导入后请核对仓储和价格信息。
@@ -98,7 +110,7 @@
         <template #actions>
           <div
             v-if="mode !== 'view' && form.tenantId"
-            class="flex flex-nowrap items-center justify-end gap-2 whitespace-nowrap"
+            class="flex flex-wrap items-center justify-end gap-2 whitespace-nowrap lg:flex-nowrap"
           >
             <ArtTableMultipleSelect
               v-model="materialPickerIds"
@@ -127,6 +139,7 @@
             >
               <ArtExcelImport
                 accept=".xlsx,.xls,.csv"
+                :context-key="openData"
                 :disabled="!form.organizationId"
                 :button-props="{ type: 'success', plain: true }"
                 icon="ri:upload-2-line"
@@ -139,6 +152,8 @@
         </template>
         <ElScrollbar v-if="lines.length">
           <ArtTable
+            ref="lineTableRef"
+            class="wms-editable-line-table"
             :data="lines"
             :columns="lineColumns"
             :pagination="false"
@@ -383,7 +398,7 @@
                 title="选择货主"
                 @update:model-value="onInlineOwnerChange(row, String($event || '') || null)"
               /><span v-else>{{
-                row.ownerType === 'self' ? '自有' : row.ownerId || '—'
+                formatWmsOwnerName(row.ownerType, row.ownerId, suppliers, customers)
               }}</span></template
             >
             <template #stockStatus="{ row }"
@@ -484,7 +499,8 @@
       >导入序列号</ArtExcelImport
     >
     <ArtForm
-      v-model="serialEntryForm"
+      :model-value="serialEntryForm"
+      @update:model-value="replaceReactiveModel(serialEntryForm, $event)"
       :items="serialEntryItems"
       :show-reset="false"
       :show-submit="false"
@@ -508,7 +524,10 @@
 </template>
 
 <script setup lang="ts">
+  import { formatWmsOwnerName } from '@/utils/wms/owner-display'
+  import { replaceReactiveModel } from '@/utils/form/model'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
+  import { isWmsBusinessTypeAvailable } from '@/utils/wms/business-type'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { parseSerialNumberText } from '@/utils/file/serial-number-text'
@@ -546,6 +565,7 @@
   import {
     fetchWmsBins,
     fetchWmsInitialDocumentTypes,
+    fetchWmsInitialMenuId,
     fetchWmsInitialMaterials,
     fetchWmsInitialOptions,
     fetchWmsInitialSalesDocument,
@@ -581,16 +601,21 @@
   const serialEntryDialogRef = ref<ArtDialogExpose>()
   const serialViewDialogRef = ref<ArtDialogExpose>()
   const formRef = ref<InstanceType<typeof ArtForm>>()
+  const lineTableRef = ref<InstanceType<typeof ArtTable>>()
   const mode = ref<OpenMode>('create')
   const importIntent = ref(false)
   const currentDocument = shallowRef<WmsInitialSalesDocument | null>(null)
   const optionError = ref(false)
+  const documentError = ref('')
+  const openData = shallowRef<OpenData>()
+  let documentRequest = 0
   const organizations = ref<WmsInventoryOrganization[]>([])
   const organizationTree = ref<Api.SystemManage.OrganizationListItem[]>([])
   const warehouses = ref<WmsWarehouse[]>([])
   const units = ref<WmsUnitOption[]>([])
   const documentTypes = ref<WmsInitializationOption[]>([])
   const businessTypes = ref<WmsInitializationOption[]>([])
+  const businessMenuId = ref('')
   const customers = ref<WmsInitializationOption[]>([])
   const suppliers = ref<WmsInitializationOption[]>([])
   const projects = ref<WmsInitializationOption[]>([])
@@ -655,7 +680,13 @@
     { prop: 'projectId', label: '项目名称', minWidth: 150, useSlot: true },
     { prop: 'constructionNo', label: '施工号', width: 150, useSlot: true },
     { prop: 'quantity', label: '数量', width: 132, align: 'right', useSlot: true },
-    { prop: 'inventoryUnitId', label: '库存单位', width: 110, useSlot: true },
+    {
+      prop: 'inventoryUnitId',
+      label: '库存单位',
+      width: 110,
+      useSlot: true,
+      required: mode.value !== 'view'
+    },
     { prop: 'baseUnitId', label: '基本单位', width: 130, useSlot: true },
     { prop: 'baseQuantity', label: '基本数量', width: 110, align: 'right', useSlot: true },
     { prop: 'auxiliaryUnitId', label: '辅助单位', width: 110, useSlot: true },
@@ -672,10 +703,16 @@
     { prop: 'batchNo', label: '批号', width: 145, useSlot: true },
     { prop: 'warehouseId', label: '仓库', width: 180, useSlot: true },
     { prop: 'binId', label: '仓位', width: 155, useSlot: true },
-    { prop: 'stockType', label: '库存类型', width: 130, useSlot: true },
-    { prop: 'ownerType', label: '货主类型', width: 130, useSlot: true },
+    {
+      prop: 'stockType',
+      label: '库存类型',
+      width: 160,
+      useSlot: true,
+      required: mode.value !== 'view'
+    },
+    { prop: 'ownerType', label: '货主类型', width: 160, useSlot: true },
     { prop: 'ownerId', label: '货主', width: 170, useSlot: true },
-    { prop: 'stockStatus', label: '库存状态', width: 130, useSlot: true },
+    { prop: 'stockStatus', label: '库存状态', width: 160, useSlot: true },
     { prop: 'keeperId', label: '仓管员', width: 170, useSlot: true },
     { prop: 'productionDate', label: '生产日期', width: 165, useSlot: true },
     { prop: 'expiryDate', label: '有效期至', width: 165, useSlot: true },
@@ -683,7 +720,13 @@
     { prop: 'sourceDocument', label: '来源单据', width: 150, useSlot: true },
     { prop: 'sourceLineNo', label: '源行号', width: 120, useSlot: true },
     { prop: 'remark', label: '备注', width: 180, useSlot: true },
-    { prop: 'operation', label: '操作', width: 135, fixed: 'right', useSlot: true }
+    {
+      prop: 'operation',
+      label: '操作',
+      width: 135,
+      fixed: 'right',
+      useSlot: true
+    }
   ])
   const materialPickerIds = ref<string[]>([])
   const materialPickerRows = ref<DataSelectRecord[]>([])
@@ -699,7 +742,13 @@
       label: '序列号',
       type: 'input',
       span: 24,
-      props: { type: 'textarea', rows: 10, placeholder: '每行一个序列号' }
+      props: {
+        type: 'textarea',
+        rows: 10,
+        maxlength: undefined,
+        showWordLimit: false,
+        placeholder: '每行一个序列号；导入后核对，再保存到当前明细'
+      }
     }
   ]
   const form = ref({
@@ -858,14 +907,16 @@
       label: '单据类型',
       type: 'select',
       options: documentTypes.value.map((item) => ({ label: item.name, value: item.id })),
-      props: { disabled: mode.value === 'view' }
+      props: { disabled: mode.value === 'view', onChange: onDocumentTypeChange }
     },
     {
       key: 'businessTypeId',
       label: '业务类型',
       type: 'select',
       options: businessTypes.value
-        .filter((item) => item.documentTypeId === form.value.documentTypeId)
+        .filter((item) =>
+          isWmsBusinessTypeAvailable(item, form.value.documentTypeId, businessMenuId.value)
+        )
         .map((item) => ({ label: item.name, value: item.id })),
       props: { disabled: mode.value === 'view' }
     },
@@ -1148,8 +1199,7 @@
         ElMessage.warning('文件中没有可用的序列号，请检查文件内容后重试')
         return
       }
-      serialText.value = serials.join('\n')
-      if (serialLine.value) serialLine.value.serialNos = serials
+      serialEntryForm.serialText = serials.join('\n')
       ElMessage.success(`已导入 ${serials.length} 个序列号`)
     } catch (error) {
       notifyFriendlyError(error, '序列号文件读取失败，请重新选择文件')
@@ -1170,14 +1220,15 @@
     })
   }
   async function loadTenantOptions(tenantId: string): Promise<void> {
-    const [unitRows, documentRows, businessRows, projectRows, supplierRows, customerRows] =
+    const [unitRows, documentRows, businessRows, projectRows, supplierRows, customerRows, menuId] =
       await Promise.all([
         fetchWmsUnitOptions(tenantId),
         fetchWmsInitialDocumentTypes(tenantId, documentTypeMenuName.value),
         fetchWmsInitialOptions('mdm_business_type', tenantId),
         fetchWmsInitialOptions('mdm_project', tenantId),
         fetchWmsInitialOptions('mdm_supplier', tenantId),
-        fetchWmsInitialOptions('mdm_customer', tenantId)
+        fetchWmsInitialOptions('mdm_customer', tenantId),
+        fetchWmsInitialMenuId(documentTypeMenuName.value)
       ])
     units.value = unitRows
     documentTypes.value =
@@ -1187,14 +1238,21 @@
           ? documentRows.filter((item) => !item.name.includes('退回'))
           : documentRows
     businessTypes.value = businessRows
+    businessMenuId.value = menuId
     projects.value = projectRows
     suppliers.value = supplierRows
     customers.value = customerRows
     if (!documentTypes.value.some((item) => item.id === form.value.documentTypeId))
       form.value.documentTypeId = documentTypes.value.find((item) => item.isDefault)?.id || ''
-    if (!form.value.businessTypeId)
+    onDocumentTypeChange()
+  }
+  function onDocumentTypeChange(): void {
+    const available = businessTypes.value.filter((item) =>
+      isWmsBusinessTypeAvailable(item, form.value.documentTypeId, businessMenuId.value)
+    )
+    if (!available.some((item) => item.id === form.value.businessTypeId))
       form.value.businessTypeId =
-        businessRows.find((item) => item.documentTypeId === form.value.documentTypeId)?.id || ''
+        available.find((item) => item.isDefault)?.id || available[0]?.id || ''
   }
   async function onOrganizationChange(): Promise<void> {
     const org = selectedOrganization.value
@@ -1215,7 +1273,13 @@
     lines.value = []
     selectedCustomer.value = []
     selectedSalesperson.value = []
-    if (form.value.tenantId) await loadTenantOptions(form.value.tenantId)
+    if (form.value.tenantId) {
+      const [organizationResult] = await Promise.all([
+        fetchEnabledOrganizationTree({ tenantId: form.value.tenantId }),
+        loadTenantOptions(form.value.tenantId)
+      ])
+      organizationTree.value = organizationResult.data ?? []
+    }
   }
   async function loadOptions(): Promise<void> {
     optionError.value = false
@@ -1228,17 +1292,37 @@
       organizations.value = orgPage.data
       warehouses.value = warehouseRows
       organizationTree.value = organizationResult.data ?? []
-      if (form.value.tenantId) await loadTenantOptions(form.value.tenantId)
+      let selectedDefaultOrganization = false
+      if (mode.value === 'create' && !form.value.organizationId) {
+        const defaultOrganization = organizations.value.find(
+          (item) =>
+            item.isDefault &&
+            item.enabledOn &&
+            (isInitial.value ? !item.initializationClosedAt : item.initializationClosedAt)
+        )
+        if (defaultOrganization) {
+          form.value.organizationId = defaultOrganization.id
+          await onOrganizationChange()
+          selectedDefaultOrganization = true
+        }
+      }
+      if (form.value.tenantId && !selectedDefaultOrganization)
+        await loadTenantOptions(form.value.tenantId)
     } catch {
       optionError.value = true
+    } finally {
+      drawerRef.value?.setOptions({
+        confirmDisabled: optionError.value || Boolean(documentError.value)
+      })
     }
   }
   function onImportError(): void {
     ElMessage.error('导入失败，请检查 Excel 文件格式')
   }
   async function importLines(rows: Array<Record<string, unknown>>): Promise<void> {
+    const request = documentRequest
     try {
-      let imported = 0
+      const importedLines: typeof lines.value = []
       for (const row of rows.slice(0, 500)) {
         const code = String(row['物料编码'] || row.materialCode || '').trim()
         if (!code) continue
@@ -1249,25 +1333,29 @@
           size: 20
         })
         const material = result.data.find((item) => item.code === code)
+        if (request !== documentRequest) return
         if (!material) continue
         const line = makeLine(material)
         line.quantity = Math.abs(Number(row['数量'] || row.quantity || 0))
         line.unitPrice = Number(row['单价(元)'] || row.unitPrice || 0)
-        line.taxRate = Number(row['税率(%)'] || row.taxRate || 13)
+        line.taxRate = Number(row['税率(%)'] ?? row.taxRate ?? 13)
         line.taxInclusiveUnitPrice = round(line.unitPrice * (1 + line.taxRate / 100))
         line.batchNo = String(row['批号'] || row.batchNo || '') || null
-        lines.value.push(line)
-        imported++
+        importedLines.push(line)
       }
+      if (request !== documentRequest) return
+      lines.value.push(...importedLines)
       renumber()
-      if (imported) ElMessage.success(`已导入 ${imported} 行，请逐行核对仓储与价格信息`)
+      if (importedLines.length)
+        ElMessage.success(`已导入 ${importedLines.length} 行，请逐行核对仓储与价格信息`)
       else ElMessage.warning('未找到匹配的物料编码，请检查模板和当前租户物料')
-    } catch {
-      ElMessage.error('导入失败，请检查 Excel 文件格式')
+    } catch (error) {
+      if (request !== documentRequest) return
+      notifyFriendlyError(error, '导入物料读取失败，请检查网络后重新选择文件')
     }
   }
   async function save(): Promise<boolean> {
-    if (optionError.value) return false
+    if (optionError.value || documentError.value) return false
     try {
       if (!(await validateArtFormForSubmit(formRef.value))) return false
       if (
@@ -1282,11 +1370,14 @@
         ElMessage.warning('请至少添加一行物料')
         return false
       }
-      const incomplete = lines.value.find(
-        (line) => !line.inventoryUnitId || Math.abs(Number(line.quantity)) <= 0 || !line.stockType
-      )
+      const validation = await lineTableRef.value?.validate()
+      if (!validation?.valid) {
+        if (validation?.firstError) ElMessage.warning(validation.firstError.message)
+        return false
+      }
+      const incomplete = lines.value.find((line) => Math.abs(Number(line.quantity)) <= 0)
       if (incomplete) {
-        ElMessage.warning(`第 ${incomplete.lineNo} 行尚未填写必填信息`)
+        ElMessage.warning(`第 ${incomplete.lineNo} 行“数量”不能为零`)
         return false
       }
       for (const line of lines.value) {
@@ -1339,6 +1430,9 @@
     }
   }
   async function handleOpen(data: OpenData): Promise<void> {
+    documentRequest += 1
+    openData.value = data
+    documentError.value = ''
     mode.value = data.mode
     importIntent.value = Boolean(data.importIntent)
     await drawerRef.value?.handleOpen(data, {
@@ -1355,12 +1449,26 @@
               ? `编辑${title.value}`
               : `${title.value}详情`,
       subtitle: data.document?.documentNo || '月度三位流水号自动生成',
-      onConfirm: save
+      onConfirm: save,
+      onClose: () => {
+        documentRequest += 1
+        openData.value = undefined
+      }
     })
+    await reloadDocument()
+  }
+  async function reloadDocument(): Promise<void> {
+    const data = openData.value
+    if (!data) return
+    const request = ++documentRequest
+    documentError.value = ''
+    drawerRef.value?.setLoading(true)
+    drawerRef.value?.setOptions({ confirmDisabled: true })
     try {
       const source =
         data.document ??
         (data.documentId ? await fetchWmsInitialSalesDocument(data.documentId) : undefined)
+      if (request !== documentRequest) return
       currentDocument.value = source ?? null
       Object.assign(form.value, {
         id: data.mode === 'edit' ? source?.id || '' : '',
@@ -1388,15 +1496,33 @@
       selectedSalesperson.value = []
       selectedKeeper.value = []
       await loadOptions()
+      if (request !== documentRequest) return
+      await nextTick()
+      formRef.value?.clearValidate()
       drawerRef.value?.setOptions({ subtitle: source?.documentNo || '月度三位流水号自动生成' })
+    } catch (error) {
+      if (request !== documentRequest) return
+      documentError.value = '请重新加载单据；如仍失败，请检查网络和当前单据的查看权限。'
+      notifyFriendlyError(error, '单据加载失败，请重试')
     } finally {
-      drawerRef.value?.setLoading(false)
+      if (request === documentRequest) {
+        drawerRef.value?.setLoading(false)
+        drawerRef.value?.setOptions({
+          confirmDisabled: optionError.value || Boolean(documentError.value)
+        })
+      }
     }
   }
   defineExpose({ handleOpen })
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+  @use '@/assets/styles/core/mixin' as layout;
+
+  .wms-editable-line-table {
+    @include layout.fill-editable-table-cells;
+  }
+
   .initialization-document-stack {
     display: grid;
     gap: 20px;

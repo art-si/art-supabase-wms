@@ -19,7 +19,8 @@
       </ElAlert>
       <ArtTableQuery
         ref="tableRef"
-        v-model="search"
+        :model-value="search"
+        @update:model-value="replaceReactiveModel(search, $event)"
         :api-fn="fetchRows"
         :search-items="searchItems"
         :columns-factory="columnsFactory"
@@ -52,6 +53,8 @@
 </template>
 
 <script setup lang="tsx">
+  import { formatDateTimeValue } from '@/utils/ui/format'
+  import { replaceReactiveModel } from '@/utils/form/model'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { ElTag } from 'element-plus'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
@@ -234,7 +237,7 @@
         formatter: (row) => (
           <BusinessTableIdentityCell
             primary={row.documentNo}
-            secondary={row.createdAt?.replace('T', ' ').slice(0, 19)}
+            secondary={formatDateTimeValue(row.createdAt, { emptyText: '' })}
             icon="ri:truck-line"
           />
         )

@@ -1,6 +1,6 @@
 <template>
   <ArtDrawer ref="drawerRef" size="lg" :show-footer="false">
-    <div v-if="transfer" class="space-y-5">
+    <div v-if="transfer" class="min-w-0 space-y-5">
       <ArtEntitySummary
         icon="ri:swap-box-line"
         eyebrow="DIRECT STOCK TRANSFER"
@@ -56,27 +56,12 @@
         </div>
       </ArtSectionCard>
       <ArtSectionCard title="业务归属" subtitle="项目施工号在直接调拨中保持不变。">
-        <dl class="grid gap-4 text-sm sm:grid-cols-2">
-          <div>
-            <dt class="text-[var(--el-text-color-secondary)]">物料</dt>
-            <dd class="mt-1 font-medium">
-              {{ transfer.material?.materialName || '历史物料' }}
-              <span class="text-[var(--el-text-color-secondary)]">
-                · {{ transfer.material?.materialCode || '—' }}
-              </span>
-            </dd>
-          </div>
-          <div>
-            <dt class="text-[var(--el-text-color-secondary)]">项目 / 施工号</dt>
-            <dd class="mt-1 font-medium"
-              >{{ projectName }} / {{ transfer.constructionNo || '—' }}</dd
-            >
-          </div>
-          <div class="sm:col-span-2">
-            <dt class="text-[var(--el-text-color-secondary)]">调拨原因</dt>
-            <dd class="mt-1 whitespace-pre-wrap break-words">{{ transfer.remark || '—' }}</dd>
-          </div>
-        </dl>
+        <ArtDescriptions
+          :data="transfer"
+          :items="descriptionItems"
+          :columns="2"
+          label-width="96px"
+        />
       </ArtSectionCard>
       <ArtSectionCard
         v-if="transfer.serialMovements.length"
@@ -84,13 +69,17 @@
         subtitle="逐件 SN 与此笔库存流水关联，可继续从序列号追溯查询完整链路。"
       >
         <ul class="flex flex-wrap gap-2">
-          <li v-for="item in transfer.serialMovements" :key="item.serialId">
+          <li
+            v-for="item in transfer.serialMovements"
+            :key="item.serialId"
+            class="min-w-0 max-w-full"
+          >
             <ElTag
               effect="plain"
               class="max-w-full"
               :title="item.serial?.serialNo || item.serialId"
             >
-              {{ item.serial?.serialNo || item.serialId }}
+              <span class="block truncate">{{ item.serial?.serialNo || item.serialId }}</span>
             </ElTag>
           </li>
         </ul>
@@ -104,12 +93,21 @@
   import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
+  import ArtDescriptions from '@/components/core/base/art-descriptions/index.vue'
+  import type { ArtDescriptionItem } from '@/components/core/base/art-descriptions/types'
   import { formatDateTimeValue } from '@/utils/ui/format'
   import type { WmsDirectTransfer } from '@wms/api'
 
   const drawerRef = ref<ArtDrawerExpose<WmsDirectTransfer>>()
   const transfer = shallowRef<WmsDirectTransfer>()
   const projectName = ref('')
+  const descriptionItems: ArtDescriptionItem<WmsDirectTransfer>[] = [
+    { key: 'materialCode', label: '物料编码', field: 'material.materialCode', copyable: true },
+    { key: 'materialName', label: '物料名称', field: 'material.materialName' },
+    { key: 'project', label: '项目', value: () => projectName.value },
+    { key: 'constructionNo', label: '施工号', field: 'constructionNo', copyable: true },
+    { key: 'remark', label: '调拨原因', field: 'remark', span: 2 }
+  ]
   const sourceOrganization = computed(
     () => transfer.value?.sourceOrganization?.organizationName || '历史组织'
   )

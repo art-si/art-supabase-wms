@@ -12,15 +12,17 @@
       </BusinessWorkspaceHeader>
       <ArtTableQuery
         ref="tableRef"
-        v-model="search"
+        :model-value="search"
+        @update:model-value="replaceReactiveModel(search, $event)"
         :api-fn="fetchRows"
         :search-items="searchItems"
         :columns-factory="columnsFactory"
+        :columns-context-key="displayMode"
         :header-actions="headerActions"
         header-actions-placement="workspace"
         :search-bar-props="{ span: 6, labelWidth: 104 }"
         :table-props="{
-          rowKey: displayMode === 'document' ? 'documentId' : 'lineId',
+          rowKey: 'lineId',
           spanMethod: mergeDocumentCells,
           tableLayout: 'fixed',
           cellClassName: quantityCellClass,
@@ -38,17 +40,21 @@
         </template>
       </ArtTableQuery>
       <ProductionMaterialDrawer ref="drawerRef" :kind="kind" @success="refresh" />
+      <MasterDataDeleteGuard ref="deleteGuardRef" />
     </div>
   </ArtPermissionGuard>
 </template>
 
 <script setup lang="tsx">
+  import { replaceReactiveModel } from '@/utils/form/model'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { formatWithDayjs } from '@/utils/time'
   import { ElMessage, ElTag } from 'element-plus'
   import { uniq } from 'lodash-es'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
+  import MasterDataDeleteGuard from '@/components/business/master-data-delete-guard/index.vue'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import ArtTableQuery, {
     type ArtTableQueryExpose,
@@ -84,6 +90,10 @@
 
   const props = defineProps<{ kind: WmsProductionMaterialKind }>()
   const { confirmAction } = useArtFeedback()
+  const { deleteGuardRef, inspectDeleteReferences } = useRecordDeleteGuard(
+    'wms_production_material_document',
+    productionDocumentConfig[props.kind].title
+  )
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const tableRef = ref<ArtTableQueryExpose>()
   const displayMode = ref<'document' | 'line'>('document')
@@ -266,15 +276,20 @@
       close: '关闭',
       void: '作废'
     }[action]
+    const resources = [{ id: row.documentId, label: row.documentNo }]
+    workingId.value = row.documentId
     try {
+      if (action === 'delete' && (await inspectDeleteReferences(resources))) return
       await confirmAction(`确定${label}${row.documentNo}？`, `${label}${title.value}`, {
         type: action === 'delete' || action === 'void' ? 'warning' : 'info',
         confirmButtonText: `确定${label}`
       })
-      workingId.value = row.documentId
       await changeWmsProductionMaterialStatus(row.documentId, action)
       await refresh()
-    } catch {
+    } catch (error) {
+      if (action === 'delete' && error !== 'cancel' && error !== 'close') {
+        await inspectDeleteReferences(resources)
+      }
       // 确认取消与接口错误分别由弹窗和 API 层处理。
     } finally {
       workingId.value = undefined
@@ -407,7 +422,9 @@
                 ? config.value.negative
                   ? '退库过账'
                   : '入库过账'
-                : '下推此行',
+                : displayMode.value === 'line'
+                  ? '下推此行'
+                  : '下推此单',
               icon: 'ri:file-transfer-line',
               auth: permissions.value.Push
             },
@@ -428,7 +445,7 @@
     if (item.key === 'copy' || item.key === 'edit') {
       void openDocument(item.key, row.documentId)
     } else if (item.key === 'push') {
-      void push(row.documentId, row.lineId)
+      void push(row.documentId, displayMode.value === 'line' ? row.lineId : undefined)
     } else if (
       item.key === 'submit' ||
       item.key === 'approve' ||
