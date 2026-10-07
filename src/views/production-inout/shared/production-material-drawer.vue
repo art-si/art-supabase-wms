@@ -4,6 +4,7 @@
     :size="isMobile ? '100%' : '88%'"
     :show-footer="mode !== 'view'"
     show-fullscreen-button
+    @close="invalidateInlineOptions"
   >
     <ArtEmptyState
       v-if="documentError"
@@ -78,6 +79,11 @@
         show-icon
       >
         可按工单、已确认排包单或物料带入。入库过账数量不能超过生产工单已报工未入库数量。
+      </ElAlert>
+      <ElAlert v-if="importIntent && mode !== 'view'" type="success" :closable="false" show-icon>
+        先选择仓库，再在“{{ config.detailLabel }}”中点击“导入明细”；必填列为物料编码、{{
+          isFinished ? '入库数量' : '申请数量、实发数量'
+        }}。支持 1 至 500 行，导入后请核对数量、工单和仓储信息。
       </ElAlert>
       <ArtSectionCard
         title="单据表头"
@@ -398,9 +404,11 @@
             <span v-if="props.kind !== 'finished_return'" v-auth="permission.Import">
               <ArtExcelImport
                 accept=".xlsx,.xls,.csv"
-                :disabled="!form.tenantId"
-                :button-props="{ type: 'success', plain: true }"
+                :context-key="openData"
+                :disabled="!form.tenantId || importing || parsing"
+                :button-props="{ type: 'success', plain: true, loading: importing || parsing }"
                 icon="ri:upload-2-line"
+                @parsing-change="onImportParsing"
                 @import-success="importLines"
                 @import-error="onImportError"
                 >导入明细</ArtExcelImport
@@ -588,8 +596,12 @@
                   :key="option.value"
                   :label="option.label"
                   :value="option.value" /></ElSelect
-              ><span v-else>{{ row.stockType }}</span></template
-            >
+              ><ArtDictDisplay
+                v-else
+                dict-code="wmsInitialStockType"
+                :value="row.stockType"
+                display="text"
+            /></template>
             <template #ownerType="{ row }"
               ><ElSelect v-if="mode !== 'view'" v-model="row.ownerType" @change="row.ownerId = null"
                 ><ElOption
@@ -597,8 +609,12 @@
                   :key="option.value"
                   :label="option.label"
                   :value="option.value" /></ElSelect
-              ><span v-else>{{ row.ownerType }}</span></template
-            >
+              ><ArtDictDisplay
+                v-else
+                dict-code="mdmBusinessOwnerType"
+                :value="row.ownerType"
+                display="text"
+            /></template>
             <template #ownerId="{ row }"
               ><ElSelect
                 v-if="mode !== 'view' && row.ownerType !== 'self'"
@@ -620,8 +636,12 @@
                   :key="option.value"
                   :label="option.label"
                   :value="option.value" /></ElSelect
-              ><span v-else>{{ row.stockStatus }}</span></template
-            >
+              ><ArtDictDisplay
+                v-else
+                dict-code="wmsInitialStockCondition"
+                :value="row.stockStatus"
+                display="text"
+            /></template>
             <template #keeperId="{ row }"
               ><ArtEmployeeSelect
                 v-if="mode !== 'view'"
@@ -761,6 +781,7 @@
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import ArtDescriptions from '@/components/core/base/art-descriptions/index.vue'
+  import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
   import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
   import type { ArtDescriptionItem } from '@/components/core/base/art-descriptions/types'
   import type {
@@ -772,9 +793,9 @@
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { storeToRefs } from 'pinia'
-  import { cloneDeep } from 'lodash-es'
+  import { cloneDeep, groupBy, uniq } from 'lodash-es'
   import { useBreakpoints } from '@vueuse/core'
-  import { normalizeNullableText } from '@/utils/form/normalize'
+  import { normalizeNullableNumber, normalizeNullableText } from '@/utils/form/normalize'
   import {
     fetchWmsBatchSerials,
     fetchWmsSerialsByIds,
@@ -841,6 +862,8 @@
   const documentError = ref('')
   const openData = shallowRef<OpenData>()
   let documentRequest = 0
+  const importing = ref(false)
+  const parsing = ref(false)
   const importIntent = ref(false)
   const selectIntent = ref(false)
   const currentDocument = shallowRef<WmsProductionMaterialDocument | null>(null)
@@ -1167,7 +1190,7 @@
           {
             prop: 'requestedQuantity',
             label: '申请数量',
-            minWidth: 120,
+            minWidth: 180,
             align: 'right' as const,
             useSlot: true
           }
@@ -1176,7 +1199,7 @@
     {
       prop: 'actualQuantity',
       label: config.value.quantityLabel,
-      minWidth: 120,
+      minWidth: 180,
       align: 'right',
       useSlot: true
     },
@@ -1202,7 +1225,7 @@
       minWidth: 140,
       useSlot: true
     },
-    { prop: 'baseQuantity', label: '基本数量', minWidth: 110, align: 'right' },
+    { prop: 'baseQuantity', label: '基本数量', minWidth: 160, align: 'right' },
     { prop: 'batchNo', label: '批号', minWidth: 140, useSlot: true },
     {
       prop: 'warehouseId',
@@ -1268,22 +1291,22 @@
       minWidth: 115,
       useSlot: true
     },
-    { prop: 'auxiliaryQuantity', label: '辅助数量', minWidth: 115, align: 'right' },
+    { prop: 'auxiliaryQuantity', label: '辅助数量', minWidth: 160, align: 'right' },
     {
       prop: 'auxiliaryUnitId',
       label: '辅助单位',
       minWidth: 105,
       formatter: (row) => unitName(row.auxiliaryUnitId)
     },
-    { prop: 'auxiliaryQuantity2', label: '辅助数量2', minWidth: 120, align: 'right' },
+    { prop: 'auxiliaryQuantity2', label: '辅助数量2', minWidth: 160, align: 'right' },
     {
       prop: 'auxiliaryUnit2Id',
       label: '辅助单位2',
       minWidth: 110,
       formatter: (row) => unitName(row.auxiliaryUnit2Id)
     },
-    { prop: 'productionDate', label: '生产日期', minWidth: 165, useSlot: true },
-    { prop: 'expiryDate', label: '有效期至', minWidth: 165, useSlot: true },
+    { prop: 'productionDate', label: '生产日期', minWidth: 190, useSlot: true },
+    { prop: 'expiryDate', label: '有效期至', minWidth: 190, useSlot: true },
     { prop: 'trackingNo', label: '跟踪号', minWidth: 145, useSlot: true },
     {
       prop: 'fulfilledQuantity',
@@ -1921,7 +1944,19 @@
       if (!line.keeperId) line.keeperId = form.value.keeperId || null
     })
   }
+  let inlineOptionRequest = 0
+  function invalidateInlineOptions(): void {
+    inlineOptionRequest++
+    serialRequest++
+  }
+  onUnmounted(invalidateInlineOptions)
   async function onInlineBatchSelected(line: DraftLine, rows: DataSelectRecord[]): Promise<void> {
+    const request = ++inlineOptionRequest
+    serialRequest++
+    line.serialIds = []
+    line.serialNos = []
+    serials.value = []
+    bins.value = []
     const batch = rows[0] as WmsProductionStockOption | undefined
     line.sourceBatchId = batch?.id || null
     if (!batch) return
@@ -1931,8 +1966,19 @@
     line.availableInventoryQuantity = batch.availableQuantity
     line.ownerType = batch.ownerType as DraftLine['ownerType']
     line.ownerId = batch.ownerId
-    bins.value = await fetchWmsBins(batch.warehouseId)
-    serials.value = await fetchWmsBatchSerials(batch.id)
+    try {
+      const binRows = await fetchWmsBins(batch.warehouseId)
+      if (
+        request !== inlineOptionRequest ||
+        line.sourceBatchId !== batch.id ||
+        !lines.value.includes(line)
+      )
+        return
+      bins.value = binRows
+    } catch (error) {
+      if (request === inlineOptionRequest && lines.value.includes(line))
+        notifyFriendlyError(error, '来源批次的库位加载失败，请重新选择后重试')
+    }
   }
   function syncInlineQuantities(line: DraftLine): void {
     editLine.value = line
@@ -1947,13 +1993,31 @@
     onActualQuantityChange(Number(value || 0))
   }
   async function onInlineWarehouseChange(line: DraftLine): Promise<void> {
-    const warehouseId = line.warehouseId
     line.binId = null
     line.sourceBatchId = null
-    bins.value = warehouseId ? await fetchWmsBins(warehouseId) : []
+    line.serialIds = []
+    line.serialNos = []
+    serialRequest++
+    serials.value = []
+    await loadInlineBins(line)
   }
   async function loadInlineBins(line: DraftLine): Promise<void> {
-    bins.value = line.warehouseId ? await fetchWmsBins(line.warehouseId) : []
+    const request = ++inlineOptionRequest
+    const warehouseId = line.warehouseId
+    bins.value = []
+    try {
+      const rows = warehouseId ? await fetchWmsBins(warehouseId) : []
+      if (
+        request !== inlineOptionRequest ||
+        line.warehouseId !== warehouseId ||
+        !lines.value.includes(line)
+      )
+        return
+      bins.value = rows
+    } catch (error) {
+      if (request === inlineOptionRequest && lines.value.includes(line))
+        notifyFriendlyError(error, '库位加载失败，请重新打开库位选项后重试')
+    }
   }
   async function openInlineSerials(line: DraftLine): Promise<void> {
     activeSerialLine.value = line
@@ -2030,6 +2094,7 @@
     formRef.value?.clearValidate(['documentTypeId', 'businessTypeId'])
   }
   async function loadTenantOptions(tenantId: string): Promise<void> {
+    const request = documentRequest
     const [unitRows, documentRows, projectRows, supplierRows, customerRows] = await Promise.all([
       fetchWmsUnitOptions(tenantId),
       fetchWmsProductionDocumentTypes(props.kind, tenantId),
@@ -2037,7 +2102,7 @@
       fetchWmsInitialOptions('mdm_supplier', tenantId),
       fetchWmsInitialOptions('mdm_customer', tenantId)
     ])
-    if (form.value.tenantId !== tenantId) return
+    if (request !== documentRequest || form.value.tenantId !== tenantId) return
     units.value = unitRows
     documentTypes.value = documentRows
     projects.value = projectRows.map((item) => ({
@@ -2055,7 +2120,12 @@
     const businessRows = documentTypeId
       ? await fetchWmsProductionBusinessTypes(props.kind, tenantId, documentTypeId)
       : []
-    if (form.value.tenantId !== tenantId || form.value.documentTypeId !== documentTypeId) return
+    if (
+      request !== documentRequest ||
+      form.value.tenantId !== tenantId ||
+      form.value.documentTypeId !== documentTypeId
+    )
+      return
     businessTypes.value = businessRows
     if (
       !form.value.businessTypeId ||
@@ -2064,6 +2134,7 @@
       await onDocumentTypeChange()
   }
   async function loadOptions(): Promise<void> {
+    const request = documentRequest
     optionError.value = false
     try {
       const [orgPage, warehouseRows, organizationResult] = await Promise.all([
@@ -2078,6 +2149,7 @@
           status: '1'
         })
       ])
+      if (request !== documentRequest) return
       organizations.value = orgPage.data
       warehouses.value = warehouseRows
       organizationTree.value = organizationResult.data ?? []
@@ -2092,15 +2164,22 @@
         form.value.tenantId =
           organizations.value.find((item) => item.id === form.value.organizationId)?.tenantId || ''
       if (form.value.tenantId) await loadTenantOptions(form.value.tenantId)
-      if (form.value.warehouseId)
-        workOrders.value = await fetchWmsWorkOrderOptions(form.value.warehouseId)
-      if (isFinished.value && form.value.workOrderId)
-        packs.value = await fetchWmsPackOptions(form.value.workOrderId)
-      if (!isFinished.value && form.value.workOrderId && form.value.tenantId)
-        bomItems.value = await fetchWmsProductionBomItems(
-          form.value.workOrderId,
-          form.value.tenantId
-        )
+      if (request !== documentRequest) return
+      if (form.value.warehouseId) {
+        const rows = await fetchWmsWorkOrderOptions(form.value.warehouseId)
+        if (request !== documentRequest) return
+        workOrders.value = rows
+      }
+      if (isFinished.value && form.value.workOrderId) {
+        const rows = await fetchWmsPackOptions(form.value.workOrderId)
+        if (request !== documentRequest) return
+        packs.value = rows
+      }
+      if (!isFinished.value && form.value.workOrderId && form.value.tenantId) {
+        const rows = await fetchWmsProductionBomItems(form.value.workOrderId, form.value.tenantId)
+        if (request !== documentRequest) return
+        bomItems.value = rows
+      }
       const ids = [
         form.value.applicantId,
         form.value.keeperId,
@@ -2110,6 +2189,7 @@
         const fetchedEmployees = await fetchWmsProductionEmployeesByIds(form.value.tenantId, [
           ...new Set(ids)
         ])
+        if (request !== documentRequest) return
         employees.value = fetchedEmployees
         selectedApplicant.value = fetchedEmployees.filter(
           (item) => item.id === form.value.applicantId
@@ -2117,11 +2197,13 @@
         selectedKeeper.value = fetchedEmployees.filter((item) => item.id === form.value.keeperId)
       }
     } catch {
-      optionError.value = true
+      if (request === documentRequest) optionError.value = true
     } finally {
-      drawerRef.value?.setOptions({
-        confirmDisabled: optionError.value || Boolean(documentError.value)
-      })
+      if (request === documentRequest)
+        drawerRef.value?.setOptions({
+          confirmDisabled:
+            parsing.value || importing.value || optionError.value || Boolean(documentError.value)
+        })
     }
   }
   async function onOrganizationChange(organizationId: string): Promise<void> {
@@ -2186,53 +2268,86 @@
   function onImportError(): void {
     ElMessage.error('导入失败，请检查 Excel 文件格式')
   }
+  function onImportParsing(value: boolean): void {
+    parsing.value = value
+    drawerRef.value?.setOptions({
+      confirmDisabled:
+        parsing.value || importing.value || optionError.value || Boolean(documentError.value)
+    })
+  }
   async function importLines(rows: Array<Record<string, unknown>>): Promise<void> {
-    const source = rows
-      .slice(0, 500)
-      .map((row) => ({
-        code: String(row['物料编码'] || row.materialCode || '').trim(),
-        requested: Number(
-          row['申请数量'] ?? row['入库数量'] ?? row.requestedQuantity ?? row.actualQuantity ?? 0
-        ),
-        actual: Number(
+    if (importing.value || mode.value === 'view' || !form.value.tenantId || !openData.value) return
+    const request = documentRequest
+    const tenantId = form.value.tenantId
+    const organizationId = form.value.organizationId
+    importing.value = true
+    drawerRef.value?.setOptions({ confirmDisabled: true })
+    try {
+      if (!rows.length || rows.length > 500) throw new Error('请选择包含 1 至 500 行生产明细的文件')
+      const source = rows.map((row, index) => {
+        const fileRow = index + 2
+        const code = String(row['物料编码'] ?? row.materialCode ?? '').trim()
+        if (!code) throw new Error(`第 ${fileRow} 行请填写物料编码`)
+        const requested = normalizeNullableNumber(
+          row['申请数量'] ?? row['入库数量'] ?? row.requestedQuantity ?? row.actualQuantity
+        )
+        const actual = normalizeNullableNumber(
           row['实发数量'] ??
             row['入库数量'] ??
             row.actualQuantity ??
             row['申请数量'] ??
-            row.requestedQuantity ??
-            0
-        ),
-        batch: String(row['批号'] || row.batchNo || '').trim()
-      }))
-      .filter((item) => item.code)
-    if (!source.length) {
-      ElMessage.warning('导入文件缺少物料编码')
-      return
-    }
-    try {
-      const materials = await fetchWmsProductionMaterialsByCodes(form.value.tenantId, [
-        ...new Set(source.map((item) => item.code))
-      ])
-      const byCode = new Map(materials.map((item) => [item.materialCode, item]))
-      let imported = 0
+            row.requestedQuantity
+        )
+        if (requested === null || actual === null || requested === 0 || actual === 0)
+          throw new Error(`第 ${fileRow} 行请填写有效且非零的数量`)
+        if (Math.abs(actual) > Math.abs(requested))
+          throw new Error(`第 ${fileRow} 行实际数量不得超过申请数量`)
+        return {
+          code,
+          requested,
+          actual,
+          fileRow,
+          batch: String(row['批号'] ?? row.batchNo ?? '').trim()
+        }
+      })
+      const materials = await fetchWmsProductionMaterialsByCodes(
+        tenantId,
+        uniq(source.map((item) => item.code))
+      )
+      if (request !== documentRequest) return
+      if (form.value.tenantId !== tenantId || form.value.organizationId !== organizationId)
+        throw new Error('库存组织已变更，请重新导入明细')
+      const byCode = groupBy(materials, 'materialCode')
+      const imported: DraftLine[] = []
       for (const item of source) {
-        const material = byCode.get(item.code)
-        if (!material || !Number.isFinite(item.requested) || !Number.isFinite(item.actual)) continue
-        const line = makeLine(material, item.requested)
+        const matches = byCode[item.code] ?? []
+        if (matches.length !== 1)
+          throw new Error(
+            `第 ${item.fileRow} 行物料编码“${item.code}”未匹配到唯一物料，请检查当前租户物料`
+          )
+        const line = makeLine(matches[0], item.requested)
         line.actualQuantity = isReturn.value ? -Math.abs(item.actual) : Math.abs(item.actual)
-        line.batchNo = item.batch || null
-        lines.value.push(line)
-        imported++
+        line.batchNo = normalizeNullableText(item.batch)
+        imported.push(line)
       }
+      lines.value.push(...imported)
       renumber()
-      if (imported) ElMessage.success(`已导入 ${imported} 行，请核对数量、仓库和库存类型`)
-      else ElMessage.warning('未找到当前租户匹配的物料')
-    } catch {
-      ElMessage.error('导入失败，请重试')
+      ElMessage.success(`已导入 ${imported.length} 行，请核对数量、仓库和库存类型`)
+    } catch (error) {
+      if (request === documentRequest)
+        notifyFriendlyError(error, '导入失败，请检查物料编码、数量和网络后重试')
+    } finally {
+      if (request === documentRequest) {
+        importing.value = false
+        drawerRef.value?.setOptions({
+          confirmDisabled:
+            parsing.value || importing.value || optionError.value || Boolean(documentError.value)
+        })
+      }
     }
   }
   async function save(): Promise<boolean> {
-    if (optionError.value || documentError.value) return false
+    if (parsing.value || importing.value || optionError.value || documentError.value) return false
     try {
       if (!(await validateArtFormForSubmit(formRef.value))) return false
     } catch (error) {
@@ -2383,7 +2498,10 @@
     }
   }
   async function handleOpen(data: OpenData): Promise<void> {
+    invalidateInlineOptions()
     ++documentRequest
+    importing.value = false
+    parsing.value = false
     openData.value = data
     documentError.value = ''
     mode.value = data.mode
@@ -2406,6 +2524,9 @@
       onConfirm: save,
       onClose: () => {
         ++documentRequest
+        importing.value = false
+        parsing.value = false
+        openData.value = undefined
         return true
       }
     })
@@ -2456,11 +2577,14 @@
       selectedApplicant.value = []
       selectedKeeper.value = []
       await loadOptions()
-      await nextTick()
-      formRef.value?.clearValidate()
       if (currentRequest !== documentRequest) return
+      await nextTick()
+      if (currentRequest !== documentRequest) return
+      formRef.value?.clearValidate()
       if (source) drawerRef.value?.setOptions({ subtitle: source.documentNo })
-      drawerRef.value?.setOptions({ confirmDisabled: optionError.value })
+      drawerRef.value?.setOptions({
+        confirmDisabled: parsing.value || importing.value || optionError.value
+      })
     } catch (error) {
       if (currentRequest !== documentRequest) return
       documentError.value = '请重新加载单据；如仍失败，请检查网络和当前单据的查看权限。'

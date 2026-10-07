@@ -23,6 +23,9 @@
         "
         description="按月自动生成三位流水号；一张申请单可同时登记多种物料。"
       />
+      <ElAlert v-if="openData?.importIntent" type="info" :closable="false" show-icon>
+        先核对申请组织和申请日期，再在“物料明细”点击“导入明细”；导入后核对调出、调入组织和仓储信息再保存。
+      </ElAlert>
       <ArtSectionCard title="单据表头" subtitle="编号按月生成；审核后可下推调拨业务。">
         <ArtDescriptions
           v-if="mode === 'view'"
@@ -57,33 +60,53 @@
 
       <ArtSectionCard
         title="物料明细"
-        :subtitle="`共 ${lines.length} 行；行号按 10 递增。`"
+        :subtitle="
+          mode === 'view'
+            ? `共 ${lines.length} 行；行号按 10 递增。`
+            : `共 ${lines.length} 行；导入必填列：物料编码、数量；可选列：批号、备注。`
+        "
         :empty="!lines.length"
         empty-title="请选择物料"
         empty-description="支持一次多选物料，编码、规格与默认单位自动带入。"
       >
         <template #actions>
-          <ArtTableMultipleSelect
-            v-if="mode !== 'view'"
-            :model-value="selectedMaterialIds"
-            :api-fn="materialApi"
-            :selected-data="selectedMaterials"
-            :columns="materialColumns"
-            title="选择调拨物料"
-            subtitle="按物料分类筛选，可一次选择多种物料"
-            placeholder="添加物料"
-            search-placeholder="输入物料编码、名称或规格"
-            label-key="materialName"
-            :show-pagination="true"
-            :page-size="20"
-            @update:selected-data="onMaterialsSelected"
-          >
-            <template #trigger="{ open }">
-              <ElButton type="primary" @click="open">
-                <ArtSvgIcon icon="ri:add-line" />添加物料
-              </ElButton>
-            </template>
-          </ArtTableMultipleSelect>
+          <div class="flex flex-wrap items-center justify-end gap-2">
+            <ArtExcelImport
+              v-if="mode !== 'view'"
+              v-auth="'WmsTransfer:Import'"
+              :context-key="openData"
+              :disabled="importing || parsing"
+              :button-props="{ type: 'success', plain: true, loading: importing || parsing }"
+              @parsing-change="onImportParsing"
+              @import-success="importLines"
+              @import-error="
+                notifyFriendlyError($event, '文件读取失败，请检查 Excel 格式后重新选择')
+              "
+              >导入明细</ArtExcelImport
+            >
+            <ArtTableMultipleSelect
+              class="w-auto!"
+              v-if="mode !== 'view'"
+              :model-value="selectedMaterialIds"
+              :api-fn="materialApi"
+              :selected-data="selectedMaterials"
+              :columns="materialColumns"
+              title="选择调拨物料"
+              subtitle="按物料分类筛选，可一次选择多种物料"
+              placeholder="添加物料"
+              search-placeholder="输入物料编码、名称或规格"
+              label-key="materialName"
+              :show-pagination="true"
+              :page-size="20"
+              @update:selected-data="onMaterialsSelected"
+            >
+              <template #trigger="{ open }">
+                <ElButton type="primary" @click="open">
+                  <ArtSvgIcon icon="ri:add-line" />添加物料
+                </ElButton>
+              </template>
+            </ArtTableMultipleSelect>
+          </div>
         </template>
         <ArtTable
           v-if="mode === 'view'"
@@ -97,7 +120,7 @@
           <ElTableColumn prop="lineNo" label="行号" width="68" :fixed="isMobile ? false : 'left'" />
           <ElTableColumn label="物料描述" min-width="220" :fixed="isMobile ? false : 'left'">
             <template #default="{ row }">
-              <strong class="block truncate">{{
+              <strong class="block whitespace-normal break-words">{{
                 row.materialDescription || row.materialName
               }}</strong>
               <small class="text-[var(--el-text-color-secondary)]"
@@ -117,9 +140,11 @@
               formatUnitDisplayName(row.inventoryUnitName)
             }}</template></ElTableColumn
           >
-          <ElTableColumn label="数量" width="110" align="right"
+          <ElTableColumn label="数量" width="160" align="right"
             ><template #default="{ row }"
-              ><strong class="tabular-nums">{{ numberText(row.quantity) }}</strong></template
+              ><strong class="whitespace-nowrap tabular-nums">{{
+                numberText(row.quantity)
+              }}</strong></template
             ></ElTableColumn
           >
           <ElTableColumn prop="baseUnitName" label="基本单位" width="140"
@@ -127,7 +152,7 @@
               formatUnitDisplayName(row.baseUnitName)
             }}</template></ElTableColumn
           >
-          <ElTableColumn label="基本数量" width="110" align="right"
+          <ElTableColumn label="基本数量" width="160" align="right"
             ><template #default="{ row }">{{
               numberText(row.baseQuantity)
             }}</template></ElTableColumn
@@ -162,9 +187,9 @@
               formatUnitDisplayName(row.auxiliaryUnitName)
             }}</template></ElTableColumn
           >
-          <ElTableColumn prop="auxiliaryQuantity" label="辅助数量" width="105" align="right" />
+          <ElTableColumn prop="auxiliaryQuantity" label="辅助数量" width="160" align="right" />
           <ElTableColumn prop="auxiliaryUnit2Name" label="辅助单位2" width="110" />
-          <ElTableColumn prop="auxiliaryQuantity2" label="辅助数量2" width="110" align="right" />
+          <ElTableColumn prop="auxiliaryQuantity2" label="辅助数量2" width="160" align="right" />
           <ElTableColumn prop="productionDate" label="生产日期" width="115" />
           <ElTableColumn prop="expiryDate" label="有效期至" width="115" />
           <ElTableColumn prop="trackingNo" label="跟踪号" min-width="125" />
@@ -226,7 +251,7 @@
                   :value="unit.id" /></ElSelect
             ></template>
           </ElTableColumn>
-          <ElTableColumn label="数量" min-width="130"
+          <ElTableColumn label="数量" min-width="180"
             ><template #default="{ row }"
               ><ElInputNumber
                 v-model="row.quantity"
@@ -236,9 +261,11 @@
                 :disabled="false"
                 class="w-full!" /></template
           ></ElTableColumn>
-          <ElTableColumn label="基本数量" min-width="120"
+          <ElTableColumn label="基本数量" min-width="160"
             ><template #default="{ row }"
-              ><span class="tabular-nums">{{ row.quantity.toFixed(4) }}</span></template
+              ><span class="whitespace-nowrap tabular-nums">{{
+                row.quantity.toFixed(4)
+              }}</span></template
             ></ElTableColumn
           >
           <ElTableColumn label="批号" min-width="140"
@@ -354,11 +381,11 @@
           <ElTableColumn label="赠品" width="86" align="center"
             ><template #default="{ row }"><ElCheckbox v-model="row.gift" /></template
           ></ElTableColumn>
-          <ElTableColumn label="生产日期" min-width="140"
+          <ElTableColumn label="生产日期" min-width="190"
             ><template #default="{ row }"
               ><ElDatePicker v-model="row.productionDate" value-format="YYYY-MM-DD" /></template
           ></ElTableColumn>
-          <ElTableColumn label="有效期至" min-width="140"
+          <ElTableColumn label="有效期至" min-width="190"
             ><template #default="{ row }"
               ><ElDatePicker v-model="row.expiryDate" value-format="YYYY-MM-DD" /></template
           ></ElTableColumn>
@@ -390,6 +417,7 @@
   import { isWmsBusinessTypeAvailable } from '@/utils/wms/business-type'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { useBreakpoints } from '@vueuse/core'
+  import { useWarehouseRowBinLoader } from '@/hooks/core/useWarehouseBinOptions'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { ElMessage } from 'element-plus'
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
@@ -398,6 +426,8 @@
   import ArtDescriptions from '@/components/core/base/art-descriptions/index.vue'
   import type { ArtDescriptionItem } from '@/components/core/base/art-descriptions/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
+  import { prepareWmsMaterialImport } from '../../../shared/material-import'
+  import ArtExcelImport from '@/components/core/forms/art-excel-import/index.vue'
   import ArtTable from '@/components/core/tables/art-table/index.vue'
   import ArtTableMultipleSelect from '@/components/core/forms/art-data-select/table-multiple.vue'
   import ArtEmployeeSelect from '@/components/business/art-employee-select/index.vue'
@@ -436,6 +466,7 @@
     tenantId?: string
   }
   interface OpenData extends Context {
+    importIntent?: boolean
     mode: 'create' | 'edit' | 'copy' | 'view'
     documentId?: string
   }
@@ -483,6 +514,8 @@
   const openData = shallowRef<OpenData>()
   let loadRequest = 0
   const lines = ref<DraftLine[]>([])
+  const importing = ref(false)
+  const parsing = ref(false)
   const documentRows = ref<WmsTransferRequestRow[]>([])
   const documentTypes = ref<WmsInitializationOption[]>([])
   const businessTypes = ref<WmsInitializationOption[]>([])
@@ -738,6 +771,50 @@
     const previous = new Map(lines.value.map((row) => [row.materialId, row]))
     lines.value = materials.map((item) => previous.get(item.id) || newLine(item))
   }
+  function onImportParsing(value: boolean): void {
+    parsing.value = value
+    drawerRef.value?.setOptions({
+      confirmDisabled: parsing.value || importing.value || Boolean(loadError.value)
+    })
+  }
+  async function importLines(rows: Array<Record<string, unknown>>): Promise<void> {
+    if (importing.value || mode.value === 'view' || !context.value?.tenantId) return
+    if (!rows.length || rows.length > 500) {
+      ElMessage.warning('请选择包含 1 至 500 行明细的文件；必填列为物料编码、数量')
+      return
+    }
+    const request = loadRequest
+    const tenantId = context.value.tenantId
+    importing.value = true
+    drawerRef.value?.setOptions({ confirmDisabled: true })
+    try {
+      const prepared = await prepareWmsMaterialImport(
+        rows,
+        (code) => fetchWmsMaterialOptions(tenantId, code, 1, 500),
+        () => request === loadRequest
+      )
+      if (!prepared) return
+      const imported = prepared.map((item) => ({
+        ...newLine(item.material),
+        quantity: item.quantity,
+        batchNo: item.batchNo,
+        remark: item.remark
+      }))
+      if (request !== loadRequest) return
+      lines.value.push(...imported)
+      ElMessage.success(`已导入 ${imported.length} 行，请核对调出与调入组织、仓库和仓位后保存`)
+    } catch (error) {
+      if (request === loadRequest)
+        notifyFriendlyError(error, '导入失败，请检查物料编码、数量和网络后重试')
+    } finally {
+      if (request === loadRequest) {
+        importing.value = false
+        drawerRef.value?.setOptions({
+          confirmDisabled: parsing.value || importing.value || Boolean(loadError.value)
+        })
+      }
+    }
+  }
   function removeLine(key: string) {
     lines.value = lines.value.filter((row) => row.key !== key)
   }
@@ -755,15 +832,33 @@
     row.targetBins = []
     void loadTargetBins(row)
   }
-  async function loadSourceBins(value: unknown) {
+  const loadRowSourceBins = useWarehouseRowBinLoader(
+    () => lines.value,
+    () => loadRequest,
+    (row) => row.sourceWarehouseId,
+    fetchWmsBins,
+    (row, bins) => {
+      row.sourceBins = bins
+    }
+  )
+  const loadRowTargetBins = useWarehouseRowBinLoader(
+    () => lines.value,
+    () => loadRequest,
+    (row) => row.targetWarehouseId,
+    fetchWmsBins,
+    (row, bins) => {
+      row.targetBins = bins
+    }
+  )
+  async function loadSourceBins(value: unknown): Promise<void> {
     const row = value as DraftLine
     row.sourceBinId = ''
-    row.sourceBins = row.sourceWarehouseId ? await fetchWmsBins(row.sourceWarehouseId) : []
+    await loadRowSourceBins(row)
   }
-  async function loadTargetBins(value: unknown) {
+  async function loadTargetBins(value: unknown): Promise<void> {
     const row = value as DraftLine
     row.targetBinId = ''
-    row.targetBins = row.targetWarehouseId ? await fetchWmsBins(row.targetWarehouseId) : []
+    await loadRowTargetBins(row)
   }
   function rowMaterial(row: WmsTransferRequestRow): WmsMaterialOption {
     return {
@@ -850,7 +945,7 @@
     businessMenuId.value = menuId
   }
   async function save(): Promise<boolean> {
-    if (loadError.value) return false
+    if (loadError.value || importing.value || parsing.value) return false
     try {
       if (!(await validateArtFormForSubmit(formRef.value))) return false
       if (!lines.value.length) {
@@ -916,6 +1011,8 @@
   }
   async function handleOpen(data: OpenData) {
     loadRequest += 1
+    importing.value = false
+    parsing.value = false
     openData.value = data
     loadError.value = ''
     context.value = { tenantId: data.tenantId }
@@ -951,6 +1048,9 @@
       onOpen: reloadDocument,
       onClose: () => {
         loadRequest += 1
+        importing.value = false
+        parsing.value = false
+        openData.value = undefined
       }
     })
   }
@@ -989,7 +1089,9 @@
     } finally {
       if (request === loadRequest) {
         drawerRef.value?.setLoading(false)
-        drawerRef.value?.setOptions({ confirmDisabled: Boolean(loadError.value) })
+        drawerRef.value?.setOptions({
+          confirmDisabled: parsing.value || importing.value || Boolean(loadError.value)
+        })
       }
     }
   }

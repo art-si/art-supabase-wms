@@ -51,8 +51,21 @@
           :description="`调拨申请 ${pushRow?.documentNo || ''} 已审核，请选择执行方式。`"
         />
         <div class="mt-5 grid gap-3 sm:grid-cols-2">
-          <ElButton type="primary" @click="push('direct')">直接调拨</ElButton>
-          <ElButton type="warning" plain @click="push('in_transit')">调出在途</ElButton>
+          <ElButton
+            type="primary"
+            :loading="pushingMode === 'direct'"
+            :disabled="!!pushingMode"
+            @click="push('direct')"
+            >直接调拨</ElButton
+          >
+          <ElButton
+            type="warning"
+            plain
+            :loading="pushingMode === 'in_transit'"
+            :disabled="!!pushingMode"
+            @click="push('in_transit')"
+            >调出在途</ElButton
+          >
         </div>
       </ArtDialog>
       <MasterDataDeleteGuard ref="deleteGuardRef" />
@@ -146,6 +159,7 @@
   const drawerRef = ref<InstanceType<typeof TransferRequestDrawer>>()
   const pushDialogRef = ref<ArtDialogExpose>()
   const pushRow = ref<WmsTransferRequestRow>()
+  const pushingMode = ref<'direct' | 'in_transit'>()
   const workingId = ref<string>()
   const documentTypes = ref<WmsInitializationOption[]>([])
   const search = reactive({
@@ -201,6 +215,7 @@
       label: '申请日期',
       key: 'applicationDateRange',
       type: 'daterange',
+      span: 12,
       props: {
         clearable: true,
         valueFormat: 'YYYY-MM-DD',
@@ -279,9 +294,9 @@
   async function refresh(): Promise<void> {
     await tableRef.value?.refreshUpdate()
   }
-  function openCreate(): void {
+  function openCreate(importIntent = false): void {
     const tenantId = defaultWriteTenantId.value
-    if (tenantId) void drawerRef.value?.handleOpen({ mode: 'create', tenantId })
+    if (tenantId) void drawerRef.value?.handleOpen({ mode: 'create', tenantId, importIntent })
     else ElMessage.warning('无法确定新增单据的目标租户，请刷新后重试')
   }
   async function openDocument(
@@ -320,17 +335,22 @@
     }
   }
   async function openPush(row: WmsTransferRequestRow): Promise<void> {
+    if (pushingMode.value) return
     pushRow.value = row
     await pushDialogRef.value?.handleOpen(undefined, { title: '下推调拨申请' })
   }
   async function push(mode: 'direct' | 'in_transit'): Promise<void> {
-    if (!pushRow.value) return
+    if (!pushRow.value || pushingMode.value) return
+    const documentId = pushRow.value.documentId
+    pushingMode.value = mode
     try {
-      await pushWmsTransferRequest(pushRow.value.documentId, mode)
+      await pushWmsTransferRequest(documentId, mode)
       await pushDialogRef.value?.handleClose()
       await refresh()
     } catch {
       /* 接口层统一提示。 */
+    } finally {
+      pushingMode.value = undefined
     }
   }
   const headerActions = computed<ArtTableQueryHeaderAction[]>(() => [
@@ -339,7 +359,7 @@
       label: '新增调拨申请单',
       permission: 'WmsTransfer:Create',
       buttonProps: { plain: false },
-      onClick: openCreate
+      onClick: () => openCreate()
     },
     {
       key: 'import',
@@ -347,7 +367,7 @@
       icon: 'ri:file-upload-line',
       permission: 'WmsTransfer:Import',
       buttonProps: { type: 'success', plain: true },
-      onClick: openCreate
+      onClick: () => openCreate(true)
     },
     {
       type: 'export',
@@ -356,7 +376,9 @@
       buttonProps: { type: 'warning', plain: true },
       exportFilename: '调拨申请单',
       exportData: async () =>
-        (await fetchRows({ ...search, current: 1, size: 500, exportAll: true })).data,
+        (await fetchRows({ ...search, current: 1, size: 500, exportAll: true })).data.map(
+          (row) => ({ ...row, status: statusLabels[row.status] })
+        ),
       exportColumns: [
         { title: '单据编号', key: 'documentNo' },
         { title: '申请日期', key: 'applicationDate' },
@@ -421,7 +443,7 @@
         formatter: (row) => (
           <BusinessTableIdentityCell
             primary={row.documentNo}
-            secondary={`${displayMode.value === 'document' ? `共 ${row.lineNo} 项物料` : `第 ${row.lineNo} 行`} · ${row.documentTypeName}`}
+            secondary={`${displayMode.value === 'document' ? `共 ${row.lineNo} 项物料` : `第 ${row.lineNo} 行`} · ${row.documentTypeName || '未设置单据类型'}`}
             icon="ri:file-transfer-line"
           />
         )

@@ -76,10 +76,12 @@
           >
             <ElTag
               effect="plain"
-              class="max-w-full"
-              :title="item.serial?.serialNo || item.serialId"
+              class="h-auto! max-w-full py-1"
+              :title="item.serial?.serialNo || '序列号资料不可用'"
             >
-              <span class="block truncate">{{ item.serial?.serialNo || item.serialId }}</span>
+              <span class="block whitespace-normal break-all leading-5">{{
+                item.serial?.serialNo || '序列号资料不可用'
+              }}</span>
             </ElTag>
           </li>
         </ul>

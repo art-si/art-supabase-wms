@@ -185,7 +185,12 @@
               label: serial.serialNo,
               value: serial.id
             })),
-            props: { multiple: true, filterable: true, collapseTags: true },
+            props: {
+              multiple: true,
+              filterable: true,
+              collapseTags: true,
+              collapseTagsTooltip: true
+            },
             help: '序列号物料必须逐件选择。在库子件须与主机一起调拨；已装配领用的子件保留原项目与工单追溯。'
           }
         ]

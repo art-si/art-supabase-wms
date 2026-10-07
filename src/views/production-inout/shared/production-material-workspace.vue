@@ -354,7 +354,13 @@
       buttonProps: { type: 'warning', plain: true },
       exportFilename: title.value,
       exportData: async () =>
-        (await fetchRows({ ...search, current: 1, size: 500, exportAll: true })).data,
+        (await fetchRows({ ...search, current: 1, size: 500, exportAll: true })).data.map(
+          (row) => ({
+            ...row,
+            status: documentStatusLabels[row.status] || row.status,
+            materialStatus: materialStatusLabels.value[row.materialStatus] || row.materialStatus
+          })
+        ),
       exportColumns: [
         { title: config.value.numberLabel, key: 'documentNo' },
         { title: '生产工单', key: 'workOrderNo' },

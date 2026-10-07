@@ -341,7 +341,12 @@
             options: serials.value
               .filter((row) => !row.reservedWorkOrderId)
               .map((row) => ({ label: row.serialNo, value: row.id })),
-            props: { multiple: true, filterable: true, collapseTags: true },
+            props: {
+              multiple: true,
+              filterable: true,
+              collapseTags: true,
+              collapseTagsTooltip: true
+            },
             help: '逐件选择，件数须与调整数量一致。'
           }
         ]

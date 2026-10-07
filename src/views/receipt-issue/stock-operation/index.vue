@@ -247,12 +247,14 @@
           </ArtSectionCard>
           <ArtSectionCard title="后续查询" subtitle="记账结果可从以下页面核对。">
             <div class="flex flex-wrap gap-2">
-              <RouterLink to="/wms/inventory-trace/stock"><ElButton>即时库存</ElButton></RouterLink>
-              <RouterLink to="/wms/inventory-trace/inventory-ledger"
-                ><ElButton>库存流水</ElButton></RouterLink
+              <ElButton class="ml-0!" :tag="RouterLink" to="/wms/inventory-trace/stock"
+                >即时库存</ElButton
               >
-              <RouterLink to="/wms/inventory-trace/serial-trace"
-                ><ElButton>序列号追溯</ElButton></RouterLink
+              <ElButton class="ml-0!" :tag="RouterLink" to="/wms/inventory-trace/inventory-ledger"
+                >库存流水</ElButton
+              >
+              <ElButton class="ml-0!" :tag="RouterLink" to="/wms/inventory-trace/serial-trace"
+                >序列号追溯</ElButton
               >
             </div>
           </ArtSectionCard>
@@ -263,6 +265,7 @@
 </template>
 
 <script setup lang="ts">
+  import { RouterLink } from 'vue-router'
   import { replaceReactiveModel } from '@/utils/form/model'
   import { ElMessage } from 'element-plus'
   import { omit } from 'lodash-es'
@@ -832,7 +835,12 @@
                         !row.reservedWorkOrderId || row.reservedWorkOrderId === form.workOrderId
                     )
                     .map((row) => ({ label: row.serialNo, value: row.id })),
-                  props: { multiple: true, filterable: true, collapseTags: true },
+                  props: {
+                    multiple: true,
+                    filterable: true,
+                    collapseTags: true,
+                    collapseTagsTooltip: true
+                  },
                   help: '逐件选择；被其他工单预留的 SN 不可使用。'
                 }
               ]

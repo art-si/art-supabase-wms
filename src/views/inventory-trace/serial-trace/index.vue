@@ -65,10 +65,14 @@
             </div>
             <div class="rounded-xl bg-[var(--el-fill-color-light)] p-4">
               <small class="text-[var(--el-text-color-secondary)]">库存状态</small>
-              <strong class="mt-1 block">{{ statusLabel(activeSerial.status) }}</strong>
-              <span class="text-sm"
-                >父件：{{ activeSerial.parent?.serialNo || '无 · 主机或独立件' }}</span
-              >
+              <strong class="mt-1 block">
+                <ArtDictDisplay
+                  dict-code="mdmInventorySerialStatus"
+                  :value="activeSerial.status"
+                  display="text"
+                />
+              </strong>
+              <span class="text-sm">父件：{{ formatWmsSerialParent(activeSerial) }}</span>
             </div>
           </div>
           <div class="grid gap-3 sm:grid-cols-2">
@@ -113,7 +117,7 @@
                     }}
                   </span>
                 </div>
-                <ElTag size="small" effect="plain">{{ statusLabel(child.status) }}</ElTag>
+                <ArtDictDisplay dict-code="mdmInventorySerialStatus" :value="child.status" />
               </li>
             </ul>
           </ArtSectionCard>
@@ -163,12 +167,14 @@
 
 <script setup lang="tsx">
   import { formatWmsMovementType } from '@/utils/wms/movement-display'
+  import { formatWmsSerialParent } from '@/utils/wms/serial-display'
   import { formatDateTimeValue } from '@/utils/ui/format'
   import { replaceReactiveModel } from '@/utils/form/model'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
   import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
+  import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import BusinessWorkspaceHeader from '@/components/business/business-workspace-header/index.vue'
   import BusinessTableWorkspaceActions from '@/components/business/business-table-workspace-actions/index.vue'
@@ -323,9 +329,6 @@
     null
   const organizationName = (id: string | null) =>
     organizations.value.find((item) => item.id === id)?.organizationName || '历史组织'
-  const statusLabel = (status: string) =>
-    getDictMap.value.mdmInventorySerialStatus?.find((item) => item.value === status)?.label ||
-    status
   function fetchRows(query: WmsStockQuery) {
     return fetchWmsSerialPage({ ...query, tenantId: filterTenantId.value })
   }
@@ -442,7 +445,7 @@
         formatter: (row) => (
           <BusinessTableIdentityCell
             primary={row.serialNo}
-            secondary={row.material?.materialCode || row.materialId}
+            secondary={row.material?.materialCode || '—'}
             icon="ri:qr-scan-2-line"
           />
         )
@@ -451,7 +454,8 @@
         prop: 'material',
         label: '物料',
         minWidth: 185,
-        formatter: (row) => row.material?.materialName || '—'
+        formatter: (row) =>
+          row.material?.materialName || row.material?.materialCode || '物料资料不可用'
       },
       {
         prop: 'organizationId',
@@ -475,7 +479,7 @@
         prop: 'parent',
         label: '父件 SN',
         minWidth: 175,
-        formatter: (row) => row.parent?.serialNo || '独立件 / 主机'
+        formatter: (row) => formatWmsSerialParent(row)
       },
       {
         prop: 'reservedOrder',

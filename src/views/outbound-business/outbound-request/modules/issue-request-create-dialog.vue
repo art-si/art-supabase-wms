@@ -1,5 +1,5 @@
 <template>
-  <ArtDialog ref="dialogRef" size="xl" :confirm-disabled="loadError">
+  <ArtDialog ref="dialogRef" size="xl" :confirm-disabled="loadError" @close="handleClose">
     <div class="flex min-w-0 flex-col gap-4">
       <ArtEntitySummary
         icon="ri:file-list-3-line"
@@ -418,15 +418,28 @@
       await onOrderChange()
     }
   }
+  let reservationVersion = 0
+  function handleClose(): void {
+    reservationVersion++
+    context.value = undefined
+  }
+  onUnmounted(handleClose)
   async function onOrderChange(): Promise<void> {
+    const version = ++reservationVersion
+    const currentContext = context.value
+    const workOrderId = form.value.workOrderId
+    const warehouseId = form.value.warehouseId
+    const isCurrent = () =>
+      version === reservationVersion &&
+      context.value === currentContext &&
+      form.value.workOrderId === workOrderId &&
+      form.value.warehouseId === warehouseId
     lines.value = []
     if (!form.value.workOrderId || !form.value.warehouseId) return
     loadError.value = false
     try {
-      const reservations = await fetchWmsIssueReservationLines(
-        form.value.workOrderId,
-        form.value.warehouseId
-      )
+      const reservations = await fetchWmsIssueReservationLines(workOrderId, warehouseId)
+      if (!isCurrent()) return
       lines.value = reservations.map((row) => ({
         key: crypto.randomUUID(),
         materialId: row.materialId,
@@ -441,7 +454,7 @@
         quantity: row.reservedQuantity
       }))
     } catch {
-      loadError.value = true
+      if (isCurrent()) loadError.value = true
     }
   }
   function addLine(): void {
@@ -493,6 +506,7 @@
     }
   }
   async function handleOpen(data: Context): Promise<void> {
+    reservationVersion++
     context.value = data
     orders.value = []
     ordersLoaded.value = false

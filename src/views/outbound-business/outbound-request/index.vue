@@ -15,7 +15,25 @@
         <template #actions><BusinessTableWorkspaceActions :table="tableRef" /></template>
       </BusinessWorkspaceHeader>
       <ElAlert v-if="optionError" type="warning" :closable="false" show-icon class="mb-3">
-        筛选项加载失败。<ElButton link type="primary" @click="loadOptions">重新加载</ElButton>
+        筛选项加载失败。<ElButton link type="primary" :loading="optionsLoading" @click="loadOptions"
+          >重新加载</ElButton
+        >
+      </ElAlert>
+      <ElAlert
+        v-if="linkedRequestError || linkedRequestLoading"
+        :type="linkedRequestError ? 'error' : 'info'"
+        :closable="false"
+        show-icon
+        class="mb-3"
+      >
+        <span>{{
+          linkedRequestLoading
+            ? '正在加载关联出库申请…'
+            : '关联出库申请加载失败，请检查权限后重试。'
+        }}</span>
+        <ElButton link type="primary" :loading="linkedRequestLoading" @click="loadLinkedRequest">
+          重新加载关联申请
+        </ElButton>
       </ElAlert>
       <ArtTableQuery
         ref="tableRef"
@@ -58,6 +76,7 @@
   import { ElMessage, ElTag } from 'element-plus'
   import { useRoute, useRouter } from 'vue-router'
   import { useAuth } from '@/hooks/core/useAuth'
+  import { useRouteDocumentDrawer } from '@/hooks/core/useRouteDocumentDrawer'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { recordDeleteGuardOptions } from '@/hooks/core/useRecordDeleteGuard'
   import MasterDataDeleteGuard from '@/components/business/master-data-delete-guard/index.vue'
@@ -201,6 +220,7 @@
   const projects = ref<WmsProject[]>([])
   const sections = ref<WmsProjectSection[]>([])
   const optionError = ref(false)
+  const optionsLoading = ref(true)
   const workingId = ref<string>()
   const search = reactive({
     status: '',
@@ -235,13 +255,15 @@
       type: 'add',
       label: `新增${displayTitle.value}`,
       buttonProps: { plain: false },
-      disabled: () => optionError.value,
-      onClick: () =>
+      disabled: () => optionError.value || optionsLoading.value,
+      onClick: () => {
+        if (optionError.value || optionsLoading.value) return
         void createRef.value?.handleOpen({
           tenantId: filterTenantId.value,
           warehouses: warehouses.value,
           projects: projects.value
         })
+      }
     },
     {
       type: 'export',
@@ -250,7 +272,13 @@
       buttonProps: { type: 'warning', plain: true },
       exportFilename: displayTitle.value,
       exportData: async () =>
-        (await fetchRows({ ...search, current: 1, size: 500, exportAll: true })).data,
+        (await fetchRows({ ...search, current: 1, size: 500, exportAll: true })).data.map(
+          (row) => ({
+            ...row,
+            status: statusLabels[row.status],
+            requestType: requestTypeLabels[row.requestType] || row.requestType
+          })
+        ),
       exportColumns: [
         { title: '单据编号', key: 'documentNo' },
         { title: '申请类型', key: 'requestType' },
@@ -289,6 +317,7 @@
       label: '申请日期',
       key: 'applicationDateRange',
       type: 'daterange',
+      span: 12,
       props: {
         clearable: true,
         valueFormat: 'YYYY-MM-DD',
@@ -386,6 +415,7 @@
     await tableRef.value?.refreshUpdate()
   }
   async function loadOptions(): Promise<void> {
+    optionsLoading.value = true
     optionError.value = false
     try {
       ;[warehouses.value, projects.value, sections.value] = await Promise.all([
@@ -395,6 +425,8 @@
       ])
     } catch {
       optionError.value = true
+    } finally {
+      optionsLoading.value = false
     }
   }
   async function review(row: WmsIssueRequest, decision: 'approve' | 'reject'): Promise<void> {
@@ -690,23 +722,19 @@
     })
     await router.replace({ path: route.path, query: { ...route.query, workOrderId: undefined } })
   })
-  watch(
-    () => [route.query.recordId, route.query.resourceType],
-    async ([recordId, resourceType]) => {
-      if (
-        resourceType !== 'wms_issue_request' ||
-        typeof recordId !== 'string' ||
-        !hasAuth('WmsIssueRequest:View')
-      )
-        return
-      try {
-        const request = await fetchWmsIssueRequest(recordId)
-        if (route.query.recordId !== recordId || route.query.resourceType !== resourceType) return
-        await detailRef.value?.handleOpen(request, request.projectName || '未关联项目')
-      } catch {
-        ElMessage.error('关联出库申请加载失败，请检查权限后重试')
-      }
-    },
-    { immediate: true, flush: 'post' }
-  )
+  const {
+    loading: linkedRequestLoading,
+    error: linkedRequestError,
+    retry: loadLinkedRequest
+  } = useRouteDocumentDrawer({
+    routeName: 'WmsIssueRequest',
+    queryKey: 'recordId',
+    clearQueryOnOpen: false,
+    canOpen: () =>
+      route.query.resourceType === 'wms_issue_request' && hasAuth('WmsIssueRequest:View'),
+    fetchDocument: fetchWmsIssueRequest,
+    openDocument: async (request) => {
+      await detailRef.value?.handleOpen(request, request.projectName || '未关联项目')
+    }
+  })
 </script>

@@ -105,6 +105,7 @@
               multiple: true,
               filterable: true,
               collapseTags: true,
+              collapseTagsTooltip: true,
               placeholder: '逐件勾选实际见到的原 SN'
             },
             help: '未勾选的原 SN 将记为盘亏。'

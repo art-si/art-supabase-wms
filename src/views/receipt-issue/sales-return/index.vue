@@ -47,6 +47,12 @@
             </ElAlert>
           </ArtSectionCard>
           <ArtSectionCard title="办理退货回库" subtitle="退回的板材和主机继续归属原项目施工号。">
+            <ElAlert v-if="binLoadError" type="warning" :closable="false" show-icon class="mb-4">
+              退货仓库库位加载失败，请重试后再办理。
+              <ElButton link type="primary" :loading="binLoading" @click="onWarehouseChange"
+                >重新加载库位</ElButton
+              >
+            </ElAlert>
             <ArtForm
               ref="formRef"
               :model-value="form"
@@ -71,7 +77,7 @@
                   :serial-managed="
                     Boolean(selectedAllocation?.batch?.material?.serialManagementEnabled)
                   "
-                  :disabled="loadError || serialLoadError"
+                  :disabled="loadError || binLoadError || binLoading || serialLoadError"
                   label="退货入库库位"
                   @bins-loaded="bins = $event"
                 />
@@ -118,6 +124,8 @@
                 :loading="submitting"
                 :disabled="
                   loadError ||
+                  binLoadError ||
+                  binLoading ||
                   serialLoading ||
                   serialLoadError ||
                   !selectedAllocation ||
@@ -136,12 +144,14 @@
           </ArtSectionCard>
           <ArtSectionCard title="后续查询" subtitle="通过原 SN 或项目施工号追溯回库记录。">
             <div class="flex flex-wrap gap-2">
-              <RouterLink to="/wms/inventory-trace/stock"><ElButton>即时库存</ElButton></RouterLink>
-              <RouterLink to="/wms/inventory-trace/inventory-ledger"
-                ><ElButton>库存流水</ElButton></RouterLink
+              <ElButton class="ml-0!" :tag="RouterLink" to="/wms/inventory-trace/stock"
+                >即时库存</ElButton
               >
-              <RouterLink to="/wms/inventory-trace/serial-trace"
-                ><ElButton>SN 追溯</ElButton></RouterLink
+              <ElButton class="ml-0!" :tag="RouterLink" to="/wms/inventory-trace/inventory-ledger"
+                >库存流水</ElButton
+              >
+              <ElButton class="ml-0!" :tag="RouterLink" to="/wms/inventory-trace/serial-trace"
+                >SN 追溯</ElButton
               >
             </div>
           </ArtSectionCard>
@@ -152,6 +162,7 @@
 </template>
 
 <script setup lang="ts">
+  import { RouterLink } from 'vue-router'
   import { replaceReactiveModel } from '@/utils/form/model'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { formatDateTimeValue } from '@/utils/ui/format'
@@ -201,10 +212,13 @@
   const serialLoadError = ref(false)
   const serialLoading = ref(false)
   const loadError = ref(false)
+  const binLoadError = ref(false)
+  const binLoading = ref(false)
   const submitting = ref(false)
   let serialRequest = 0
   let binRequest = 0
   let optionRequest = 0
+  let formVersion = 0
   const scanText = ref('')
   const form = reactive<WmsSalesReturnInput>({
     outboundAllocationId: '',
@@ -333,6 +347,7 @@
               loading: serialLoading.value,
               disabled: serialLoading.value || serialLoadError.value,
               collapseTags: true,
+              collapseTagsTooltip: true,
               onChange: () => (form.quantity = form.serialIds.length)
             },
             help: '选择原发货记录中尚未退回的 SN；数量随所选 SN 自动变化。'
@@ -384,8 +399,11 @@
     }
   }
   async function onAllocationSelected(rows: DataSelectRecord[]): Promise<void> {
+    ++formVersion
     ++serialRequest
     ++binRequest
+    binLoadError.value = false
+    binLoading.value = false
     const row = rows[0]
     selectedAllocation.value =
       row && typeof row.id === 'string' && Array.isArray(row.returns)
@@ -423,17 +441,20 @@
   }
   async function onWarehouseChange(): Promise<void> {
     const request = ++binRequest
+    binLoading.value = true
+    binLoadError.value = false
     form.binId = null
     bins.value = []
     try {
       const loaded = form.warehouseId ? await fetchWmsBins(form.warehouseId) : []
       if (request !== binRequest) return
       bins.value = loaded
-      loadError.value = false
     } catch {
       if (request !== binRequest) return
       bins.value = []
-      loadError.value = true
+      binLoadError.value = true
+    } finally {
+      if (request === binRequest) binLoading.value = false
     }
   }
   function applySerialScan(): void {
@@ -449,8 +470,11 @@
     ElMessage.success(`已加入退货 SN：${code}`)
   }
   function clearForm(): void {
+    ++formVersion
     ++serialRequest
     ++binRequest
+    binLoadError.value = false
+    binLoading.value = false
     serialLoadError.value = false
     serialLoading.value = false
     selectedAllocation.value = null
@@ -484,7 +508,16 @@
     }
   }
   async function submit(): Promise<void> {
-    if (submitting.value || serialLoading.value || serialLoadError.value) return
+    if (
+      submitting.value ||
+      loadError.value ||
+      binLoading.value ||
+      binLoadError.value ||
+      serialLoading.value ||
+      serialLoadError.value
+    )
+      return
+    const version = formVersion
     try {
       if (!(await validateArtFormForSubmit(formRef.value))) return
       formRef.value?.clearValidate()
@@ -500,7 +533,7 @@
         return void ElMessage.warning('请逐件选择与退货数量一致的原发货 SN')
       submitting.value = true
       await postWmsSalesReturn({ ...form })
-      clearForm()
+      if (formVersion === version) clearForm()
     } catch {
       // ArtForm 和 API provider 已展示字段或业务错误。
     } finally {

@@ -99,7 +99,7 @@
 <script setup lang="tsx">
   import { replaceReactiveModel } from '@/utils/form/model'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
-  import { useRoute, useRouter } from 'vue-router'
+  import { useRouteDocumentDrawer } from '@/hooks/core/useRouteDocumentDrawer'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { ElMessage, ElTag } from 'element-plus'
   import { useAuth } from '@/hooks/core/useAuth'
@@ -146,8 +146,6 @@
   const props = defineProps<{ kind: WmsInitialSalesKind }>()
   const { confirmAction } = useArtFeedback()
   const { hasAuth } = useAuth()
-  const route = useRoute()
-  const router = useRouter()
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const userStore = useUserStore()
   void userStore.ensureDictLoaded('wmsInitialStockType')
@@ -194,19 +192,18 @@
   const workingId = ref<string>()
   const selectedRows = ref<Array<{ documentId: string; kind: unknown; status: unknown }>>([])
 
-  onMounted(async () => {
-    const documentId = route.query.documentId
-    if (typeof documentId !== 'string' || (!isInitial.value && props.kind !== 'return')) return
-    if (hasAuth(permission.value.View)) {
-      try {
-        await router.replace({ path: route.path, query: { ...route.query, documentId: undefined } })
-        const document = await fetchWmsInitialSalesDocument(documentId)
-        if (document.kind !== props.kind) throw new Error('单据类型不匹配')
-        await drawerRef.value?.handleOpen({ mode: 'view', document })
-      } catch {
-        ElMessage.error('期初销售单加载失败，请刷新后重试')
-      }
-    }
+  useRouteDocumentDrawer({
+    routeName: () => permission.value.View.split(':')[0],
+    canOpen: () => (isInitial.value || props.kind === 'return') && hasAuth(permission.value.View),
+    fetchDocument: async (id) => {
+      const document = await fetchWmsInitialSalesDocument(id)
+      if (document.kind !== props.kind) throw new Error('单据类型不匹配')
+      return document
+    },
+    openDocument: async (document) => {
+      await drawerRef.value?.handleOpen({ mode: 'view', document })
+    },
+    onError: () => ElMessage.error(`${title.value}加载失败，请刷新后重试`)
   })
   const returnKinds: WmsInitialSalesKind[] = ['initial_return', 'return', 'other_return']
   const isReturn = computed(() => returnKinds.includes(props.kind))
@@ -222,9 +219,10 @@
         other_return: '其他出库退回单'
       })[props.kind]
   )
+  const deleteResourceLabel = ref('')
   const { deleteGuardRef, inspectDeleteReferences } = useRecordDeleteGuard(
     'wms_sales_document',
-    title.value
+    () => deleteResourceLabel.value || title.value
   )
   const description = computed(() =>
     isReturn.value
@@ -450,9 +448,16 @@
     }
     await otherReturnDrawerRef.value?.handleOpen({ mode: 'copy', documentId: source.documentId })
   }
-  async function openDocument(mode: 'view' | 'edit' | 'copy', documentId: string): Promise<void> {
+  async function openDocument(
+    mode: 'view' | 'edit' | 'copy',
+    row: WmsInitialSalesListRow
+  ): Promise<void> {
     try {
-      await drawerRef.value?.handleOpen({ mode, documentId })
+      const target =
+        props.kind === 'other_outbound' && row.kind === 'other_return'
+          ? otherReturnDrawerRef.value
+          : drawerRef.value
+      await target?.handleOpen({ mode, documentId: row.documentId })
     } catch {
       ElMessage.error('单据加载失败，请重试')
     }
@@ -464,13 +469,18 @@
     if (workingId.value) return
     const label = { submit: '提交', approve: '审核', delete: '删除' }[action]
     const resources = [{ id: row.documentId, label: row.documentNo }]
+    deleteResourceLabel.value = row.kind === 'other_return' ? '其他出库退回单' : title.value
     workingId.value = row.documentId
     try {
       if (action === 'delete' && (await inspectDeleteReferences(resources))) return
-      await confirmAction(`确定${label} ${row.documentNo}？`, `${label}${title.value}`, {
-        type: action === 'delete' ? 'warning' : 'info',
-        confirmButtonText: `确定${label}`
-      })
+      await confirmAction(
+        `确定${label} ${row.documentNo}？`,
+        `${label}${deleteResourceLabel.value}`,
+        {
+          type: action === 'delete' ? 'warning' : 'info',
+          confirmButtonText: `确定${label}`
+        }
+      )
       await changeWmsInitialSalesStatus(row.documentId, action)
       await refresh()
     } catch (error) {
@@ -520,7 +530,9 @@
       buttonProps: { type: 'warning', plain: true },
       exportFilename: title.value,
       exportData: async () =>
-        (await fetchRows({ ...search, current: 1, size: 500, exportAll: true })).data,
+        (await fetchRows({ ...search, current: 1, size: 500, exportAll: true })).data.map(
+          (row) => ({ ...row, status: statusLabel(row.status) })
+        ),
       exportColumns: [
         { title: '单据编号', key: 'documentNo' },
         { title: '业务日期', key: 'businessDate' },
@@ -593,7 +605,7 @@
   }
   function onMoreAction(item: ButtonMoreItem, row: WmsInitialSalesListRow): void {
     if (item.key === 'copy' || item.key === 'edit') {
-      void openDocument(item.key, row.documentId)
+      void openDocument(item.key, row)
     } else if (item.key === 'submit' || item.key === 'approve' || item.key === 'delete') {
       void transition(row, item.key)
     }
@@ -611,7 +623,7 @@
         formatter: (row) => (
           <BusinessTableIdentityCell
             primary={row.documentNo}
-            secondary={`${displayMode.value === 'document' ? `共 ${row.lineNo} 项物料` : `第 ${row.lineNo} 行`} · ${row.customerName}`}
+            secondary={`${displayMode.value === 'document' ? `共 ${row.lineNo} 项物料` : `第 ${row.lineNo} 行`} · ${row.customerName || '未关联客户'}`}
             icon={returnKinds.includes(row.kind) ? 'ri:arrow-go-back-line' : 'ri:logout-box-r-line'}
           />
         )
@@ -719,7 +731,7 @@
               label="查看"
               icon="ri:eye-line"
               permission={permission.value.View}
-              onClick={() => openDocument('view', row.documentId)}
+              onClick={() => openDocument('view', row)}
             />
             <ArtButtonMore
               list={moreActions(row)}

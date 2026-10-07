@@ -267,9 +267,9 @@
   async function refresh(): Promise<void> {
     await tableRef.value?.refreshUpdate()
   }
-  function openCreate(): void {
+  function openCreate(importIntent = false): void {
     const tenantId = defaultWriteTenantId.value
-    if (tenantId) void drawerRef.value?.handleOpen({ mode: 'create', tenantId })
+    if (tenantId) void drawerRef.value?.handleOpen({ mode: 'create', tenantId, importIntent })
     else ElMessage.warning('无法确定新增单据的目标租户，请刷新后重试')
   }
   async function openDocument(
@@ -316,7 +316,7 @@
       label: `新增${title.value}`,
       permission: permission.value.Add,
       buttonProps: { plain: false },
-      onClick: openCreate
+      onClick: () => openCreate()
     },
     {
       key: 'import',
@@ -324,7 +324,7 @@
       icon: 'ri:file-upload-line',
       permission: permission.value.Import,
       buttonProps: { type: 'success', plain: true },
-      onClick: openCreate
+      onClick: () => openCreate(true)
     },
     {
       type: 'export',
@@ -333,7 +333,9 @@
       buttonProps: { type: 'warning', plain: true },
       exportFilename: title.value,
       exportData: async () =>
-        (await fetchRows({ ...search, current: 1, size: 500, exportAll: true })).data,
+        (await fetchRows({ ...search, current: 1, size: 500, exportAll: true })).data.map(
+          (row) => ({ ...row, status: statusLabels[row.status] })
+        ),
       exportColumns: [
         { title: '单据编号', key: 'documentNo' },
         { title: '业务日期', key: 'businessDate' },
@@ -400,7 +402,7 @@
         formatter: (row) => (
           <BusinessTableIdentityCell
             primary={row.documentNo}
-            secondary={`${displayMode.value === 'document' ? `共 ${row.lineNo} 项物料` : `第 ${row.lineNo} 行`} · ${row.documentTypeName}`}
+            secondary={`${displayMode.value === 'document' ? `共 ${row.lineNo} 项物料` : `第 ${row.lineNo} 行`} · ${row.documentTypeName || '未设置单据类型'}`}
             icon={props.kind === 'gain' ? 'ri:add-box-line' : 'ri:indeterminate-circle-line'}
           />
         )

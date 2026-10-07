@@ -16,7 +16,11 @@
         <template #actions><BusinessTableWorkspaceActions :table="tableRef" /></template>
       </BusinessWorkspaceHeader>
       <ElAlert v-if="optionError" type="warning" :closable="false" show-icon class="mb-3">
-        仓库或项目选项加载失败。<ElButton link type="primary" @click="loadOptions"
+        仓库或项目选项加载失败。<ElButton
+          link
+          type="primary"
+          :loading="optionsLoading"
+          @click="loadOptions"
           >重新加载</ElButton
         >
       </ElAlert>
@@ -134,13 +138,14 @@
   const projects = ref<WmsProject[]>([])
   const sections = ref<WmsProjectSection[]>([])
   const optionError = ref(false)
+  const optionsLoading = ref(true)
   const headerActions: ArtTableQueryHeaderAction[] = [
     {
       permission: 'WmsCount:Create',
       type: 'add',
       label: '生成盘点方案',
       buttonProps: { plain: false },
-      disabled: () => optionError.value,
+      disabled: () => optionError.value || optionsLoading.value,
       onClick: () => openCreate()
     }
   ]
@@ -253,6 +258,7 @@
     return result
   }
   function openCreate(): void {
+    if (optionsLoading.value || optionError.value) return
     void createRef.value?.handleOpen({
       tenantId: filterTenantId.value,
       warehouses: warehouses.value,
@@ -267,6 +273,7 @@
     await tableRef.value?.refreshUpdate()
   }
   async function loadOptions(): Promise<void> {
+    optionsLoading.value = true
     optionError.value = false
     try {
       const [warehouseRows, projectRows, sectionRows] = await Promise.all([
@@ -279,6 +286,8 @@
       sections.value = sectionRows
     } catch {
       optionError.value = true
+    } finally {
+      optionsLoading.value = false
     }
   }
   async function cancel(row: WmsCountPlan): Promise<void> {

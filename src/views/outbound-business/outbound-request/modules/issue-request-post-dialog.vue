@@ -207,7 +207,12 @@
                   : row.serialNo,
               value: row.id
             })),
-            props: { multiple: true, filterable: true, collapseTags: true },
+            props: {
+              multiple: true,
+              filterable: true,
+              collapseTags: true,
+              collapseTagsTooltip: true
+            },
             help: '逐件选择；SN 数量须等于本次领料数量。'
           }
         ]

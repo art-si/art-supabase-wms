@@ -15,7 +15,13 @@
         <template #actions><BusinessTableWorkspaceActions :table="tableRef" /></template>
       </BusinessWorkspaceHeader>
       <ElAlert v-if="optionError" type="warning" :closable="false" show-icon class="mb-3">
-        项目选项加载失败。<ElButton link type="primary" @click="loadProjects">重新加载</ElButton>
+        项目选项加载失败。<ElButton
+          link
+          type="primary"
+          :loading="optionsLoading"
+          @click="loadProjects"
+          >重新加载</ElButton
+        >
       </ElAlert>
       <ArtTableQuery
         ref="tableRef"
@@ -73,12 +79,14 @@
   const dialogRef = ref<InstanceType<typeof SectionDialog>>()
   const projects = ref<WmsProject[]>([])
   const optionError = ref(false)
+  const optionsLoading = ref(true)
   const headerActions: ArtTableQueryHeaderAction[] = [
     {
       permission: 'WmsProjectSection:Manage',
       type: 'add',
       label: '新建施工号',
       buttonProps: { plain: false },
+      disabled: () => optionsLoading.value || optionError.value,
       onClick: () => openAdd()
     }
   ]
@@ -123,6 +131,7 @@
     return fetchWmsProjectSectionPage({ ...query, tenantId: filterTenantId.value })
   }
   function openAdd(): void {
+    if (optionsLoading.value || optionError.value) return
     void dialogRef.value?.handleOpen({
       projects: projects.value,
       tenantId: filterTenantId.value
@@ -139,11 +148,14 @@
     await tableRef.value?.refreshUpdate()
   }
   async function loadProjects(): Promise<void> {
+    optionsLoading.value = true
     optionError.value = false
     try {
       projects.value = await fetchWmsProjects()
     } catch {
       optionError.value = true
+    } finally {
+      optionsLoading.value = false
     }
   }
   function columnsFactory(): ColumnOption<WmsProjectSection>[] {

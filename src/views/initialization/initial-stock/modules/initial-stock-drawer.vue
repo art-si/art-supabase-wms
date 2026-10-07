@@ -1,5 +1,11 @@
 <template>
-  <ArtDrawer ref="drawerRef" size="88%" :show-footer="mode !== 'view'">
+  <ArtDrawer
+    @open="invalidateBins"
+    @close="invalidateBins"
+    ref="drawerRef"
+    size="88%"
+    :show-footer="mode !== 'view'"
+  >
     <div class="initialization-document-stack min-w-0">
       <ArtEntitySummary
         icon="ri:archive-drawer-line"
@@ -44,6 +50,7 @@
       </ElAlert>
       <ElAlert
         v-if="
+          mode !== 'view' &&
           !optionError &&
           form.tenantId &&
           !documentTypes.some((item) => item.enabled && item.menuIds?.includes(initialStockMenuId))
@@ -86,8 +93,12 @@
         title="物料明细"
         :subtitle="`共 ${lines.length} 行 · 期初数量 ${openingTotal}`"
         :empty="lines.length === 0"
-        empty-title="尚未选择物料"
-        empty-description="从物料编码中多选后，逐行填写期初数量、仓库和库存类型。"
+        :empty-title="mode === 'view' ? '暂无物料明细' : '尚未选择物料'"
+        :empty-description="
+          mode === 'view'
+            ? '该单据尚未记录物料明细。'
+            : '从物料编码中多选后，逐行填写期初数量、仓库和库存类型。'
+        "
       >
         <template #actions>
           <div
@@ -144,9 +155,11 @@
             @selection-change="onLineSelectionChange"
           >
             <template #material="{ row }">
-              <strong class="block truncate text-sm">{{ row.material?.name || '物料' }}</strong>
+              <strong class="block truncate text-sm">{{
+                row.material?.name || row.material?.code || '物料资料不可用'
+              }}</strong>
               <small class="text-[var(--el-text-color-secondary)]">{{
-                row.material?.code || row.materialId
+                row.material?.code || '—'
               }}</small>
             </template>
             <template #projectId="{ row }">
@@ -283,7 +296,9 @@
                   :key="bin.id"
                   :label="`${bin.binName} · ${bin.binCode}`"
                   :value="bin.id" /></ElSelect
-              ><span v-else>{{ row.bin?.binName || row.binId || '—' }}</span></template
+              ><span v-else>{{
+                row.bin?.binName || (row.binId ? '仓位资料不可用' : '—')
+              }}</span></template
             >
             <template #stockType="{ row }"
               ><ElSelect
@@ -296,8 +311,12 @@
                   :key="option.value"
                   :label="option.label"
                   :value="option.value" /></ElSelect
-              ><span v-else>{{ row.stockType }}</span></template
-            >
+              ><ArtDictDisplay
+                v-else
+                dict-code="wmsInitialStockType"
+                :value="row.stockType"
+                display="text"
+            /></template>
             <template #stockStatus="{ row }"
               ><ElSelect
                 v-if="mode !== 'view'"
@@ -309,8 +328,12 @@
                   :key="option.value"
                   :label="option.label"
                   :value="option.value" /></ElSelect
-              ><span v-else>{{ row.stockStatus }}</span></template
-            >
+              ><ArtDictDisplay
+                v-else
+                dict-code="wmsInitialStockCondition"
+                :value="row.stockStatus"
+                display="text"
+            /></template>
             <template #ownerType="{ row }"
               ><ElSelect
                 v-if="mode !== 'view'"
@@ -323,8 +346,12 @@
                   :key="option.value"
                   :label="option.label"
                   :value="option.value" /></ElSelect
-              ><span v-else>{{ row.ownerType }}</span></template
-            >
+              ><ArtDictDisplay
+                v-else
+                dict-code="mdmBusinessOwnerType"
+                :value="row.ownerType"
+                display="text"
+            /></template>
             <template #ownerId="{ row }"
               ><ArtTableSingleSelect
                 v-if="mode !== 'view' && row.ownerType !== 'self'"
@@ -434,6 +461,7 @@
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { isWmsBusinessTypeAvailable } from '@/utils/wms/business-type'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
+  import { useWarehouseBinOptions } from '@/hooks/core/useWarehouseBinOptions'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import dayjs from 'dayjs'
   import { cloneDeep } from 'lodash-es'
@@ -447,6 +475,7 @@
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
   import ArtDescriptions from '@/components/core/base/art-descriptions/index.vue'
+  import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
   import type { ArtDescriptionItem } from '@/components/core/base/art-descriptions/types'
   import ArtTable from '@/components/core/tables/art-table/index.vue'
   import ArtButtonMore, {
@@ -507,7 +536,11 @@
   const projects = ref<WmsInitializationOption[]>([])
   const suppliers = ref<WmsInitializationOption[]>([])
   const customers = ref<WmsInitializationOption[]>([])
-  const bins = ref<WmsBin[]>([])
+  const {
+    options: bins,
+    load: loadInlineBins,
+    invalidate: invalidateBins
+  } = useWarehouseBinOptions<WmsInitialStockLine, WmsBin>(() => lines.value, fetchWmsBins)
   const lines = ref<WmsInitialStockLine[]>([])
   const selectedLines = ref<WmsInitialStockLine[]>([])
   const initialStockMenuId = ref('')
@@ -566,15 +599,15 @@
       useSlot: true,
       required: mode.value !== 'view'
     },
-    { prop: 'openingQuantity', label: '期初数量', width: 135, align: 'right', useSlot: true },
+    { prop: 'openingQuantity', label: '期初数量', width: 180, align: 'right', useSlot: true },
     { prop: 'baseUnitId', label: '基本单位', width: 135, useSlot: true },
     { prop: 'baseQuantity', label: '基本数量', width: 110, useSlot: true },
     { prop: 'yearlyOpeningQuantity', label: '年初数量', width: 110, useSlot: true },
-    { prop: 'yearlyReceivedQuantity', label: '年收入数量', width: 135, useSlot: true },
-    { prop: 'yearlyIssuedQuantity', label: '年发出数量', width: 135, useSlot: true },
+    { prop: 'yearlyReceivedQuantity', label: '年收入数量', width: 180, useSlot: true },
+    { prop: 'yearlyIssuedQuantity', label: '年发出数量', width: 180, useSlot: true },
     { prop: 'auxiliaryUnitId', label: '辅助单位', width: 110, useSlot: true },
     { prop: 'openingAuxQuantity', label: '期初辅助数量', width: 120, useSlot: true },
-    { prop: 'unitPrice', label: '单价', width: 130, useSlot: true },
+    { prop: 'unitPrice', label: '单价', width: 180, useSlot: true },
     { prop: 'amount', label: '金额(元)', width: 135, align: 'right', useSlot: true },
     {
       prop: 'warehouseId',
@@ -595,10 +628,10 @@
     { prop: 'ownerType', label: '货主类型', width: 160, useSlot: true },
     { prop: 'ownerId', label: '货主', width: 170, useSlot: true },
     { prop: 'batchNo', label: '批号', width: 150, useSlot: true },
-    { prop: 'inboundDate', label: '入库日期', width: 165, useSlot: true },
+    { prop: 'inboundDate', label: '入库日期', width: 190, useSlot: true },
     { prop: 'keeperId', label: '仓管员', width: 170, useSlot: true },
-    { prop: 'productionDate', label: '生产日期', width: 165, useSlot: true },
-    { prop: 'expiryDate', label: '有效期至', width: 165, useSlot: true },
+    { prop: 'productionDate', label: '生产日期', width: 190, useSlot: true },
+    { prop: 'expiryDate', label: '有效期至', width: 190, useSlot: true },
     { prop: 'trackingNo', label: '跟踪号', width: 150, useSlot: true },
     { prop: 'sourceDocument', label: '源单据', width: 150, useSlot: true },
     { prop: 'remark', label: '备注', width: 180, useSlot: true },
@@ -980,9 +1013,7 @@
     line.binId = null
     await loadInlineBins(line)
   }
-  async function loadInlineBins(line: WmsInitialStockLine): Promise<void> {
-    bins.value = line.warehouseId ? await fetchWmsBins(line.warehouseId) : []
-  }
+
   async function openInlineSerials(line: WmsInitialStockLine): Promise<void> {
     serialText.value = line.serialNos.join('\n')
     await serialDialogRef.value?.handleOpen(undefined, {

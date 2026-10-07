@@ -252,6 +252,7 @@
               multiple: true,
               filterable: true,
               collapseTags: true,
+              collapseTagsTooltip: true,
               placeholder: '逐件选择，件数须等于调拨数量'
             }
           }

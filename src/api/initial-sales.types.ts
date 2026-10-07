@@ -31,6 +31,7 @@ export interface WmsInitialSalesLine {
   batchNo: string | null
   warehouseId: string | null
   binId: string | null
+  bin?: { binName: string; binCode: string } | null
   stockType: string
   ownerType: 'self' | 'supplier' | 'customer'
   ownerId: string | null

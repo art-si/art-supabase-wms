@@ -23,6 +23,9 @@
         "
         description="单据编号按月自动生成三位流水号；账存数量由当前库存汇总。"
       />
+      <ElAlert v-if="openData?.importIntent" type="info" :closable="false" show-icon>
+        先核对库存组织和业务日期，再在“物料明细”点击“导入明细”；数量填写正数，保存前核对仓储、货主和单价。
+      </ElAlert>
       <ArtSectionCard title="单据表头" subtitle="编号按月生成；记账日期由系统记录。">
         <ArtDescriptions
           v-if="mode === 'view'"
@@ -56,13 +59,29 @@
       </ArtSectionCard>
       <ArtSectionCard
         title="物料明细"
-        :subtitle="`共 ${lines.length} 行；行号按 10 递增。`"
+        :subtitle="
+          mode === 'view'
+            ? `共 ${lines.length} 行；行号按 10 递增。`
+            : `共 ${lines.length} 行；导入必填列：物料编码、数量；可选列：批号、备注。`
+        "
         :empty="!lines.length"
         empty-title="请选择物料"
         empty-description="支持多选物料，编码、规格和默认单位自动带入。"
       >
         <template #actions>
+          <ArtExcelImport
+            v-if="mode !== 'view'"
+            v-auth="kind === 'gain' ? 'WmsCountGain:Import' : 'WmsCountLoss:Import'"
+            :context-key="openData"
+            :disabled="importing || parsing"
+            :button-props="{ type: 'success', plain: true, loading: importing || parsing }"
+            @parsing-change="onImportParsing"
+            @import-success="importLines"
+            @import-error="notifyFriendlyError($event, '文件读取失败，请检查 Excel 格式后重新选择')"
+            >导入明细</ArtExcelImport
+          >
           <ArtTableMultipleSelect
+            class="w-auto!"
             v-if="mode !== 'view'"
             :model-value="selectedMaterialIds"
             :api-fn="materialApi"
@@ -261,7 +280,7 @@
           <ElTableColumn
             :label="`${title.slice(0, 2)}数量(库存)`"
             prop="varianceQuantity"
-            min-width="135"
+            min-width="180"
             align="right"
             ><template #default="{ row }"
               ><ElInputNumber
@@ -286,7 +305,7 @@
               ><span class="tabular-nums">{{ numberText(row.varianceQuantity) }}</span></template
             ></ElTableColumn
           >
-          <ElTableColumn label="单价(元)" min-width="120"
+          <ElTableColumn label="单价(元)" min-width="180"
             ><template #default="{ row }"
               ><ElInputNumber
                 v-model="row.unitPrice"
@@ -395,11 +414,11 @@
               numberText(row.auxiliaryQuantity2)
             }}</template></ElTableColumn
           >
-          <ElTableColumn label="生产日期" min-width="140"
+          <ElTableColumn label="生产日期" min-width="190"
             ><template #default="{ row }"
               ><ElDatePicker v-model="row.productionDate" value-format="YYYY-MM-DD" /></template
           ></ElTableColumn>
-          <ElTableColumn label="有效期至" min-width="140"
+          <ElTableColumn label="有效期至" min-width="190"
             ><template #default="{ row }"
               ><ElDatePicker v-model="row.expiryDate" value-format="YYYY-MM-DD" /></template
           ></ElTableColumn>
@@ -432,6 +451,7 @@
   import { isWmsBusinessTypeAvailable } from '@/utils/wms/business-type'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { useBreakpoints } from '@vueuse/core'
+  import { useWarehouseRowBinLoader } from '@/hooks/core/useWarehouseBinOptions'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { ElMessage } from 'element-plus'
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
@@ -440,6 +460,8 @@
   import ArtDescriptions from '@/components/core/base/art-descriptions/index.vue'
   import type { ArtDescriptionItem } from '@/components/core/base/art-descriptions/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
+  import { prepareWmsMaterialImport } from '../../shared/material-import'
+  import ArtExcelImport from '@/components/core/forms/art-excel-import/index.vue'
   import ArtTable from '@/components/core/tables/art-table/index.vue'
   import ArtTableMultipleSelect from '@/components/core/forms/art-data-select/table-multiple.vue'
   import ArtEmployeeSelect from '@/components/business/art-employee-select/index.vue'
@@ -479,6 +501,7 @@
     tenantId?: string
   }
   interface OpenData extends Context {
+    importIntent?: boolean
     mode: 'create' | 'edit' | 'copy' | 'view'
     documentId?: string
   }
@@ -531,6 +554,8 @@
   const openData = shallowRef<OpenData>()
   let loadRequest = 0
   const lines = ref<DraftLine[]>([])
+  const importing = ref(false)
+  const parsing = ref(false)
   const documentRows = ref<WmsCountAdjustmentRow[]>([])
   const documentTypes = ref<WmsInitializationOption[]>([])
   const businessTypes = ref<WmsInitializationOption[]>([])
@@ -798,13 +823,66 @@
     const previous = new Map(lines.value.map((row) => [row.materialId, row]))
     lines.value = materials.map((item) => previous.get(item.id) || newLine(item))
   }
+  function onImportParsing(value: boolean): void {
+    parsing.value = value
+    drawerRef.value?.setOptions({
+      confirmDisabled: parsing.value || importing.value || Boolean(loadError.value)
+    })
+  }
+  async function importLines(rows: Array<Record<string, unknown>>): Promise<void> {
+    if (importing.value || mode.value === 'view' || !context.value?.tenantId) return
+    if (!rows.length || rows.length > 500) {
+      ElMessage.warning('请选择包含 1 至 500 行明细的文件；必填列为物料编码、数量')
+      return
+    }
+    const request = loadRequest
+    const tenantId = context.value.tenantId
+    importing.value = true
+    drawerRef.value?.setOptions({ confirmDisabled: true })
+    try {
+      const prepared = await prepareWmsMaterialImport(
+        rows,
+        (code) => fetchWmsMaterialOptions(tenantId, code, 1, 500),
+        () => request === loadRequest
+      )
+      if (!prepared) return
+      const imported = prepared.map((item) => ({
+        ...newLine(item.material),
+        varianceQuantity: item.quantity,
+        batchNo: item.batchNo,
+        remark: item.remark
+      }))
+      if (request !== loadRequest) return
+      lines.value.push(...imported)
+      ElMessage.success(`已导入 ${imported.length} 行，请核对仓库、仓位、货主和单价后保存`)
+    } catch (error) {
+      if (request === loadRequest)
+        notifyFriendlyError(error, '导入失败，请检查物料编码、数量和网络后重试')
+    } finally {
+      if (request === loadRequest) {
+        importing.value = false
+        drawerRef.value?.setOptions({
+          confirmDisabled: parsing.value || importing.value || Boolean(loadError.value)
+        })
+      }
+    }
+  }
   function removeLine(key: string): void {
     lines.value = lines.value.filter((row) => row.key !== key)
   }
+  const loadRowBins = useWarehouseRowBinLoader(
+    () => lines.value,
+    () => loadRequest,
+    (row) => row.warehouseId,
+    fetchWmsBins,
+    (row, bins) => {
+      row.bins = bins
+    }
+  )
   async function loadBins(value: unknown): Promise<void> {
     const row = value as DraftLine
     row.binId = ''
-    row.bins = row.warehouseId ? await fetchWmsBins(row.warehouseId) : []
+    await loadRowBins(row)
   }
   function rowMaterial(row: WmsCountAdjustmentRow): WmsMaterialOption {
     return {
@@ -848,7 +926,7 @@
         gift: row.gift,
         inventoryUnitId: row.inventoryUnitId,
         bookQuantity: Number(row.bookQuantity),
-        varianceQuantity: Number(row.varianceQuantity),
+        varianceQuantity: Math.abs(Number(row.varianceQuantity)),
         baseUnitId: row.baseUnitId || '',
         unitPrice: Number(row.unitPrice),
         batchNo: row.batchNo || '',
@@ -911,7 +989,7 @@
     businessMenuId.value = menuId
   }
   async function save(): Promise<boolean> {
-    if (loadError.value) return false
+    if (loadError.value || importing.value || parsing.value) return false
     try {
       if (!(await validateArtFormForSubmit(formRef.value))) return false
       if (!lines.value.length) {
@@ -920,11 +998,27 @@
       }
       if (
         lines.value.some(
-          (row) => !row.inventoryUnitId || row.varianceQuantity <= 0 || !row.warehouseId
+          (row) =>
+            !row.inventoryUnitId ||
+            !Number.isFinite(row.varianceQuantity) ||
+            row.varianceQuantity <= 0 ||
+            !row.warehouseId
         )
       ) {
         ElMessage.warning(`请完整填写物料、${title.value.slice(0, 2)}数量和仓库`)
         return false
+      }
+      for (const [index, row] of lines.value.entries()) {
+        if (row.ownerType !== 'self' && !row.ownerId) {
+          ElMessage.warning(
+            `第 ${(index + 1) * 10} 行请选择${row.ownerType === 'supplier' ? '供应商' : '客户'}货主`
+          )
+          return false
+        }
+        if (!Number.isFinite(row.unitPrice) || row.unitPrice < 0) {
+          ElMessage.warning(`第 ${(index + 1) * 10} 行请填写不小于零的有效单价`)
+          return false
+        }
       }
       await saveWmsCountAdjustment({
         id: mode.value === 'edit' ? form.value.id : undefined,
@@ -974,6 +1068,8 @@
   }
   async function handleOpen(data: OpenData): Promise<void> {
     loadRequest += 1
+    importing.value = false
+    parsing.value = false
     openData.value = data
     loadError.value = ''
     context.value = { tenantId: data.tenantId }
@@ -1009,6 +1105,8 @@
       onOpen: reloadDocument,
       onClose: () => {
         loadRequest += 1
+        importing.value = false
+        parsing.value = false
       }
     })
   }
@@ -1048,7 +1146,9 @@
     } finally {
       if (request === loadRequest) {
         drawerRef.value?.setLoading(false)
-        drawerRef.value?.setOptions({ confirmDisabled: Boolean(loadError.value) })
+        drawerRef.value?.setOptions({
+          confirmDisabled: parsing.value || importing.value || Boolean(loadError.value)
+        })
       }
     }
   }

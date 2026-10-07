@@ -1,6 +1,7 @@
 import { useSupabase } from '@/hooks'
 import { uniq } from 'lodash-es'
 import { buildOrIlikeFilter } from '@/utils/supabase/search'
+import { buildSupabasePageRange } from '@/utils/supabase/pagination'
 import type { WmsMaterialOption } from './warehouse.types'
 import type { EmployeeIntegrationItem } from '@/api/integration/employees'
 import type {
@@ -44,12 +45,15 @@ export async function fetchWmsProductionMaterialPage(query: {
   current: number
   size: number
 }): Promise<{ data: WmsProductionMaterialListRow[]; total: number }> {
+  const pageRange = buildSupabasePageRange(query)
   let request = supabase
     .from('wms_production_material_list')
     .select('*', { count: 'exact' })
     .eq('kind', query.kind)
     .order('created_at', { ascending: false })
     .order('line_no')
+    .order('document_id')
+    .order('line_id')
   if (query.tenantId) request = request.eq('tenant_id', query.tenantId)
   if (query.status) request = request.eq('status', query.status)
   if (query.documentNo?.trim())
@@ -67,7 +71,7 @@ export async function fetchWmsProductionMaterialPage(query: {
   if (query.applicantName?.trim())
     request = request.ilike('applicant_name', `%${query.applicantName.trim()}%`)
   const { data, total } = await responseHandle<WmsProductionMaterialListRow[]>(
-    () => request.range((query.current - 1) * query.size, query.current * query.size - 1),
+    () => request.range(pageRange.from, pageRange.to),
     readOptions
   )
   return { data: data ?? [], total: total ?? 0 }
@@ -258,19 +262,21 @@ export async function fetchWmsFinishedInboundSourcePage(params: {
   page: number
   pageSize: number
 }): Promise<{ data: WmsFinishedInboundSourceOption[]; total: number }> {
+  const pageRange = buildSupabasePageRange({ current: params.page, size: params.pageSize })
   let query = supabase
     .from('wms_finished_inbound_source_list')
     .select('*', { count: 'exact' })
     .eq('tenant_id', params.tenantId)
     .gt('available_quantity', 0)
     .order('document_no', { ascending: false })
+    .order('id')
   if (params.workOrderId) query = query.eq('work_order_id', params.workOrderId)
   if (params.keyword?.trim())
     query = query.or(
       buildOrIlikeFilter(['document_no', 'work_order_no', 'material_code'], params.keyword)
     )
   const { data, total } = await responseHandle<WmsFinishedInboundSourceOption[]>(
-    () => query.range((params.page - 1) * params.pageSize, params.page * params.pageSize - 1),
+    () => query.range(pageRange.from, pageRange.to),
     readOptions
   )
   return { data: data ?? [], total: total ?? 0 }
@@ -375,6 +381,7 @@ export async function fetchWmsProductionStockPage(params: {
   current: number
   size: number
 }): Promise<{ data: WmsProductionStockOption[]; total: number }> {
+  const pageRange = buildSupabasePageRange(params)
   let query = supabase
     .from('wms_inventory_batch')
     .select(
@@ -385,13 +392,14 @@ export async function fetchWmsProductionStockPage(params: {
     .gt('quantity', 0)
     .eq('status', 'normal')
     .order('last_movement_at', { ascending: false })
+    .order('id')
   if (params.warehouseId) query = query.eq('warehouse_id', params.warehouseId)
   if (params.materialId) query = query.eq('material_id', params.materialId)
   if (params.workOrderId) query = query.eq('work_order_id', params.workOrderId)
   if (params.keyword?.trim())
     query = query.or(buildOrIlikeFilter(['batch_no', 'remark'], params.keyword))
   const { data, total } = await responseHandle<WmsProductionStockOption[]>(
-    () => query.range((params.current - 1) * params.size, params.current * params.size - 1),
+    () => query.range(pageRange.from, pageRange.to),
     readOptions
   )
   const ids = (data ?? []).map((row) => row.id)

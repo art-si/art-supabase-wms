@@ -173,6 +173,7 @@
 
 <script setup lang="tsx">
   import { formatWmsMovementType } from '@/utils/wms/movement-display'
+  import { formatWmsSerialParent } from '@/utils/wms/serial-display'
   import { replaceReactiveModel } from '@/utils/form/model'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
@@ -372,8 +373,8 @@
         fixed: 'left',
         formatter: (row) => (
           <BusinessTableIdentityCell
-            primary={row.material?.materialName || '物料'}
-            secondary={row.material?.materialCode || row.materialId}
+            primary={row.material?.materialName || row.material?.materialCode || '物料资料不可用'}
+            secondary={row.material?.materialCode || '—'}
             icon="ri:stack-line"
           />
         )
@@ -664,7 +665,8 @@
         prop: 'material',
         label: '物料',
         minWidth: 190,
-        formatter: (row) => row.material?.materialName || row.materialId
+        formatter: (row) =>
+          row.material?.materialName || row.material?.materialCode || '物料资料不可用'
       },
       { prop: 'constructionNo', label: '来源施工号', minWidth: 145 },
       { prop: 'targetConstructionNo', label: '目标施工号', minWidth: 145 },
@@ -697,7 +699,8 @@
         prop: 'material',
         label: '物料',
         minWidth: 190,
-        formatter: (row) => row.material?.materialName || row.materialId
+        formatter: (row) =>
+          row.material?.materialName || row.material?.materialCode || '物料资料不可用'
       },
       {
         prop: 'constructionNo',
@@ -709,7 +712,7 @@
         prop: 'parent',
         label: '父件 SN',
         minWidth: 175,
-        formatter: (row) => row.parent?.serialNo || '主机 / 独立件'
+        formatter: (row) => formatWmsSerialParent(row)
       },
       {
         prop: 'childSerialNos',

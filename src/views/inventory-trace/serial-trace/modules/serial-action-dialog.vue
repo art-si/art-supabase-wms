@@ -7,6 +7,17 @@
         :title="context?.action === 'bind' ? '装配 SN 绑定' : '工单 SN 预留'"
         :description="context?.serial.serialNo || ''"
       />
+      <ElAlert
+        v-if="candidates && !loading && !loadError && !hasCandidates"
+        type="info"
+        :closable="false"
+        show-icon
+        :title="
+          context?.action === 'reserve'
+            ? '暂无可预留工单，请先为已下达或执行中的工单预留该批次库存。'
+            : '暂无可绑定子件，请先完成同工单关键件领用，再返回绑定。'
+        "
+      />
       <ArtAsyncState
         v-if="loadError"
         size="compact"
@@ -98,9 +109,21 @@
   }, '候选记录加载失败，请重新加载后办理')
   const orders = computed(() => candidates.value?.orders ?? [])
   const children = computed(() => candidates.value?.children ?? [])
-  watch([loading, loadError], () => {
+  const availableOrders = computed(() =>
+    orders.value.filter(
+      (row) => row.workOrder && ['REL', 'PCNF'].includes(row.workOrder.orderStatus)
+    )
+  )
+  const hasCandidates = computed(() =>
+    context.value?.action === 'reserve'
+      ? availableOrders.value.length > 0
+      : children.value.length > 0
+  )
+  watch([loading, loadError, hasCandidates], () => {
     dialogRef.value?.setLoading(loading.value)
-    dialogRef.value?.setOptions({ confirmDisabled: loading.value || Boolean(loadError.value) })
+    dialogRef.value?.setOptions({
+      confirmDisabled: loading.value || Boolean(loadError.value) || !hasCandidates.value
+    })
   })
   const form = ref({ workOrderId: '', childSerialIds: [] as string[] })
   const items = computed<FormItem[]>(() =>
@@ -111,12 +134,10 @@
             label: '预留给工单',
             type: 'select',
             span: 24,
-            options: orders.value
-              .filter((row) => row.workOrder && ['REL', 'PCNF'].includes(row.workOrder.orderStatus))
-              .map((row) => ({
-                label: `${row.workOrder?.workOrderNo}${row.workOrder?.constructionNo ? ` · ${row.workOrder.constructionNo}` : ''}`,
-                value: row.workOrderId
-              })),
+            options: availableOrders.value.map((row) => ({
+              label: `${row.workOrder?.workOrderNo}${row.workOrder?.constructionNo ? ` · ${row.workOrder.constructionNo}` : ''}`,
+              value: row.workOrderId
+            })),
             props: {
               filterable: true,
               placeholder: '选择已预留该批次的工单',
@@ -139,6 +160,7 @@
               multiple: true,
               filterable: true,
               collapseTags: true,
+              collapseTagsTooltip: true,
               placeholder: '选择同工单的已出库关键件'
             }
           }

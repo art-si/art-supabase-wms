@@ -1,6 +1,7 @@
 import { useSupabase } from '@/hooks'
 import { fetchWmsInventoryOrganizationOptions } from '@/api/wms-inventory-organization'
 import { buildOrIlikeFilter } from '@/utils/supabase/search'
+import { buildSupabasePageRange } from '@/utils/supabase/pagination'
 import type {
   WmsInitialMaterial,
   WmsInitialStockDocument,
@@ -33,6 +34,7 @@ export async function fetchWmsInventoryOrganizations(query: {
   current: number
   size: number
 }): Promise<{ data: WmsInventoryOrganization[]; total: number }> {
+  const pageRange = buildSupabasePageRange(query)
   const rows = await fetchWmsInventoryOrganizationOptions(
     query.tenantId,
     query.organizationType,
@@ -42,7 +44,7 @@ export async function fetchWmsInventoryOrganizations(query: {
     ? rows.filter((row) => Boolean(row.enabledOn) === (query.enabled === 'enabled'))
     : rows
   return {
-    data: filtered.slice((query.current - 1) * query.size, query.current * query.size),
+    data: filtered.slice(pageRange.from, pageRange.to + 1),
     total: filtered.length
   }
 }
@@ -88,16 +90,18 @@ export async function fetchWmsInitialStockPage(query: {
   current: number
   size: number
 }): Promise<{ data: WmsInitialStockDocument[]; total: number }> {
+  const pageRange = buildSupabasePageRange(query)
   let request = supabase
     .from('wms_initial_stock_document')
     .select(documentSelect, { count: 'exact' })
     .order('created_at', { ascending: false })
+    .order('id')
   if (query.tenantId) request = request.eq('tenant_id', query.tenantId)
   if (query.organizationId) request = request.eq('organization_id', query.organizationId)
   if (query.status) request = request.eq('status', query.status)
   if (query.keyword?.trim()) request = request.ilike('document_no', `%${query.keyword.trim()}%`)
   const { data, total } = await responseHandle<WmsInitialStockDocument[]>(
-    () => request.range((query.current - 1) * query.size, query.current * query.size - 1),
+    () => request.range(pageRange.from, pageRange.to),
     readOptions
   )
   return { data: data ?? [], total: total ?? 0 }
@@ -146,9 +150,11 @@ export async function changeWmsInitialStockStatus(
 export async function fetchWmsInitialMaterials(params: {
   tenantId: string
   keyword: string
+  materialCode?: string
   current: number
   size: number
 }): Promise<{ data: WmsInitialMaterial[]; total: number }> {
+  const pageRange = buildSupabasePageRange(params)
   let request = supabase
     .from('mdm_material')
     .select(
@@ -158,12 +164,14 @@ export async function fetchWmsInitialMaterials(params: {
     .eq('tenant_id', params.tenantId)
     .eq('status', 'enabled')
     .order('material_code')
-  if (params.keyword.trim())
+    .order('id')
+  if (params.materialCode !== undefined) request = request.eq('material_code', params.materialCode)
+  else if (params.keyword.trim())
     request = request.or(
       buildOrIlikeFilter(['material_code', 'material_name', 'description'], params.keyword)
     )
   const { data, total } = await responseHandle<WmsInitialMaterial[]>(
-    () => request.range((params.current - 1) * params.size, params.current * params.size - 1),
+    () => request.range(pageRange.from, pageRange.to),
     readOptions
   )
   return { data: data ?? [], total: total ?? 0 }

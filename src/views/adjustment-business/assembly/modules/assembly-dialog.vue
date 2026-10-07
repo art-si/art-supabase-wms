@@ -1,5 +1,5 @@
 <template>
-  <ArtDialog ref="dialogRef" size="lg">
+  <ArtDialog ref="dialogRef" size="lg" @close="handleClose">
     <div class="flex min-w-0 flex-col gap-4">
       <ArtEntitySummary
         icon="ri:apps-2-add-line"
@@ -34,6 +34,8 @@
           subtitle="首次选择后锁定仓库、库存组织、项目施工号及货权"
           placeholder="选择一个库存批次加入组件"
           search-placeholder="输入批号或备注"
+          empty-text="当前范围暂无可用来源批次"
+          empty-description="检查租户及库存范围，或清空批号搜索后重试；组装需要至少两个归属一致的库存批次。"
           label-key="batchLabel"
           :show-pagination="true"
           :page-size="20"
@@ -397,11 +399,11 @@
   }
   async function submit(): Promise<boolean> {
     try {
-      if (!(await validateArtFormForSubmit(formRef.value))) return false
       if (loadError.value || components.value.length < 2) {
         ElMessage.warning('请添加至少两条有效组件')
         return false
       }
+      if (!(await validateArtFormForSubmit(formRef.value))) return false
       if (components.value.some((item) => !item.quantity || item.quantity > item.batch.quantity)) {
         ElMessage.warning('组件用量须大于零且不能超过在库')
         return false
@@ -466,5 +468,10 @@
       onConfirm: submit
     })
   }
+  function handleClose(): void {
+    context.value = undefined
+    failedBatch.value = null
+  }
+  onUnmounted(handleClose)
   defineExpose({ handleOpen })
 </script>

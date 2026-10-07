@@ -1,4 +1,5 @@
 import { useSupabase } from '@/hooks'
+import { buildSupabasePageRange } from '@/utils/supabase/pagination'
 import type {
   WmsInitialSalesDocument,
   WmsInitialSalesKind,
@@ -26,6 +27,7 @@ const documentSelect = `*,
  organization:mdm_organization!wms_sales_document_organization_id_fkey(organization_name,organization_code),
  customer:mdm_customer!wms_sales_document_customer_id_fkey(customer_name),
  lines:wms_sales_document_line(*,
+ bin:mdm_warehouse_bin!wms_sales_document_line_bin_id_fkey(bin_name,bin_code),
  material:mdm_material!wms_sales_document_line_material_id_fkey(id,tenant_id,code:material_code,name:material_name,description,specification_model,inventory_unit_id,base_unit_id,auxiliary_unit_id,auxiliary_unit_2_id,unit_conversions,serial_management_enabled),
  project:mdm_project!wms_sales_document_line_project_id_fkey(id,tenant_id,code:project_code,name:project_name))`
 
@@ -40,11 +42,14 @@ export async function fetchWmsInitialSalesPage(query: {
   current: number
   size: number
 }): Promise<{ data: WmsInitialSalesListRow[]; total: number }> {
+  const pageRange = buildSupabasePageRange(query)
   let request = supabase
     .from('wms_sales_document_list')
     .select('*', { count: 'exact' })
     .order('created_at', { ascending: false })
     .order('line_no')
+    .order('document_id')
+    .order('line_id')
   request =
     query.kind === 'other_outbound'
       ? request.in('kind', ['other_outbound', 'other_return'])
@@ -59,7 +64,7 @@ export async function fetchWmsInitialSalesPage(query: {
   if (query.materialCode?.trim())
     request = request.ilike('material_code', `%${query.materialCode.trim()}%`)
   const { data, total } = await responseHandle<WmsInitialSalesListRow[]>(
-    () => request.range((query.current - 1) * query.size, query.current * query.size - 1),
+    () => request.range(pageRange.from, pageRange.to),
     readOptions
   )
   return { data: data ?? [], total: total ?? 0 }

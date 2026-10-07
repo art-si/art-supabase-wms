@@ -51,7 +51,7 @@
 <script setup lang="tsx">
   import { replaceReactiveModel } from '@/utils/form/model'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
-  import { useRoute, useRouter } from 'vue-router'
+  import { useRouteDocumentDrawer } from '@/hooks/core/useRouteDocumentDrawer'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { ElMessage, ElTag } from 'element-plus'
   import { useAuth } from '@/hooks/core/useAuth'
@@ -100,8 +100,6 @@
     '初始库存单'
   )
   const { hasAuth } = useAuth()
-  const route = useRoute()
-  const router = useRouter()
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const userStore = useUserStore()
   void userStore.ensureDictLoaded('wmsInitialStockType')
@@ -142,16 +140,14 @@
   const workingId = ref<string>()
   const search = reactive({ organizationId: '', status: '', keyword: '' })
 
-  onMounted(async () => {
-    const documentId = route.query.documentId
-    if (typeof documentId !== 'string' || !hasAuth('WmsInitialStock:View')) return
-    try {
-      await router.replace({ path: route.path, query: { ...route.query, documentId: undefined } })
-      const document = await fetchWmsInitialStockDocument(documentId)
+  useRouteDocumentDrawer({
+    routeName: 'WmsInitialStock',
+    canOpen: () => hasAuth('WmsInitialStock:View'),
+    fetchDocument: fetchWmsInitialStockDocument,
+    openDocument: async (document) => {
       await drawerRef.value?.handleOpen({ mode: 'view', document })
-    } catch {
-      ElMessage.error('初始库存单加载失败，请刷新后重试')
-    }
+    },
+    onError: () => ElMessage.error('初始库存单加载失败，请刷新后重试')
   })
   const searchItems: SearchFormItem[] = [
     { label: '展示方式', key: 'displayMode', type: 'text' },

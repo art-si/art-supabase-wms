@@ -1,5 +1,11 @@
 <template>
-  <ArtDrawer ref="drawerRef" size="88%" :show-footer="false" show-fullscreen-button>
+  <ArtDrawer
+    ref="drawerRef"
+    size="88%"
+    :show-footer="false"
+    show-fullscreen-button
+    @close="handleClose"
+  >
     <div v-if="plan" class="min-w-0 space-y-5">
       <ArtEntitySummary
         icon="ri:survey-line"
@@ -80,7 +86,7 @@
                     item.material?.materialName || '物料'
                   }}</strong>
                   <p class="mt-0.5 break-all text-xs text-[var(--el-text-color-secondary)]">
-                    {{ item.batch?.batchNo || item.batchId }} · {{ projectName(item.projectId)
+                    {{ item.batch?.batchNo || '批次资料不可用' }} · {{ projectName(item.projectId)
                     }}{{ item.constructionNo ? ` / ${item.constructionNo}` : '' }}
                   </p>
                   <p
@@ -138,14 +144,14 @@
                 row.material?.materialCode || '—'
               }}</small>
             </template>
-            <template #batch="{ row }">{{ row.batch?.batchNo || row.batchId }}</template>
+            <template #batch="{ row }">{{ row.batch?.batchNo || '批次资料不可用' }}</template>
             <template #project="{ row }"
               >{{ projectName(row.projectId)
               }}{{ row.constructionNo ? ` / ${row.constructionNo}` : '' }}</template
             >
             <template #countedQuantity="{ row }">
               <ElInputNumber
-                v-if="plan.status === 'counting' && !isSerialLine(row)"
+                v-if="plan.status === 'counting' && hasAuth('WmsCount:Count') && !isSerialLine(row)"
                 v-model="row.countedQuantity"
                 :min="0"
                 :precision="3"
@@ -156,11 +162,12 @@
             </template>
             <template #countedSerialIds="{ row }">
               <ElSelect
-                v-if="plan.status === 'counting' && isSerialLine(row)"
+                v-if="plan.status === 'counting' && hasAuth('WmsCount:Count') && isSerialLine(row)"
                 v-model="row.countedSerialIds"
                 multiple
                 filterable
                 collapse-tags
+                collapse-tags-tooltip
                 placeholder="选择原 SN"
                 class="w-full"
                 @visible-change="($event) => $event && loadSerialOptions(row)"
@@ -177,7 +184,7 @@
             </template>
             <template #newSerialNos="{ row }">
               <ElInput
-                v-if="plan.status === 'counting' && isSerialLine(row)"
+                v-if="plan.status === 'counting' && hasAuth('WmsCount:Count') && isSerialLine(row)"
                 :model-value="serialDraft[row.id] || ''"
                 placeholder="新增 SN，逗号分隔"
                 @update:model-value="onNewSerialsChange(row, $event)"
@@ -209,6 +216,7 @@
 
 <script setup lang="ts">
   import { formatDateTimeValue } from '@/utils/ui/format'
+  import { useAuth } from '@/hooks/core/useAuth'
   import { notifyFriendlyError, useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { ElMessage } from 'element-plus'
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
@@ -237,9 +245,11 @@
     projects: WmsProject[]
   }
   const emit = defineEmits<{ success: [] }>()
+  const { hasAuth } = useAuth()
   const { confirmAction } = useArtFeedback()
   const drawerRef = ref<ArtDrawerExpose<Context>>()
   const plan = shallowRef<WmsCountPlan>()
+  let openVersion = 0
   const projects = ref<WmsProject[]>([])
   const lines = ref<WmsCountLine[]>([])
   const serialOptions = reactive<Record<string, WmsBatchSerial[]>>({})
@@ -258,7 +268,9 @@
       { prop: 'operation', label: '操作', width: 110, fixed: 'right', useSlot: true }
     ]
     return columns.filter(
-      (column) => column.prop !== 'operation' || plan.value?.status === 'counting'
+      (column) =>
+        column.prop !== 'operation' ||
+        (plan.value?.status === 'counting' && hasAuth('WmsCount:Count'))
     )
   })
   const documents = ref<WmsCountVarianceDocument[]>([])
@@ -288,9 +300,11 @@
     row.countedQuantity = row.countedSerialIds.length + row.newSerialNos.length
   }
   async function loadSerialOptions(row: WmsCountLine): Promise<boolean> {
+    const version = openVersion
     if (serialOptions[row.batchId]) return true
     try {
       const options = await fetchWmsBatchSerials(row.batchId)
+      if (openVersion !== version) return false
       if (options.length !== row.expectedSerialIds.length) {
         ElMessage.warning('SN 清单已变化，请重新生成盘点方案')
         return false
@@ -298,11 +312,13 @@
       serialOptions[row.batchId] = options
       return true
     } catch (error) {
+      if (openVersion !== version) return false
       notifyFriendlyError(error, 'SN 清单加载失败，请重试')
       return false
     }
   }
   async function saveLine(row: WmsCountLine): Promise<void> {
+    const version = openVersion
     if (savingLineId.value) return
     if (isSerialLine(row) && !(await loadSerialOptions(row))) return
     if (!isSerialLine(row) && row.countedQuantity === null) {
@@ -328,11 +344,13 @@
         countedSerialIds: isSerialLine(row) ? row.countedSerialIds : [],
         newSerialNos: isSerialLine(row) ? row.newSerialNos : []
       })
+      if (openVersion !== version) return
       await loadLines()
     } catch (error) {
+      if (openVersion !== version) return
       notifyFriendlyError(error, '盘点明细保存失败，请检查填写内容和网络后重试')
     } finally {
-      savingLineId.value = null
+      if (openVersion === version) savingLineId.value = null
     }
   }
   function hasVariance(row: WmsCountLine): boolean {
@@ -363,12 +381,13 @@
   }
   async function loadLines(): Promise<void> {
     if (!plan.value) return
+    const version = openVersion
     const planId = plan.value.id
     loading.value = true
     loadError.value = false
     try {
       const loaded = await fetchWmsCountLines(planId)
-      if (plan.value?.id !== planId) return
+      if (openVersion !== version || plan.value?.id !== planId) return
       lines.value = loaded.map((row) => ({
         ...row,
         countedSerialIds:
@@ -379,18 +398,20 @@
       for (const row of loaded) serialDraft[row.id] = row.newSerialNos.join('\n')
       if (plan.value.status === 'posted') await loadDocuments(loaded)
     } catch {
-      if (plan.value?.id === planId) loadError.value = true
+      if (openVersion === version && plan.value?.id === planId) loadError.value = true
     } finally {
-      if (plan.value?.id === planId) loading.value = false
+      if (openVersion === version && plan.value?.id === planId) loading.value = false
     }
   }
   async function loadDocuments(countLines: WmsCountLine[]): Promise<void> {
     if (!plan.value) return
+    const version = openVersion
     const planId = plan.value.id
     documentsLoading.value = true
     documentsError.value = false
     try {
       const loaded = await fetchWmsCountVarianceDocuments(planId)
+      if (openVersion !== version) return
       const movementIds = countLines.flatMap((row) =>
         [row.lossMovementId, row.gainMovementId].filter((id): id is string => Boolean(id))
       )
@@ -404,35 +425,42 @@
       ) {
         throw new Error('盘盈盘亏单缺失')
       }
-      if (plan.value?.id !== planId) return
+      if (openVersion !== version || plan.value?.id !== planId) return
       documents.value = loaded
       movements.value = movementRows
     } catch {
-      if (plan.value?.id === planId) documentsError.value = true
+      if (openVersion === version && plan.value?.id === planId) documentsError.value = true
     } finally {
-      if (plan.value?.id === planId) documentsLoading.value = false
+      if (openVersion === version && plan.value?.id === planId) documentsLoading.value = false
     }
   }
   async function post(): Promise<void> {
     if (!plan.value || posting.value) return
+    const version = openVersion
+    const targetPlan = plan.value
     try {
       await confirmAction(
         `确认盘点单 ${plan.value.documentNo} 的全部差异？确认后将自动生成盘盈盘亏单和库存流水，实盘结果不可再改。`,
         '确认盘点差异',
         { type: 'warning', confirmButtonText: '确认记账', cancelButtonText: '继续复核' }
       )
+      if (openVersion !== version) return
       posting.value = true
-      await postWmsCountPlan(plan.value.id)
-      plan.value = { ...plan.value, status: 'posted' }
+      await postWmsCountPlan(targetPlan.id)
+      if (openVersion !== version) return
+      plan.value = { ...targetPlan, status: 'posted' }
       await loadLines()
       emit('success')
     } catch {
       // 取消确认与 API 错误由对应组件处理。
     } finally {
-      posting.value = false
+      if (openVersion === version) posting.value = false
     }
   }
   async function handleOpen(data: Context): Promise<void> {
+    openVersion++
+    savingLineId.value = null
+    posting.value = false
     plan.value = data.plan
     projects.value = data.projects
     lines.value = []
@@ -448,6 +476,11 @@
       onOpen: async () => loadLines()
     })
   }
+  function handleClose(): void {
+    openVersion++
+    plan.value = undefined
+  }
+  onUnmounted(handleClose)
   defineExpose({ handleOpen })
 </script>
 

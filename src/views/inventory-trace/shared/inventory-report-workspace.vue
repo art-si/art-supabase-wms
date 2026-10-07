@@ -180,6 +180,7 @@
       label: '日期区间',
       key: 'dateRange',
       type: 'daterange',
+      span: 12,
       props: {
         clearable: true,
         valueFormat: 'YYYY-MM-DD',
@@ -194,6 +195,7 @@
     { label: '批号', key: 'batchNo', type: 'input', props: { clearable: true } },
     {
       label: '汇总值',
+      span: 16,
       key: 'summaryValues',
       type: 'select',
       props: {
@@ -422,6 +424,7 @@
             ]
       columns.push(
         ...periods.map((period) => ({
+          prop: `${period.label}-${selected.join('-')}`,
           label: period.label,
           children: selected.map((key) =>
             quantityColumn(
