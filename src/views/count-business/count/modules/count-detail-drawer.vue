@@ -1,5 +1,6 @@
 <template>
   <ArtDrawer
+    :loading="loading"
     ref="drawerRef"
     size="88%"
     :show-footer="false"
@@ -45,7 +46,7 @@
         v-if="plan.status === 'posted'"
         title="盘盈盘亏单"
         subtitle="按盘点差异自动生成；每条明细关联实际库存流水，保留项目施工号。"
-        :loading="loading || documentsLoading"
+        :loading="documentsLoading"
         :error="
           loadError ? '盘点表加载失败，请重试' : documentsError ? '差异单据加载失败，请重试' : null
         "
@@ -122,7 +123,6 @@
       <ArtSectionCard
         title="盘点表"
         subtitle="一个库存批次对应一行；项目施工号随来源库存保留。"
-        :loading="loading"
         :error="loadError ? '盘点表加载失败，请重试' : null"
         :empty="!loading && !loadError && lines.length === 0"
         empty-title="暂无盘点行"

@@ -53,6 +53,7 @@
   import { ElMessage, ElTag } from 'element-plus'
   import { uniq } from 'lodash-es'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { useDocumentBulkDelete } from '@/hooks/business/useDocumentBulkDelete'
   import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
   import MasterDataDeleteGuard from '@/components/business/master-data-delete-guard/index.vue'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
@@ -241,6 +242,7 @@
     }
   }
   async function refresh(): Promise<void> {
+    tableRef.value?.clearSelection()
     selectedDocumentIds.value = []
     await tableRef.value?.refreshUpdate()
   }
@@ -268,7 +270,7 @@
     row: WmsProductionMaterialListRow,
     action: 'submit' | 'approve' | 'delete' | 'close' | 'void'
   ): Promise<void> {
-    if (workingId.value) return
+    if (workingId.value || bulkDeleting.value) return
     const label = {
       submit: '提交',
       approve: '审核',
@@ -296,7 +298,7 @@
     }
   }
   async function push(documentId: string, lineId?: string): Promise<void> {
-    if (workingId.value) return
+    if (workingId.value || bulkDeleting.value) return
     try {
       await confirmAction(
         lineId ? '确定下推这一行并更新库存？' : '确定下推未处理的全部明细并更新库存？',
@@ -319,7 +321,19 @@
     }
     for (const id of [...selectedDocumentIds.value]) await push(id)
   }
+  const { bulkDeleteAction, bulkDeleting } = useDocumentBulkDelete({
+    permission: () => permissions.value.Delete,
+    resourceLabel: () => title.value,
+    idKey: 'documentId',
+    busy: () => Boolean(workingId.value),
+    inspect: inspectDeleteReferences,
+    remove: (id) => changeWmsProductionMaterialStatus(id, 'delete'),
+    refresh,
+    clearSelection: () => tableRef.value?.clearSelection(),
+    canDelete: (row) => row.materialStatus === 'pending'
+  })
   const headerActions = computed<ArtTableQueryHeaderAction[]>(() => [
+    bulkDeleteAction(),
     {
       type: 'add',
       label: `新增${title.value}`,

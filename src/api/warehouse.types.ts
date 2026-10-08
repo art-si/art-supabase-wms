@@ -272,6 +272,7 @@ export interface WmsMaterialControl {
   id: string
   tenantId: string
   serialManagementEnabled: boolean
+  batchManagementEnabled: boolean
 }
 
 export interface WmsStockOperationInput {

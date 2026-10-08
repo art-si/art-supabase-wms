@@ -46,7 +46,7 @@
         <ElButton link type="primary" @click="loadOptions">重新加载</ElButton>
       </ElAlert>
       <ElAlert v-else type="info" :closable="false" show-icon>
-        业务日期不得晚于所选库存组织的启用日期；初始库存单审核后将生成在库批次和库存流水。
+        业务日期不得晚于启用日期；审核后建立在库批次与期初结存，计入可用量，不计入本期收入。
       </ElAlert>
       <ElAlert
         v-if="
@@ -105,19 +105,18 @@
             v-if="mode !== 'view'"
             class="flex flex-wrap items-center justify-end gap-2 whitespace-nowrap lg:flex-nowrap"
           >
-            <ArtTableMultipleSelect
+            <ArtMaterialSelect
               v-if="form.tenantId"
-              v-model="materialPickerIds"
+              v-model:model-values="materialPickerIds"
               v-model:selected-data="materialPickerRows"
               class="w-auto! shrink-0"
               title="选择期初物料"
               subtitle="支持按物料编码、名称或描述检索，可一次添加多行。"
               placeholder="添加物料明细"
               search-placeholder="搜索物料编码或描述"
-              row-key="id"
               label-key="name"
-              description-key="code"
-              :columns="materialColumns"
+              multiple
+              :categories="materialCategories"
               :api-fn="materialApi"
               @confirm="addMaterials"
             >
@@ -126,7 +125,7 @@
                   <ArtSvgIcon icon="ri:add-line" />新增
                 </ElButton>
               </template>
-            </ArtTableMultipleSelect>
+            </ArtMaterialSelect>
             <ElButton :disabled="selectedLines.length !== 1" @click="copySelectedLine"
               >复制</ElButton
             >
@@ -368,10 +367,14 @@
               }}</span></template
             >
             <template #batchNo="{ row }"
-              ><ElInput v-if="mode !== 'view'" v-model="row.batchNo" placeholder="自动生成" /><span
-                v-else
-                >{{ row.batchNo || '—' }}</span
-              ></template
+              ><ElInput
+                v-if="mode !== 'view'"
+                v-model="row.batchNo"
+                :disabled="row.material?.batchManagementEnabled"
+                :placeholder="
+                  row.material?.batchManagementEnabled ? '入账时自动生成' : '可留空或手工填写'
+                "
+              /><span v-else>{{ row.batchNo || '—' }}</span></template
             >
             <template #inboundDate="{ row }"
               ><ElDatePicker
@@ -457,6 +460,7 @@
 </template>
 
 <script setup lang="ts">
+  import { getMaterialCategoryIds } from '@/utils/business/material-category'
   import { formatWmsOwnerName } from '@/utils/wms/owner-display'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { isWmsBusinessTypeAvailable } from '@/utils/wms/business-type'
@@ -483,8 +487,12 @@
   } from '@/components/core/forms/art-button-more/index.vue'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import ArtEmployeeSelect from '@/components/business/art-employee-select/index.vue'
-  import ArtTableMultipleSelect from '@/components/core/forms/art-data-select/table-multiple.vue'
+  import ArtMaterialSelect, {
+    type MaterialSelectCategory,
+    type MaterialSelectRecord
+  } from '@/components/business/art-material-select/index.vue'
   import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
+  import { fetchWmsMaterialCategories } from '@/api/wms-material-category'
   import type {
     DataSelectRecord,
     DataSelectFetchParams
@@ -644,7 +652,8 @@
     }
   ])
   const materialPickerIds = ref<string[]>([])
-  const materialPickerRows = ref<DataSelectRecord[]>([])
+  const materialPickerRows = ref<MaterialSelectRecord[]>([])
+  const materialCategories = ref<MaterialSelectCategory[]>([])
   const selectedKeeper = ref<EmployeeIntegrationItem[]>([])
   const serialText = ref('')
   const form = ref({
@@ -824,11 +833,6 @@
     businessTypeId: [{ required: true, message: '请选择业务类型', trigger: 'change' }],
     businessDate: [{ required: true, message: '请选择业务日期', trigger: 'change' }]
   }
-  const materialColumns = [
-    { prop: 'code', label: '物料编码', width: 170 },
-    { prop: 'name', label: '物料描述', minWidth: 220 },
-    { prop: 'specificationModel', label: '规格型号', minWidth: 140 }
-  ]
   const projectColumns = [
     { prop: 'code', label: '项目编码', width: 150 },
     { prop: 'name', label: '项目名称', minWidth: 200 }
@@ -892,12 +896,24 @@
   }
   async function materialApi(params: DataSelectFetchParams) {
     if (!form.value.tenantId) return { data: [], total: 0 }
-    return fetchWmsInitialMaterials({
+    const result = await fetchWmsInitialMaterials({
       tenantId: form.value.tenantId,
       keyword: params.keyword,
+      categoryIds: getMaterialCategoryIds(
+        materialCategories.value,
+        String(params.filters.categoryId || '')
+      ),
       current: params.page,
       size: params.pageSize
     })
+    return {
+      ...result,
+      data: result.data.map((material) => ({
+        ...material,
+        materialCode: material.code,
+        materialName: material.name
+      }))
+    }
   }
   function materialFromRow(row: DataSelectRecord): WmsInitialMaterial | null {
     if (typeof row.id !== 'string' || typeof row.code !== 'string' || typeof row.name !== 'string')
@@ -1038,21 +1054,30 @@
     })
   }
   async function loadTenantOptions(tenantId: string): Promise<void> {
-    const [unitRows, documentRows, businessRows, projectRows, supplierRows, customerRows] =
-      await Promise.all([
-        fetchWmsUnitOptions(tenantId),
-        fetchWmsInitialOptions('mdm_document_type', tenantId),
-        fetchWmsInitialOptions('mdm_business_type', tenantId),
-        fetchWmsInitialOptions('mdm_project', tenantId),
-        fetchWmsInitialOptions('mdm_supplier', tenantId),
-        fetchWmsInitialOptions('mdm_customer', tenantId)
-      ])
+    const [
+      unitRows,
+      documentRows,
+      businessRows,
+      projectRows,
+      supplierRows,
+      customerRows,
+      categories
+    ] = await Promise.all([
+      fetchWmsUnitOptions(tenantId),
+      fetchWmsInitialOptions('mdm_document_type', tenantId),
+      fetchWmsInitialOptions('mdm_business_type', tenantId),
+      fetchWmsInitialOptions('mdm_project', tenantId),
+      fetchWmsInitialOptions('mdm_supplier', tenantId),
+      fetchWmsInitialOptions('mdm_customer', tenantId),
+      fetchWmsMaterialCategories(tenantId)
+    ])
     units.value = unitRows
     documentTypes.value = documentRows
     businessTypes.value = businessRows
     projects.value = projectRows
     suppliers.value = supplierRows
     customers.value = customerRows
+    materialCategories.value = categories
     const availableDocuments = documentRows.filter(
       (item) => item.enabled && item.menuIds?.includes(initialStockMenuId.value)
     )

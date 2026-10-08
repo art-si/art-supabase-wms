@@ -28,7 +28,7 @@ const documentSelect = `*,
  customer:mdm_customer!wms_sales_document_customer_id_fkey(customer_name),
  lines:wms_sales_document_line(*,
  bin:mdm_warehouse_bin!wms_sales_document_line_bin_id_fkey(bin_name,bin_code),
- material:mdm_material!wms_sales_document_line_material_id_fkey(id,tenant_id,code:material_code,name:material_name,description,specification_model,inventory_unit_id,base_unit_id,auxiliary_unit_id,auxiliary_unit_2_id,unit_conversions,serial_management_enabled),
+ material:mdm_material!wms_sales_document_line_material_id_fkey(id,tenant_id,code:material_code,name:material_name,description,specification_model,inventory_unit_id,base_unit_id,auxiliary_unit_id,auxiliary_unit_2_id,unit_conversions,serial_management_enabled,batch_management_enabled),
  project:mdm_project!wms_sales_document_line_project_id_fkey(id,tenant_id,code:project_code,name:project_name))`
 
 export async function fetchWmsInitialSalesPage(query: {

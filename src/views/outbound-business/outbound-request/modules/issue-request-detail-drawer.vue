@@ -1,5 +1,5 @@
 <template>
-  <ArtDrawer ref="drawerRef" size="lg" :show-footer="false">
+  <ArtDrawer :loading="loading" ref="drawerRef" size="lg" :show-footer="false">
     <div v-if="request" class="flex min-w-0 flex-col gap-5">
       <ArtEntitySummary
         icon="ri:file-list-3-line"
@@ -38,7 +38,6 @@
       <ArtSectionCard
         title="申请明细"
         subtitle="同一申请行可以多次选择不同批次；每次出库留下独立流水。"
-        :loading="loading"
         :error="loadError ? '申请明细加载失败，请重试' : null"
         :empty="!loading && !loadError && !lines.length"
         empty-title="暂无申请物料"
@@ -83,7 +82,6 @@
       <ArtSectionCard
         title="出库核销记录"
         subtitle="批次、数量与库存流水保持一一对应；SN 逐件随流水追溯。"
-        :loading="loading"
         :error="loadError ? '核销记录加载失败，请重试' : null"
         :empty="!loading && !loadError && !allocations.length"
         empty-title="尚未办理领料"

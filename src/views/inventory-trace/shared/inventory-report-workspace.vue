@@ -52,6 +52,7 @@
             :api-fn="fetchRows"
             :search-items="searchItems"
             :columns-factory="columnsFactory"
+            :columns-context-key="search.summaryValues?.join(',') || 'default'"
             :search-bar-props="{ span: 8, labelWidth: 86, defaultExpanded: true }"
             :table-props="{
               rowKey: 'id',
@@ -392,15 +393,11 @@
           row.direction === 'in' ? '入库' : row.direction === 'out' ? '出库' : '—'
       })
     }
-    columns.push({
-      prop: 'inventoryUnit',
-      label: '库存单位',
-      minWidth: 105,
-      formatter: (row) => formatUnitDisplayName(row.inventoryUnit)
-    })
     if (props.kind === 'stock') {
-      columns.push(
-        ...selected.map((key) =>
+      columns.push({
+        prop: `quantity-${selected.join('-')}`,
+        label: '数量',
+        children: selected.map((key) =>
           quantityColumn(
             summaryOptions.find((option) => option.value === key)?.label || key,
             key,
@@ -408,7 +405,7 @@
             'stock'
           )
         )
-      )
+      })
     } else {
       const periods =
         props.kind === 'ledger'
@@ -437,13 +434,23 @@
         }))
       )
     }
+    const unitByQuantity = {
+      inventoryQuantity: { prop: 'inventoryUnit', label: '库存单位' },
+      basicQuantity: { prop: 'basicUnit', label: '基本单位' },
+      auxiliaryQuantity: { prop: 'auxiliaryUnit', label: '辅助单位' },
+      auxiliaryQuantity2: { prop: 'auxiliaryUnit2', label: '辅助单位(2)' }
+    } as const
+    columns.push({
+      prop: `measurementUnits-${selected.join('-')}`,
+      label: '计量单位',
+      children: selected.map((key) => ({
+        ...unitByQuantity[key],
+        minWidth: 110,
+        formatter: (row: WmsInventoryReportRow) =>
+          formatUnitDisplayName(row[unitByQuantity[key].prop])
+      }))
+    })
     columns.push(
-      {
-        prop: 'basicUnit',
-        label: '基本单位',
-        minWidth: 105,
-        formatter: (row) => formatUnitDisplayName(row.basicUnit)
-      },
       {
         prop: 'reservedQuantity',
         label: '预留数量',
@@ -464,18 +471,6 @@
         label: '施工号',
         minWidth: 130,
         formatter: (row) => row.constructionNo || '—'
-      },
-      {
-        prop: 'auxiliaryUnit',
-        label: '辅助单位',
-        minWidth: 110,
-        formatter: (row) => formatUnitDisplayName(row.auxiliaryUnit)
-      },
-      {
-        prop: 'auxiliaryUnit2',
-        label: '辅助单位(2)',
-        minWidth: 120,
-        formatter: (row) => formatUnitDisplayName(row.auxiliaryUnit2)
       },
       {
         prop: 'unitCost',
@@ -551,11 +546,6 @@
     return columns
   }
 
-  watch(
-    () => search.summaryValues,
-    () => tableRef.value?.resetColumns(),
-    { deep: true }
-  )
   watch(effectiveTenantId, () => {
     resetLocation()
     void loadLocations()

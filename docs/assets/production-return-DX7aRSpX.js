@@ -1,0 +1,1 @@
+import{An as e,Rn as t,rr as n}from"./supabase-DdJzUeof.js";import{t as r}from"./production-material-workspace-CSsK_vPh.js";var i=t({name:`WmsProductionReturn`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{kind:`return`}))}});export{i as default};

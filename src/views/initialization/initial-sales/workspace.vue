@@ -83,10 +83,23 @@
         <ArtEntitySummary
           icon="ri:file-transfer-line"
           eyebrow="DOCUMENT PUSH"
-          title="下推发票"
-          description="普通发票与专用发票下推规则将在发票业务接入后开放。"
+          :title="isInitial ? '下推期初应收' : '下推发票'"
+          :description="
+            isInitial
+              ? '登记上线前未结清应收；退货冲减应收，不影响库存。可在结束初始化的对账表核对。'
+              : '普通发票与专用发票下推规则将在发票业务接入后开放。'
+          "
         />
-        <div class="mt-5 grid gap-3 sm:grid-cols-2">
+        <div v-if="isInitial" class="mt-5">
+          <ElButton
+            type="primary"
+            class="w-full!"
+            :loading="pushingInitialObligation"
+            @click="pushInitialObligation"
+            >{{ isReturn ? '期初应收冲减' : '期初应收单' }}</ElButton
+          >
+        </div>
+        <div v-else class="mt-5 grid gap-3 sm:grid-cols-2">
           <ElButton disabled class="w-full!">普通发票</ElButton>
           <ElButton disabled class="w-full!">专用发票</ElButton>
         </div>
@@ -97,6 +110,7 @@
 </template>
 
 <script setup lang="tsx">
+  import { useWmsInitialObligationPush } from '@/hooks/business/useWmsInitialObligationPush'
   import { replaceReactiveModel } from '@/utils/form/model'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { useRouteDocumentDrawer } from '@/hooks/core/useRouteDocumentDrawer'
@@ -104,6 +118,7 @@
   import { ElMessage, ElTag } from 'element-plus'
   import { useAuth } from '@/hooks/core/useAuth'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { useDocumentBulkDelete } from '@/hooks/business/useDocumentBulkDelete'
   import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
   import MasterDataDeleteGuard from '@/components/business/master-data-delete-guard/index.vue'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
@@ -160,6 +175,10 @@
     'specificationModel',
     'inventoryUnitName',
     'quantity',
+    'baseQuantity',
+    'auxiliaryQuantity',
+    'auxiliaryQuantity2',
+    'discountAmount',
     'unitPrice',
     'taxInclusiveUnitPrice',
     'taxRate',
@@ -191,6 +210,14 @@
   const sourceDocumentType = ref('')
   const workingId = ref<string>()
   const selectedRows = ref<Array<{ documentId: string; kind: unknown; status: unknown }>>([])
+  const { pushing: pushingInitialObligation, push: pushInitialObligation } =
+    useWmsInitialObligationPush({
+      area: 'sales',
+      getSelection: () => selectedRows.value,
+      afterPush: async () => {
+        await pushDialogRef.value?.handleClose()
+      }
+    })
 
   useRouteDocumentDrawer({
     routeName: () => permission.value.View.split(':')[0],
@@ -225,9 +252,11 @@
     () => deleteResourceLabel.value || title.value
   )
   const description = computed(() =>
-    isReturn.value
-      ? `登记${isInitial.value ? '库存初始化前' : '日常'}的销售退货。退货数量以负数呈现，税价和折扣随数量同步计算。`
-      : `登记${isInitial.value ? '库存初始化前' : '日常'}的销售出库。支持客户、项目与物料组合筛选，以及税价联动。`
+    isInitial.value
+      ? '记录上线前未结清销售往来，只初始化应收，不更新库存。退货表单录入正数，列表以红色负数呈现。'
+      : isReturn.value
+        ? `登记${isInitial.value ? '库存初始化前' : '日常'}的销售退货。退货数量以负数呈现，税价和折扣随数量同步计算。`
+        : `登记${isInitial.value ? '库存初始化前' : '日常'}的销售出库。支持客户、项目与物料组合筛选，以及税价联动。`
   )
   const permissionCodes = {
     initial_outbound: {
@@ -397,6 +426,7 @@
       materialCode: '',
       materialDescription: `共 ${group.length} 项物料`,
       amount: group.reduce((sum, line) => sum + Number(line.amount || 0), 0),
+      discountAmount: group.reduce((sum, line) => sum + Number(line.discountAmount || 0), 0),
       taxAmount: group.reduce((sum, line) => sum + Number(line.taxAmount || 0), 0),
       totalAmount: group.reduce((sum, line) => sum + Number(line.totalAmount || 0), 0)
     }))
@@ -412,6 +442,7 @@
     }
   }
   async function refresh(): Promise<void> {
+    tableRef.value?.clearSelection()
     await tableRef.value?.refreshUpdate()
   }
   function salesCellClassName({
@@ -421,6 +452,19 @@
     row: Record<string, unknown>
     column: { property?: string }
   }): string {
+    if (
+      row.kind === 'initial_return' &&
+      [
+        'quantity',
+        'baseQuantity',
+        'auxiliaryQuantity',
+        'auxiliaryQuantity2',
+        'amount',
+        'discountAmount',
+        'totalAmount'
+      ].includes(column.property || '')
+    )
+      return 'opening-return-negative-cell'
     return column.property === 'quantity' && returnKinds.some((kind) => kind === row.kind)
       ? 'initial-sales-negative-cell'
       : ''
@@ -466,7 +510,7 @@
     row: WmsInitialSalesListRow,
     action: 'submit' | 'approve' | 'delete'
   ): Promise<void> {
-    if (workingId.value) return
+    if (workingId.value || bulkDeleting.value) return
     const label = { submit: '提交', approve: '审核', delete: '删除' }[action]
     const resources = [{ id: row.documentId, label: row.documentNo }]
     deleteResourceLabel.value = row.kind === 'other_return' ? '其他出库退回单' : title.value
@@ -492,7 +536,18 @@
       workingId.value = undefined
     }
   }
+  const { bulkDeleteAction, bulkDeleting } = useDocumentBulkDelete({
+    permission: () => permission.value.Delete,
+    resourceLabel: () => title.value,
+    idKey: 'documentId',
+    busy: () => Boolean(workingId.value),
+    inspect: inspectDeleteReferences,
+    remove: (id) => changeWmsInitialSalesStatus(id, 'delete'),
+    refresh,
+    clearSelection: () => tableRef.value?.clearSelection()
+  })
   const headerActions = computed<ArtTableQueryHeaderAction[]>(() => [
+    bulkDeleteAction(),
     ...(props.kind === 'other_outbound'
       ? [
           {
@@ -612,9 +667,7 @@
   }
   function columnsFactory(): ColumnOption<WmsInitialSalesListRow>[] {
     const columns: ColumnOption<WmsInitialSalesListRow>[] = [
-      ...(props.kind === 'other_outbound' && displayMode.value === 'document'
-        ? [{ type: 'selection' as const, width: 48, fixed: 'left' as const }]
-        : []),
+      { type: 'selection', width: 48, fixed: 'left' },
       {
         prop: 'documentNo',
         label: '单据编号',
@@ -691,10 +744,22 @@
           </span>
         )
       },
+      ...(displayMode.value === 'line' && props.kind === 'initial_return'
+        ? ([
+            { prop: 'baseQuantity', label: '基本数量', minWidth: 115, align: 'right' },
+            { prop: 'auxiliaryQuantity', label: '辅助数量', minWidth: 115, align: 'right' },
+            { prop: 'auxiliaryQuantity2', label: '辅助数量2', minWidth: 125, align: 'right' }
+          ] as ColumnOption<WmsInitialSalesListRow>[])
+        : []),
       { prop: 'unitPrice', label: '单价(元)', minWidth: 108, align: 'right' },
       { prop: 'taxInclusiveUnitPrice', label: '含税单价(元)', minWidth: 125, align: 'right' },
       { prop: 'taxRate', label: '税率(%)', minWidth: 100, align: 'right' },
       { prop: 'amount', label: '金额(元)', minWidth: 110, align: 'right' },
+      ...(props.kind === 'initial_return'
+        ? ([
+            { prop: 'discountAmount', label: '折扣额(元)', minWidth: 115, align: 'right' }
+          ] as ColumnOption<WmsInitialSalesListRow>[])
+        : []),
       { prop: 'taxAmount', label: '税额(元)', minWidth: 110, align: 'right' },
       { prop: 'totalAmount', label: '价税合计(元)', minWidth: 130, align: 'right' },
       { prop: 'batchNo', label: '批号', minWidth: 120 },
@@ -784,6 +849,11 @@
 
   :deep(.initial-sales-negative) {
     font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    color: var(--el-color-danger);
+  }
+
+  :deep(td.el-table__cell.opening-return-negative-cell) {
     font-variant-numeric: tabular-nums;
     color: var(--el-color-danger);
   }

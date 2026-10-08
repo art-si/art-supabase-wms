@@ -370,6 +370,7 @@
               row-key="id"
               label-key="materialName"
               :columns="materialColumns"
+              :navigation="materialNavigation"
               :api-fn="materialApi"
               :disabled="!form.tenantId || (isFinished && !form.workOrderId)"
               @confirm="addMaterialRows"
@@ -759,6 +760,16 @@
 </template>
 
 <script setup lang="ts">
+  import {
+    buildMaterialCategoryNavigation,
+    getMaterialCategoryIds
+  } from '@/utils/business/material-category'
+  import { fetchWmsMaterialCategories } from '@/api/wms-material-category'
+  import type { MaterialSelectCategory } from '@/components/business/art-material-select/index.vue'
+  const materialCategories = ref<MaterialSelectCategory[]>([])
+  const materialNavigation = computed(() =>
+    buildMaterialCategoryNavigation(materialCategories.value)
+  )
   import { formatWmsOwnerName } from '@/utils/wms/owner-display'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
@@ -1717,7 +1728,9 @@
       form.value.tenantId,
       params.keyword || '',
       params.page,
-      params.pageSize
+      params.pageSize,
+      false,
+      getMaterialCategoryIds(materialCategories.value, String(params.filters.categoryId || ''))
     )
   }
   function stockApi(params: DataSelectFetchParams) {
@@ -1769,9 +1782,7 @@
   async function addWorkOrderRows(_ids: unknown, rows: DataSelectRecord[]): Promise<void> {
     const orders = rows as WmsWorkOrderOption[]
     const materialIds = orders.flatMap((item) => (item.materialId ? [item.materialId] : []))
-    const materials = await fetchWmsProductionMaterialsByIds(form.value.tenantId, [
-      ...new Set(materialIds)
-    ])
+    const materials = await fetchWmsProductionMaterialsByIds(form.value.tenantId, uniq(materialIds))
     const byId = new Map(materials.map((item) => [item.id, item]))
     let added = 0
     for (const order of orders) {
@@ -1849,9 +1860,10 @@
       ElMessage.warning('请选择与单据表头仓库一致的完工入库明细')
       return
     }
-    const materials = await fetchWmsProductionMaterialsByIds(form.value.tenantId, [
-      ...new Set(sources.map((item) => item.materialId))
-    ])
+    const materials = await fetchWmsProductionMaterialsByIds(
+      form.value.tenantId,
+      uniq(sources.map((item) => item.materialId))
+    )
     const byId = new Map(materials.map((item) => [item.id, item]))
     for (const source of sources) {
       const material = byId.get(source.materialId)
@@ -2095,15 +2107,18 @@
   }
   async function loadTenantOptions(tenantId: string): Promise<void> {
     const request = documentRequest
-    const [unitRows, documentRows, projectRows, supplierRows, customerRows] = await Promise.all([
-      fetchWmsUnitOptions(tenantId),
-      fetchWmsProductionDocumentTypes(props.kind, tenantId),
-      fetchWmsProductionProjects(tenantId),
-      fetchWmsInitialOptions('mdm_supplier', tenantId),
-      fetchWmsInitialOptions('mdm_customer', tenantId)
-    ])
+    const [unitRows, documentRows, projectRows, supplierRows, customerRows, categories] =
+      await Promise.all([
+        fetchWmsUnitOptions(tenantId),
+        fetchWmsProductionDocumentTypes(props.kind, tenantId),
+        fetchWmsProductionProjects(tenantId),
+        fetchWmsInitialOptions('mdm_supplier', tenantId),
+        fetchWmsInitialOptions('mdm_customer', tenantId),
+        fetchWmsMaterialCategories(tenantId)
+      ])
     if (request !== documentRequest || form.value.tenantId !== tenantId) return
     units.value = unitRows
+    materialCategories.value = categories
     documentTypes.value = documentRows
     projects.value = projectRows.map((item) => ({
       ...item,
@@ -2186,9 +2201,10 @@
         ...lines.value.map((line) => line.keeperId)
       ].filter((id): id is string => Boolean(id))
       if (ids.length && form.value.tenantId) {
-        const fetchedEmployees = await fetchWmsProductionEmployeesByIds(form.value.tenantId, [
-          ...new Set(ids)
-        ])
+        const fetchedEmployees = await fetchWmsProductionEmployeesByIds(
+          form.value.tenantId,
+          uniq(ids)
+        )
         if (request !== documentRequest) return
         employees.value = fetchedEmployees
         selectedApplicant.value = fetchedEmployees.filter(

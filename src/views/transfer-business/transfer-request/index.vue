@@ -78,6 +78,7 @@
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { ElMessage, ElTag } from 'element-plus'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { useDocumentBulkDelete } from '@/hooks/business/useDocumentBulkDelete'
   import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
   import MasterDataDeleteGuard from '@/components/business/master-data-delete-guard/index.vue'
   import { useTenantScopeFormPolicy } from '@/hooks/core/useTenantScopeFormPolicy'
@@ -292,6 +293,7 @@
     }
   }
   async function refresh(): Promise<void> {
+    tableRef.value?.clearSelection()
     await tableRef.value?.refreshUpdate()
   }
   function openCreate(importIntent = false): void {
@@ -313,7 +315,7 @@
     row: WmsTransferRequestRow,
     action: 'submit' | 'approve' | 'delete'
   ): Promise<void> {
-    if (workingId.value) return
+    if (workingId.value || bulkDeleting.value) return
     const label = { submit: '提交', approve: '审核', delete: '删除' }[action]
     const resources = [{ id: row.documentId, label: row.documentNo }]
     workingId.value = row.documentId
@@ -353,7 +355,18 @@
       pushingMode.value = undefined
     }
   }
+  const { bulkDeleteAction, bulkDeleting } = useDocumentBulkDelete({
+    permission: 'WmsTransfer:Delete',
+    resourceLabel: '调拨申请单',
+    idKey: 'documentId',
+    busy: () => Boolean(workingId.value),
+    inspect: inspectDeleteReferences,
+    remove: (id) => changeWmsTransferRequestStatus(id, 'delete'),
+    refresh,
+    clearSelection: () => tableRef.value?.clearSelection()
+  })
   const headerActions = computed<ArtTableQueryHeaderAction[]>(() => [
+    bulkDeleteAction(),
     {
       type: 'add',
       label: '新增调拨申请单',
@@ -435,6 +448,7 @@
   }
   function columnsFactory(): ColumnOption<WmsTransferRequestRow>[] {
     const columns: ColumnOption<WmsTransferRequestRow>[] = [
+      { type: 'selection', width: 48, fixed: 'left' },
       {
         prop: 'documentNo',
         label: '单据编号',

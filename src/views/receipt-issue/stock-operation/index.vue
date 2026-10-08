@@ -358,6 +358,7 @@
   const scanning = ref(false)
   const scanText = ref('')
   const materialSerialEnabled = ref(false)
+  const materialBatchEnabled = ref(false)
   const materialControlLoading = ref(false)
   const productionPackLoading = ref(false)
   const materialControlError = ref(false)
@@ -680,7 +681,16 @@
             key: 'batchNo',
             label: '批号',
             type: 'input' as const,
-            props: { maxlength: 80, placeholder: '供应商批号或生产批号' }
+            props: {
+              maxlength: 80,
+              disabled:
+                materialBatchEnabled.value ||
+                materialControlLoading.value ||
+                materialControlError.value,
+              placeholder: materialBatchEnabled.value
+                ? '入库时按物料批号规则自动生成'
+                : '可留空或手工填写批号'
+            }
           },
           ...(form.movementType === 'production_in'
             ? [
@@ -922,7 +932,7 @@
     materialId: isInbound.value
       ? [{ required: true, message: '请选择入库物料', trigger: 'change' }]
       : [],
-    batchNo: isInbound.value ? [{ required: true, message: '请填写批号', trigger: 'blur' }] : [],
+
     batchId: !isInbound.value
       ? [{ required: true, message: '请选择来源批次', trigger: 'change' }]
       : [],
@@ -1096,6 +1106,8 @@
         serialText.value = [...existing, code].join('\n')
         if (!form.packId) form.quantity = existing.length + 1
         ElMessage.success(`已录入 SN：${code}`)
+      } else if (materialBatchEnabled.value) {
+        ElMessage.info('该物料的批号将在入库时自动生成')
       } else {
         form.batchNo = code
         ElMessage.success(`已带入批号：${code}`)
@@ -1225,7 +1237,7 @@
       return
     }
     form.quantity = selectedPackPieces.value
-    if (!form.batchNo) form.batchNo = selectedPack.value.packNo
+    if (!materialBatchEnabled.value && !form.batchNo) form.batchNo = selectedPack.value.packNo
   }
   function onShippingNoticeChange(): void {
     resetDependent()
@@ -1428,11 +1440,14 @@
     materialControlLoading.value = Boolean(id)
     materialControlError.value = false
     materialSerialEnabled.value = false
+    materialBatchEnabled.value = false
     try {
       const control = id ? await fetchWmsMaterialControl(id) : null
       if (revision !== materialControlRevision || form.materialId !== id) return
       if (id && !control) throw new Error('当前物料库存规则不可用')
       materialSerialEnabled.value = Boolean(control?.serialManagementEnabled)
+      materialBatchEnabled.value = Boolean(control?.batchManagementEnabled)
+      if (materialBatchEnabled.value) form.batchNo = null
     } catch {
       if (revision !== materialControlRevision || form.materialId !== id) return
       materialControlError.value = true

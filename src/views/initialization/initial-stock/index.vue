@@ -5,7 +5,7 @@
         class="wms-initialization-header"
         eyebrow="OPENING INVENTORY"
         title="初始库存单"
-        description="按库存组织登记启用前的物料余额、批次和仓位。审核后生成即时库存与库存流水。"
+        description="按库存组织登记启用前的实存数量、成本、批次和仓位。审核后建立期初结存，计入可用量。"
         icon="ri:archive-drawer-line"
         density="compact"
         :tags="[
@@ -24,6 +24,7 @@
         :search-items="searchItems"
         :columns-factory="columnsFactory"
         :header-actions="headerActions"
+        :columns-context-key="displayMode"
         header-actions-placement="workspace"
         :search-bar-props="{ span: 6, labelWidth: 82 }"
         :table-props="{
@@ -56,6 +57,7 @@
   import { ElMessage, ElTag } from 'element-plus'
   import { useAuth } from '@/hooks/core/useAuth'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { useDocumentBulkDelete } from '@/hooks/business/useDocumentBulkDelete'
   import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
   import MasterDataDeleteGuard from '@/components/business/master-data-delete-guard/index.vue'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
@@ -168,7 +170,18 @@
       props: { clearable: true, placeholder: '搜索单据编号' }
     }
   ]
-  const headerActions: ArtTableQueryHeaderAction[] = [
+  const { bulkDeleteAction, bulkDeleting } = useDocumentBulkDelete({
+    permission: 'WmsInitialStock:Delete',
+    resourceLabel: '初始库存单',
+    idKey: 'id',
+    busy: () => Boolean(workingId.value),
+    inspect: inspectDeleteReferences,
+    remove: (id) => changeWmsInitialStockStatus(id, 'delete'),
+    refresh,
+    clearSelection: () => tableRef.value?.clearSelection()
+  })
+  const headerActions = computed<ArtTableQueryHeaderAction[]>(() => [
+    bulkDeleteAction(),
     {
       type: 'add',
       label: '新增初始库存单',
@@ -223,7 +236,7 @@
         { title: '备注', key: 'remark' }
       ]
     }
-  ]
+  ])
   function statusLabel(value: WmsInitialStockDocument['status']): string {
     return { draft: '暂存', submitted: '已提交', approved: '已审核' }[value]
   }
@@ -255,6 +268,7 @@
     return result
   }
   async function refresh(): Promise<void> {
+    tableRef.value?.clearSelection()
     await tableRef.value?.refreshUpdate()
   }
   function firstLine(row: StockListRow) {
@@ -307,7 +321,7 @@
     row: WmsInitialStockDocument,
     action: 'submit' | 'approve' | 'delete'
   ): Promise<void> {
-    if (workingId.value) return
+    if (workingId.value || bulkDeleting.value) return
     const label = { submit: '提交', approve: '审核入账', delete: '删除' }[action]
     const resources = [{ id: row.id, label: row.documentNo }]
     workingId.value = row.id
@@ -331,6 +345,7 @@
   }
   function columnsFactory(): ColumnOption<WmsInitialStockDocument>[] {
     return [
+      { type: 'selection', width: 48, fixed: 'left' },
       {
         prop: 'documentNo',
         label: '单据编号',

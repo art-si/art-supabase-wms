@@ -1,5 +1,5 @@
 <template>
-  <ArtDrawer ref="drawerRef" size="lg" :show-footer="false">
+  <ArtDrawer :loading="loading" ref="drawerRef" size="lg" :show-footer="false">
     <div v-if="document" class="min-w-0 space-y-5">
       <ArtEntitySummary
         icon="ri:apps-2-add-line"
@@ -36,7 +36,6 @@
       <ArtSectionCard
         title="来源组件"
         subtitle="每条组件均对应一笔扣减流水；批次号、用量与成本留痕。"
-        :loading="loading"
         :error="loadError ? '组件明细加载失败，请重试' : null"
         :empty="!loading && !loadError && components.length === 0"
         empty-title="暂无组件记录"

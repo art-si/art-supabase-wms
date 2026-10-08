@@ -101,6 +101,9 @@ export interface WmsInitialSalesListRow {
   projectName: string | null
   inventoryUnitName: string | null
   quantity: number
+  baseQuantity: number
+  auxiliaryQuantity: number | null
+  auxiliaryQuantity2: number | null
   batchNo: string | null
   warehouseName: string | null
   binName: string | null

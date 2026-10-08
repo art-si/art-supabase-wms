@@ -79,6 +79,8 @@
   import { useRouteDocumentDrawer } from '@/hooks/core/useRouteDocumentDrawer'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { recordDeleteGuardOptions } from '@/hooks/core/useRecordDeleteGuard'
+  import { useDocumentBulkDelete } from '@/hooks/business/useDocumentBulkDelete'
+  import type { MasterDataDeleteResource } from '@/components/business/master-data-delete-guard/index.vue'
   import MasterDataDeleteGuard from '@/components/business/master-data-delete-guard/index.vue'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import ArtTableQuery, {
@@ -136,15 +138,20 @@
   )
   const { confirmAction } = useArtFeedback()
   const deleteGuardRef = ref<InstanceType<typeof MasterDataDeleteGuard>>()
-  async function inspectDraftReferences(row: WmsIssueRequest): Promise<boolean> {
+  function inspectDraftReferences(row: WmsIssueRequest): Promise<boolean> {
+    return inspectDraftResourceReferences([{ id: row.id, label: row.documentNo }])
+  }
+  async function inspectDraftResourceReferences(
+    resources: MasterDataDeleteResource[]
+  ): Promise<boolean> {
     if (!deleteGuardRef.value) {
       ElMessage.error('关联校验尚未就绪，请刷新页面后重试删除')
       return true
     }
     const options = recordDeleteGuardOptions(
-      { table: 'wms_issue_request', ids: [row.id] },
+      { table: 'wms_issue_request', ids: resources.map((row) => row.id) },
       '出库申请',
-      [{ id: row.id, label: row.documentNo }],
+      resources,
       {
         wms_issue_request_allocation: {
           label: '申请出库记录',
@@ -162,7 +169,9 @@
         const allocations = dependencies.some(
           (item) => item.dependencyCode === 'wms_issue_request_allocation'
         )
-          ? await fetchWmsIssueRequestAllocations(row.id)
+          ? (
+              await Promise.all(resources.map((row) => fetchWmsIssueRequestAllocations(row.id)))
+            ).flat()
           : []
         // 暂存申请的自有明细由受控删除函数清理；已发生的出库记录仍阻止删除。
         return dependencies
@@ -172,8 +181,10 @@
             const allocation = allocations.find((entry) => entry.id === item.targetId)
             return {
               ...item,
-              targetId: row.id,
-              recordNo: allocation?.movement?.referenceNo || `${row.documentNo} · 出库记录`,
+              targetId: item.resourceId,
+              recordNo:
+                allocation?.movement?.referenceNo ||
+                `${resources.find((row) => row.id === item.resourceId)?.label || '出库申请'} · 出库记录`,
               recordSummary: allocation
                 ? `批次 ${allocation.batch?.batchNo || '待核对'} · 已出库 ${allocation.quantity}`
                 : '当前账号无法查看出库明细，请联系有权限的人员核对',
@@ -249,7 +260,18 @@
     office_supplies_use: '办公用品领用',
     labor_protection_use: '劳保用品领用'
   }
+  const { bulkDeleteAction, bulkDeleting } = useDocumentBulkDelete({
+    permission: 'WmsIssueRequest:Delete',
+    resourceLabel: () => displayTitle.value,
+    idKey: 'id',
+    busy: () => Boolean(workingId.value),
+    inspect: inspectDraftResourceReferences,
+    remove: deleteWmsIssueRequest,
+    refresh,
+    clearSelection: () => tableRef.value?.clearSelection()
+  })
   const headerActions = computed<ArtTableQueryHeaderAction[]>(() => [
+    bulkDeleteAction(),
     {
       permission: 'WmsIssueRequest:Add',
       type: 'add',
@@ -412,6 +434,7 @@
     void detailRef.value?.handleOpen(row, projectName(row.projectId))
   }
   async function refresh(): Promise<void> {
+    tableRef.value?.clearSelection()
     await tableRef.value?.refreshUpdate()
   }
   async function loadOptions(): Promise<void> {
@@ -430,7 +453,7 @@
     }
   }
   async function review(row: WmsIssueRequest, decision: 'approve' | 'reject'): Promise<void> {
-    if (workingId.value) return
+    if (workingId.value || bulkDeleting.value) return
     try {
       await confirmAction(
         decision === 'approve'
@@ -449,7 +472,7 @@
     }
   }
   async function submit(row: WmsIssueRequest): Promise<void> {
-    if (workingId.value) return
+    if (workingId.value || bulkDeleting.value) return
     try {
       await confirmAction(`确认提交出库申请 ${row.documentNo}？`, '提交出库申请', {
         type: 'info',
@@ -465,7 +488,7 @@
     }
   }
   async function duplicate(row: WmsIssueRequest): Promise<void> {
-    if (workingId.value) return
+    if (workingId.value || bulkDeleting.value) return
     try {
       await confirmAction(`确认复制出库申请 ${row.documentNo}？`, '复制出库申请', {
         type: 'info',
@@ -481,7 +504,7 @@
     }
   }
   async function removeDraft(row: WmsIssueRequest): Promise<void> {
-    if (workingId.value) return
+    if (workingId.value || bulkDeleting.value) return
     workingId.value = row.id
     try {
       if (await inspectDraftReferences(row)) return
@@ -499,7 +522,7 @@
     }
   }
   async function cancel(row: WmsIssueRequest): Promise<void> {
-    if (workingId.value) return
+    if (workingId.value || bulkDeleting.value) return
     try {
       await confirmAction(`确定取消领料申请 ${row.documentNo}？`, '取消领料申请', {
         type: 'warning',
@@ -516,6 +539,7 @@
   }
   function columnsFactory(): ColumnOption<IssueListRow>[] {
     return [
+      { type: 'selection', width: 48, fixed: 'left' },
       {
         prop: 'documentNo',
         label: '单据编号',

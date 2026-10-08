@@ -31,6 +31,7 @@ export interface WmsInitialMaterial extends WmsInitializationOption {
   auxiliaryUnit2Id: string | null
   unitConversions: Array<{ sourceUnitId: string; sourceFactor: number; baseFactor: number }>
   serialManagementEnabled: boolean
+  batchManagementEnabled?: boolean
 }
 
 export interface WmsInitialStockLine {

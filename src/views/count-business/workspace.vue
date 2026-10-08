@@ -54,6 +54,7 @@
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { ElMessage, ElTag } from 'element-plus'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { useDocumentBulkDelete } from '@/hooks/business/useDocumentBulkDelete'
   import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
   import MasterDataDeleteGuard from '@/components/business/master-data-delete-guard/index.vue'
   import { useTenantScopeFormPolicy } from '@/hooks/core/useTenantScopeFormPolicy'
@@ -265,6 +266,7 @@
     }
   }
   async function refresh(): Promise<void> {
+    tableRef.value?.clearSelection()
     await tableRef.value?.refreshUpdate()
   }
   function openCreate(importIntent = false): void {
@@ -286,7 +288,7 @@
     row: WmsCountAdjustmentRow,
     action: 'submit' | 'approve' | 'delete'
   ): Promise<void> {
-    if (workingId.value) return
+    if (workingId.value || bulkDeleting.value) return
     const label = { submit: '提交', approve: '审核', delete: '删除' }[action]
     const resources = [{ id: row.documentId, label: row.documentNo }]
     workingId.value = row.documentId
@@ -310,7 +312,18 @@
   function cellClassName({ column }: { column: { property?: string } }): string {
     return column.property === 'varianceQuantity' ? 'count-highlight-cell' : ''
   }
+  const { bulkDeleteAction, bulkDeleting } = useDocumentBulkDelete({
+    permission: () => permission.value.Delete,
+    resourceLabel: () => title.value,
+    idKey: 'documentId',
+    busy: () => Boolean(workingId.value),
+    inspect: inspectDeleteReferences,
+    remove: (id) => changeWmsCountAdjustmentStatus(id, 'delete'),
+    refresh,
+    clearSelection: () => tableRef.value?.clearSelection()
+  })
   const headerActions = computed<ArtTableQueryHeaderAction[]>(() => [
+    bulkDeleteAction(),
     {
       type: 'add',
       label: `新增${title.value}`,
@@ -394,6 +407,7 @@
   }
   function columnsFactory(): ColumnOption<WmsCountAdjustmentRow>[] {
     const columns: ColumnOption<WmsCountAdjustmentRow>[] = [
+      { type: 'selection', width: 48, fixed: 'left' },
       {
         prop: 'documentNo',
         label: '单据编号',

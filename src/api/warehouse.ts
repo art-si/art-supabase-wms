@@ -136,7 +136,8 @@ export async function fetchWmsMaterialOptions(
   keyword: string,
   current: number,
   size: number,
-  nonSerialOnly = false
+  nonSerialOnly = false,
+  categoryIds?: string[]
 ) {
   const pageRange = buildSupabasePageRange({ current, size })
   let query = supabase
@@ -149,6 +150,7 @@ export async function fetchWmsMaterialOptions(
     .eq('status', 'enabled')
     .order('material_code')
   if (nonSerialOnly) query = query.eq('serial_management_enabled', false)
+  if (categoryIds?.length) query = query.in('category_id', categoryIds)
   if (keyword.trim())
     query = query.or(buildOrIlikeFilter(['material_code', 'material_name'], keyword))
   const { data, total } = await responseHandle<WmsMaterialOption[]>(
@@ -634,7 +636,7 @@ export async function fetchWmsMaterialControl(id: string): Promise<WmsMaterialCo
     () =>
       supabase
         .from('mdm_material')
-        .select('id,tenant_id,serial_management_enabled')
+        .select('id,tenant_id,serial_management_enabled,batch_management_enabled')
         .eq('id', id)
         .maybeSingle(),
     readOptions

@@ -32,7 +32,7 @@
         focusable
       />
 
-      <ArtDialog ref="pendingDialogRef" size="lg" :show-footer="false">
+      <ArtDialog :loading="pendingLoading" ref="pendingDialogRef" size="lg" :show-footer="false">
         <ArtEntitySummary
           icon="ri:file-search-line"
           eyebrow="INITIALIZATION DOCUMENTS"
@@ -45,8 +45,6 @@
         />
         <ArtAsyncState
           class="mt-5"
-          :loading="pendingLoading"
-          loading-mode="skeleton"
           :error="pendingError"
           error-title="单据排查失败"
           :empty="!pendingCloseFailure && pendingDocuments.length === 0"
@@ -82,11 +80,20 @@
           </div>
         </ArtAsyncState>
       </ArtDialog>
+      <ArtDialog ref="reconciliationDialogRef" size="xl" :show-footer="false">
+        <WmsInitializationReconciliation
+          v-if="reconciliationOrganization"
+          :key="reconciliationOrganization.id"
+          :organization-id="reconciliationOrganization.id"
+          :organization-name="reconciliationOrganization.organizationName"
+        />
+      </ArtDialog>
     </div>
   </ArtPermissionGuard>
 </template>
 
 <script setup lang="tsx">
+  import WmsInitializationReconciliation from '@/components/business/wms-initialization-reconciliation/index.vue'
   import { replaceReactiveModel } from '@/utils/form/model'
   import { useRouter } from 'vue-router'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
@@ -129,6 +136,12 @@
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const tableRef = ref<ArtTableQueryExpose>()
   const pendingDialogRef = ref<ArtDialogExpose>()
+  const reconciliationDialogRef = ref<ArtDialogExpose>()
+  const reconciliationOrganization = ref<WmsInitializationStatusRow | null>(null)
+  async function showReconciliation(row: WmsInitializationStatusRow): Promise<void> {
+    reconciliationOrganization.value = row
+    await reconciliationDialogRef.value?.handleOpen(undefined, { title: '初始化对账表' })
+  }
   const workingId = ref<string>()
   const pendingOrganization = ref<WmsInitializationStatusRow | null>(null)
   const pendingDocuments = ref<WmsPendingInitializationDocument[]>([])
@@ -273,6 +286,8 @@
   }
 
   watch(effectiveTenantId, () => {
+    reconciliationOrganization.value = null
+    void reconciliationDialogRef.value?.handleClose()
     pendingRequestId += 1
     pendingDocuments.value = []
     pendingOrganization.value = null
@@ -375,9 +390,16 @@
         prop: 'operation',
         label: '操作',
         fixed: 'right',
-        width: 120,
+        width: 160,
         formatter: (row) => (
           <BusinessTableRowActions>
+            <ArtButtonTable
+              type="view"
+              label="初始化对账表"
+              icon="ri:scales-3-line"
+              permission="WmsInitializationClose:View"
+              onClick={() => showReconciliation(row)}
+            />
             {row.initializationStatus !== 'initialized' && (
               <ArtButtonTable
                 type="view"

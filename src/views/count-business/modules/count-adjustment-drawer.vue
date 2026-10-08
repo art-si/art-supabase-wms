@@ -87,6 +87,7 @@
             :api-fn="materialApi"
             :selected-data="selectedMaterials"
             :columns="materialColumns"
+            :navigation="materialNavigation"
             :title="`选择${title}物料`"
             subtitle="按物料分类筛选，可一次选择多种物料"
             placeholder="添加物料"
@@ -446,6 +447,16 @@
 </template>
 
 <script setup lang="ts">
+  import {
+    buildMaterialCategoryNavigation,
+    getMaterialCategoryIds
+  } from '@/utils/business/material-category'
+  import { fetchWmsMaterialCategories } from '@/api/wms-material-category'
+  import type { MaterialSelectCategory } from '@/components/business/art-material-select/index.vue'
+  const materialCategories = ref<MaterialSelectCategory[]>([])
+  const materialNavigation = computed(() =>
+    buildMaterialCategoryNavigation(materialCategories.value)
+  )
   import { formatWmsOwnerName } from '@/utils/wms/owner-display'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { isWmsBusinessTypeAvailable } from '@/utils/wms/business-type'
@@ -811,7 +822,9 @@
           context.value.tenantId,
           params.keyword,
           params.page,
-          params.pageSize
+          params.pageSize,
+          false,
+          getMaterialCategoryIds(materialCategories.value, String(params.filters.categoryId || ''))
         )
       : { data: [], total: 0 }
   }
@@ -962,7 +975,8 @@
       supplierRows,
       customerRows,
       orgPage,
-      menuId
+      menuId,
+      categories
     ] = await Promise.all([
       fetchWmsInitialDocumentTypes(
         tenantId,
@@ -975,10 +989,12 @@
       fetchWmsInitialOptions('mdm_supplier', tenantId),
       fetchWmsInitialOptions('mdm_customer', tenantId),
       fetchWmsInventoryOrganizations({ tenantId, enabled: 'enabled', current: 1, size: 2000 }),
-      fetchWmsInitialMenuId(props.kind === 'gain' ? 'WmsCountGain' : 'WmsCountLoss')
+      fetchWmsInitialMenuId(props.kind === 'gain' ? 'WmsCountGain' : 'WmsCountLoss'),
+      fetchWmsMaterialCategories(tenantId)
     ])
     if (request !== loadRequest) return
     documentTypes.value = docRows
+    materialCategories.value = categories
     businessTypes.value = businessRows
     projects.value = projectRows
     units.value = unitRows

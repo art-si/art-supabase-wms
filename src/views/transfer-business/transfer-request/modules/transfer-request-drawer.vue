@@ -91,6 +91,7 @@
               :api-fn="materialApi"
               :selected-data="selectedMaterials"
               :columns="materialColumns"
+              :navigation="materialNavigation"
               title="选择调拨物料"
               subtitle="按物料分类筛选，可一次选择多种物料"
               placeholder="添加物料"
@@ -413,6 +414,16 @@
 </template>
 
 <script setup lang="ts">
+  import {
+    buildMaterialCategoryNavigation,
+    getMaterialCategoryIds
+  } from '@/utils/business/material-category'
+  import { fetchWmsMaterialCategories } from '@/api/wms-material-category'
+  import type { MaterialSelectCategory } from '@/components/business/art-material-select/index.vue'
+  const materialCategories = ref<MaterialSelectCategory[]>([])
+  const materialNavigation = computed(() =>
+    buildMaterialCategoryNavigation(materialCategories.value)
+  )
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { isWmsBusinessTypeAvailable } from '@/utils/wms/business-type'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
@@ -759,7 +770,9 @@
           context.value.tenantId,
           params.keyword,
           params.page,
-          params.pageSize
+          params.pageSize,
+          false,
+          getMaterialCategoryIds(materialCategories.value, String(params.filters.categoryId || ''))
         )
       : { data: [], total: 0 }
   }
@@ -925,18 +938,28 @@
     if (request === loadRequest) lines.value = loadedLines
   }
   async function loadOptions(tenantId: string, request: number) {
-    const [docRows, businessRows, projectRows, unitRows, warehouseRows, orgPage, menuId] =
-      await Promise.all([
-        fetchWmsInitialDocumentTypes(tenantId, 'WmsTransfer'),
-        fetchWmsInitialOptions('mdm_business_type', tenantId),
-        fetchWmsProjects(tenantId),
-        fetchWmsUnitOptions(tenantId),
-        fetchWmsWarehouses(tenantId),
-        fetchWmsInventoryOrganizations({ tenantId, enabled: 'enabled', current: 1, size: 2000 }),
-        fetchWmsInitialMenuId('WmsTransfer')
-      ])
+    const [
+      docRows,
+      businessRows,
+      projectRows,
+      unitRows,
+      warehouseRows,
+      orgPage,
+      menuId,
+      categories
+    ] = await Promise.all([
+      fetchWmsInitialDocumentTypes(tenantId, 'WmsTransfer'),
+      fetchWmsInitialOptions('mdm_business_type', tenantId),
+      fetchWmsProjects(tenantId),
+      fetchWmsUnitOptions(tenantId),
+      fetchWmsWarehouses(tenantId),
+      fetchWmsInventoryOrganizations({ tenantId, enabled: 'enabled', current: 1, size: 2000 }),
+      fetchWmsInitialMenuId('WmsTransfer'),
+      fetchWmsMaterialCategories(tenantId)
+    ])
     if (request !== loadRequest) return
     documentTypes.value = docRows
+    materialCategories.value = categories
     businessTypes.value = businessRows
     projects.value = projectRows
     units.value = unitRows

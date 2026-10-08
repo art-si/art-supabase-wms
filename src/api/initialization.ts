@@ -151,6 +151,8 @@ export async function fetchWmsInitialMaterials(params: {
   tenantId: string
   keyword: string
   materialCode?: string
+  categoryId?: string
+  categoryIds?: string[]
   current: number
   size: number
 }): Promise<{ data: WmsInitialMaterial[]; total: number }> {
@@ -158,13 +160,15 @@ export async function fetchWmsInitialMaterials(params: {
   let request = supabase
     .from('mdm_material')
     .select(
-      'id,tenant_id,code:material_code,name:material_name,description,specification_model,inventory_unit_id,base_unit_id,auxiliary_unit_id,auxiliary_unit_2_id,unit_conversions,serial_management_enabled',
+      'id,tenant_id,code:material_code,name:material_name,description,specification_model,inventory_unit_id,base_unit_id,auxiliary_unit_id,auxiliary_unit_2_id,unit_conversions,serial_management_enabled,batch_management_enabled',
       { count: 'exact' }
     )
     .eq('tenant_id', params.tenantId)
     .eq('status', 'enabled')
     .order('material_code')
     .order('id')
+  if (params.categoryId) request = request.eq('category_id', params.categoryId)
+  if (params.categoryIds?.length) request = request.in('category_id', params.categoryIds)
   if (params.materialCode !== undefined) request = request.eq('material_code', params.materialCode)
   else if (params.keyword.trim())
     request = request.or(
