@@ -1,1 +1,0 @@
-import{An as e,Rn as t,rr as n}from"./supabase-DdJzUeof.js";import{t as r}from"./inventory-report-workspace-CbNCXxZU.js";var i=t({name:`WmsMaterialReceiptIssue`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{kind:`receipt-issue`}))}});export{i as default};

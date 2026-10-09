@@ -171,10 +171,13 @@
             }}</template></ElTableColumn
           >
           <ElTableColumn label="库存类型" width="110"
-            ><template #default="{ row }">{{
-              stockTypeLabel(row.stockType)
-            }}</template></ElTableColumn
-          >
+            ><template #default="{ row }"
+              ><ArtDictDisplay
+                :value="row.stockType"
+                dict-code="wmsCountStockType"
+                display="text"
+                empty-text="—" /></template
+          ></ElTableColumn>
           <ElTableColumn label="库存状态" width="105"
             ><template #default="{ row }">{{
               stockStatusLabel(row.stockStatus)
@@ -355,8 +358,13 @@
           <ElTableColumn label="货主类型" min-width="155"
             ><template #default="{ row }"
               ><ElSelect v-model="row.ownerType"
+                ><template #label
+                  ><ArtDictDisplay
+                    :value="row.ownerType"
+                    dict-code="mdmBusinessOwnerType"
+                    display="text" /></template
                 ><ElOption
-                  v-for="option in userStore.getDictMap.mdmBusinessOwnerType ?? []"
+                  v-for="option in ownerTypes"
                   :key="option.value"
                   :label="option.label"
                   :value="option.value" /></ElSelect></template
@@ -364,6 +372,11 @@
           <ElTableColumn label="库存类型" min-width="155"
             ><template #default="{ row }"
               ><ElSelect v-model="row.stockType"
+                ><template #label
+                  ><ArtDictDisplay
+                    :value="row.stockType"
+                    dict-code="wmsCountStockType"
+                    display="text" /></template
                 ><ElOption
                   v-for="item in stockTypes"
                   :key="item.value"
@@ -373,8 +386,13 @@
           <ElTableColumn label="库存状态" min-width="155"
             ><template #default="{ row }"
               ><ElSelect v-model="row.stockStatus"
+                ><template #label
+                  ><ArtDictDisplay
+                    :value="row.stockStatus"
+                    dict-code="wmsStockStatus"
+                    display="text" /></template
                 ><ElOption
-                  v-for="option in userStore.getDictMap.wmsStockStatus ?? []"
+                  v-for="option in stockStatuses"
                   :key="option.value"
                   :label="option.label"
                   :value="option.value" /></ElSelect></template
@@ -450,7 +468,8 @@
     DataSelectRecord
   } from '@/components/core/forms/art-data-select/types'
   import { normalizeNullableText } from '@/utils/form/normalize'
-  import { useUserStore } from '@/store/modules/user'
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
+  import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
   import {
     fetchWmsBins,
     fetchWmsInitialDocumentTypes,
@@ -510,12 +529,9 @@
     remark: string
   }
   const emit = defineEmits<{ success: [] }>()
-  const userStore = useUserStore()
-  void Promise.all(
-    ['mdmBusinessOwnerType', 'wmsCountStockType', 'wmsStockStatus'].map((code) =>
-      userStore.ensureDictLoaded(code)
-    )
-  )
+  const ownerTypes = useDictionaryOptions('mdmBusinessOwnerType')
+  const stockTypes = useDictionaryOptions('wmsCountStockType')
+  const stockStatuses = useDictionaryOptions('wmsStockStatus')
   const drawerRef = ref<ArtDrawerExpose<OpenData>>()
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const context = shallowRef<Context>()
@@ -565,7 +581,6 @@
   const selectedMaterials = computed(() =>
     lines.value.map((row) => row.material).filter((row): row is WmsMaterialOption => Boolean(row))
   )
-  const stockTypes = computed(() => userStore.getDictMap.wmsCountStockType ?? [])
   const stockStatusLabels: Record<string, string> = {
     available: '可用',
     scrap: '报废',
@@ -688,9 +703,6 @@
   }
   function numberText(value: number | null | undefined): string {
     return Number(value || 0).toFixed(4)
-  }
-  function stockTypeLabel(value: string): string {
-    return stockTypes.value.find((item) => item.value === value)?.label || value || '—'
   }
   function stockStatusLabel(value: string): string {
     return stockStatusLabels[value] || value || '—'
