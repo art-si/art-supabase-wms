@@ -1,0 +1,1 @@
+import{An as e,Rn as t,rr as n}from"./supabase-DdJzUeof.js";import{t as r}from"./workspace-BuQ-Spm-.js";var i=t({name:`WmsInitialSalesOutbound`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{kind:`initial_outbound`}))}});export{i as default};

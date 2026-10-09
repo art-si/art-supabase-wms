@@ -452,7 +452,7 @@
     getMaterialCategoryIds
   } from '@/utils/business/material-category'
   import { fetchWmsMaterialCategories } from '@/api/wms-material-category'
-  import type { MaterialSelectCategory } from '@/components/business/art-material-select/index.vue'
+  import type { MaterialSelectCategory } from '@/components/business/art-material-select/types'
   const materialCategories = ref<MaterialSelectCategory[]>([])
   const materialNavigation = computed(() =>
     buildMaterialCategoryNavigation(materialCategories.value)

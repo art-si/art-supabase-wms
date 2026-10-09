@@ -112,10 +112,11 @@ export async function saveWmsProductionMaterial(
 
 export async function changeWmsProductionMaterialStatus(
   id: string,
-  action: 'submit' | 'approve' | 'delete' | 'close' | 'void'
+  action: 'submit' | 'approve' | 'withdraw' | 'delete' | 'close' | 'void'
 ): Promise<void> {
   const messages = {
     submit: '生产单据已提交',
+    withdraw: '生产单据已撤回，可继续修改',
     approve: '生产单据已审核',
     delete: '生产单据已删除',
     close: '生产单据已关闭',

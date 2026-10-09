@@ -17,6 +17,7 @@ export const productionDocumentConfig: Record<
       | 'Push'
       | 'Submit'
       | 'Approve'
+      | 'Withdraw'
       | 'Close'
       | 'Void',
       string
@@ -47,6 +48,7 @@ export const productionDocumentConfig: Record<
       Select: 'WmsProductionIssue:Select',
       Push: 'WmsProductionIssue:Push',
       Submit: 'WmsProductionIssue:Submit',
+      Withdraw: 'WmsProductionIssue:Withdraw',
       Approve: 'WmsProductionIssue:Approve',
       Close: 'WmsProductionIssue:Close',
       Void: 'WmsProductionIssue:Void'
@@ -76,6 +78,7 @@ export const productionDocumentConfig: Record<
       Select: 'WmsProductionReturn:Select',
       Push: 'WmsProductionReturn:Push',
       Submit: 'WmsProductionReturn:Submit',
+      Withdraw: 'WmsProductionReturn:Withdraw',
       Approve: 'WmsProductionReturn:Approve',
       Close: 'WmsProductionReturn:Close',
       Void: 'WmsProductionReturn:Void'
@@ -105,6 +108,7 @@ export const productionDocumentConfig: Record<
       Select: 'WmsFinishedInbound:Select',
       Push: 'WmsFinishedInbound:Push',
       Submit: 'WmsFinishedInbound:Submit',
+      Withdraw: 'WmsFinishedInbound:Withdraw',
       Approve: 'WmsFinishedInbound:Approve',
       Close: 'WmsFinishedInbound:Close',
       Void: 'WmsFinishedInbound:Void'
@@ -134,6 +138,7 @@ export const productionDocumentConfig: Record<
       Select: 'WmsFinishedReturn:Select',
       Push: 'WmsFinishedReturn:Push',
       Submit: 'WmsFinishedReturn:Submit',
+      Withdraw: 'WmsFinishedReturn:Withdraw',
       Approve: 'WmsFinishedReturn:Approve',
       Close: 'WmsFinishedReturn:Close',
       Void: 'WmsFinishedReturn:Void'

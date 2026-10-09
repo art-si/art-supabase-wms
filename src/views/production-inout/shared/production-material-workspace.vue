@@ -268,11 +268,12 @@
   }
   async function transition(
     row: WmsProductionMaterialListRow,
-    action: 'submit' | 'approve' | 'delete' | 'close' | 'void'
+    action: 'submit' | 'approve' | 'withdraw' | 'delete' | 'close' | 'void'
   ): Promise<void> {
     if (workingId.value || bulkDeleting.value) return
     const label = {
       submit: '提交',
+      withdraw: '撤回提交',
       approve: '审核',
       delete: '删除',
       close: '关闭',
@@ -282,10 +283,14 @@
     workingId.value = row.documentId
     try {
       if (action === 'delete' && (await inspectDeleteReferences(resources))) return
-      await confirmAction(`确定${label}${row.documentNo}？`, `${label}${title.value}`, {
-        type: action === 'delete' || action === 'void' ? 'warning' : 'info',
-        confirmButtonText: `确定${label}`
-      })
+      await confirmAction(
+        `${action === 'withdraw' ? '撤回后恢复暂存，可修改或删除；关联审批待办将取消。' : ''}确定${label}${row.documentNo}？`,
+        `${label}${title.value}`,
+        {
+          type: action === 'delete' || action === 'void' ? 'warning' : 'info',
+          confirmButtonText: `确定${label}`
+        }
+      )
       await changeWmsProductionMaterialStatus(row.documentId, action)
       await refresh()
     } catch (error) {
@@ -427,6 +432,12 @@
       ...(row.status === 'submitted' && row.materialStatus === 'pending'
         ? [
             {
+              key: 'withdraw',
+              label: '撤回提交',
+              icon: 'ri:arrow-go-back-line',
+              auth: permissions.value.Withdraw
+            },
+            {
               key: 'approve',
               label: '审核',
               icon: 'ri:checkbox-circle-line',
@@ -469,6 +480,7 @@
     } else if (
       item.key === 'submit' ||
       item.key === 'approve' ||
+      item.key === 'withdraw' ||
       item.key === 'delete' ||
       item.key === 'close' ||
       item.key === 'void'

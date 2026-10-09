@@ -487,10 +487,11 @@
   } from '@/components/core/forms/art-button-more/index.vue'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import ArtEmployeeSelect from '@/components/business/art-employee-select/index.vue'
-  import ArtMaterialSelect, {
-    type MaterialSelectCategory,
-    type MaterialSelectRecord
-  } from '@/components/business/art-material-select/index.vue'
+  import ArtMaterialSelect from '@/components/business/art-material-select/index.vue'
+  import type {
+    MaterialSelectCategory,
+    MaterialSelectRecord
+  } from '@/components/business/art-material-select/types'
   import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
   import { fetchWmsMaterialCategories } from '@/api/wms-material-category'
   import type {

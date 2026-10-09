@@ -1,3 +1,4 @@
+import type { WmsDocumentClassification } from '@/api/wms-document.types'
 export interface WmsInventoryOrganization {
   id: string
   tenantId: string
@@ -77,7 +78,7 @@ export interface WmsInitialStockLine {
   serialNos: string[]
 }
 
-export interface WmsInitialStockDocument {
+export interface WmsInitialStockDocument extends WmsDocumentClassification {
   id: string
   tenantId: string
   organizationId: string

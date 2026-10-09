@@ -148,6 +148,7 @@
       Import: 'WmsCountGain:Import',
       Export: 'WmsCountGain:Export',
       Submit: 'WmsCountGain:Submit',
+      Withdraw: 'WmsCountGain:Withdraw',
       Approve: 'WmsCountGain:Approve'
     },
     loss: {
@@ -159,6 +160,7 @@
       Import: 'WmsCountLoss:Import',
       Export: 'WmsCountLoss:Export',
       Submit: 'WmsCountLoss:Submit',
+      Withdraw: 'WmsCountLoss:Withdraw',
       Approve: 'WmsCountLoss:Approve'
     }
   } as const
@@ -286,18 +288,22 @@
   }
   async function transition(
     row: WmsCountAdjustmentRow,
-    action: 'submit' | 'approve' | 'delete'
+    action: 'submit' | 'approve' | 'withdraw' | 'delete'
   ): Promise<void> {
     if (workingId.value || bulkDeleting.value) return
-    const label = { submit: '提交', approve: '审核', delete: '删除' }[action]
+    const label = { submit: '提交', withdraw: '撤回提交', approve: '审核', delete: '删除' }[action]
     const resources = [{ id: row.documentId, label: row.documentNo }]
     workingId.value = row.documentId
     try {
       if (action === 'delete' && (await inspectDeleteReferences(resources))) return
-      await confirmAction(`确定${label} ${row.documentNo}？`, `${label}${title.value}`, {
-        type: action === 'delete' ? 'warning' : 'info',
-        confirmButtonText: `确定${label}`
-      })
+      await confirmAction(
+        `${action === 'withdraw' ? '撤回后恢复暂存，可修改或删除；关联审批待办将取消。' : ''}确定${label} ${row.documentNo}？`,
+        `${label}${title.value}`,
+        {
+          type: action === 'delete' ? 'warning' : 'info',
+          confirmButtonText: `确定${label}`
+        }
+      )
       await changeWmsCountAdjustmentStatus(row.documentId, action)
       await refresh()
     } catch (error) {
@@ -387,6 +393,12 @@
       ...(row.status === 'submitted'
         ? [
             {
+              key: 'withdraw',
+              label: '撤回提交',
+              icon: 'ri:arrow-go-back-line',
+              auth: permission.value.Withdraw
+            },
+            {
               key: 'approve',
               label: '审核单据',
               icon: 'ri:checkbox-circle-line',
@@ -398,7 +410,12 @@
   }
   function onMoreAction(item: ButtonMoreItem, row: WmsCountAdjustmentRow): void {
     if (item.key === 'copy' || item.key === 'edit') void openDocument(item.key, row)
-    else if (item.key === 'submit' || item.key === 'approve' || item.key === 'delete')
+    else if (
+      item.key === 'submit' ||
+      item.key === 'approve' ||
+      item.key === 'withdraw' ||
+      item.key === 'delete'
+    )
       void transition(row, item.key)
   }
   function quantityText(value: number): string {

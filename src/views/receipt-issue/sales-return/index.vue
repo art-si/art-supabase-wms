@@ -165,7 +165,7 @@
   import { RouterLink } from 'vue-router'
   import { replaceReactiveModel } from '@/utils/form/model'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
-  import { formatDateTimeValue } from '@/utils/ui/format'
+  import { formatDateTimeValue, formatNumberValue } from '@/utils/ui/format'
   import { ElMessage } from 'element-plus'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import BusinessWorkspaceHeader from '@/components/business/business-workspace-header/index.vue'
@@ -250,8 +250,6 @@
     if (form.quantity >= remainingQuantity.value) return remainingDisplayQuantity.value
     return Math.round((outboundDisplayQuantity * form.quantity * 1e6) / allocation.quantity) / 1e6
   })
-  const formatDisplayQuantity = (value: number): string =>
-    new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 6 }).format(value)
   const availableSerials = computed(() =>
     serials.value.filter((row) => row.status === 'out' && !returnedSerialIds.value.includes(row.id))
   )
@@ -276,12 +274,12 @@
         {
           key: 'remainingDisplay',
           label: '换算可退',
-          value: `${formatDisplayQuantity(remainingDisplayQuantity.value)} ${unit}`
+          value: `${formatNumberValue(remainingDisplayQuantity.value, 'zh-CN', { maximumFractionDigits: 6 })} ${unit}`
         },
         {
           key: 'currentDisplay',
           label: '本次换算入库',
-          value: `${formatDisplayQuantity(currentDisplayQuantity.value ?? 0)} ${unit}`
+          value: `${formatNumberValue(currentDisplayQuantity.value ?? 0, 'zh-CN', { maximumFractionDigits: 6 })} ${unit}`
         }
       )
     }

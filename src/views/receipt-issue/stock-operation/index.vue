@@ -280,7 +280,7 @@
   import WmsBinPicker from '@wms/views/shared/wms-bin-picker.vue'
   import { normalizeNullableText } from '@/utils/form/normalize'
   import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
-  import type { MaterialSelectRecord } from '@/components/business/art-material-select/index.vue'
+  import type { MaterialSelectRecord } from '@/components/business/art-material-select/types'
   import type {
     DataSelectFetchParams,
     DataSelectColumn,

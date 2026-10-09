@@ -74,6 +74,9 @@ export async function setWmsDefaultInventoryOrganization(organizationId: string)
 }
 
 const documentSelect = `id,tenant_id,organization_id,document_no,document_type_id,business_type_id,business_date,accounting_date,keeper_id,status,remark,currency_code,amount_entry_enabled,created_at,updated_at,approved_at,
+  documentType:mdm_document_type!wms_initial_stock_document_type_fkey(document_type_name),
+  businessType:mdm_business_type!wms_initial_stock_business_type_fkey(business_type_name,stock_movement),
+  keeper:mdm_employee!wms_initial_stock_keeper_fkey(employee_name),
   organization:mdm_organization!wms_initial_stock_document_organization_id_fkey(id,tenant_id,organization_code,organization_name,organization_type,status),
   lines:wms_initial_stock_line(id,line_no,material_id,project_id,construction_no,gift,unit_price,amount,inventory_unit_id,opening_quantity,base_unit_id,base_quantity,yearly_opening_quantity,yearly_received_quantity,yearly_issued_quantity,batch_no,inbound_date,warehouse_id,bin_id,stock_type,owner_type,owner_id,stock_status,keeper_id,auxiliary_unit_id,opening_aux_quantity,yearly_opening_aux_quantity,yearly_received_aux_quantity,yearly_issued_aux_quantity,production_date,expiry_date,tracking_no,source_document,remark,serial_nos,
     material:mdm_material!wms_initial_stock_line_material_id_fkey(id,tenant_id,code:material_code,name:material_name,description,specification_model,inventory_unit_id,base_unit_id,auxiliary_unit_id,unit_conversions,serial_management_enabled),
@@ -104,7 +107,10 @@ export async function fetchWmsInitialStockPage(query: {
     () => request.range(pageRange.from, pageRange.to),
     readOptions
   )
-  return { data: data ?? [], total: total ?? 0 }
+  return {
+    data: (data ?? []).map((row) => ({ ...row, isInitialization: true })),
+    total: total ?? 0
+  }
 }
 
 export async function fetchWmsInitialStockDocument(id: string): Promise<WmsInitialStockDocument> {
@@ -113,7 +119,7 @@ export async function fetchWmsInitialStockDocument(id: string): Promise<WmsIniti
     readOptions
   )
   if (!data) throw new Error('初始库存单不存在或无权查看')
-  return data
+  return { ...data, isInitialization: true }
 }
 
 export async function saveWmsInitialStock(payload: WmsInitialStockPayload): Promise<string> {
@@ -127,7 +133,7 @@ export async function saveWmsInitialStock(payload: WmsInitialStockPayload): Prom
 
 export async function changeWmsInitialStockStatus(
   documentId: string,
-  action: 'submit' | 'approve' | 'delete'
+  action: 'submit' | 'approve' | 'withdraw' | 'delete'
 ): Promise<void> {
   await responseHandle(
     () =>
@@ -138,11 +144,13 @@ export async function changeWmsInitialStockStatus(
     {
       ...writeOptions,
       message:
-        action === 'submit'
-          ? '初始库存单已提交'
-          : action === 'approve'
-            ? '初始库存已审核入账'
-            : '初始库存单已删除'
+        action === 'withdraw'
+          ? '单据已撤回，可继续修改'
+          : action === 'submit'
+            ? '初始库存单已提交'
+            : action === 'approve'
+              ? '初始库存已审核入账'
+              : '初始库存单已删除'
     }
   )
 }

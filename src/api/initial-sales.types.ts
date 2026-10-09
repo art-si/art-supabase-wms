@@ -1,3 +1,4 @@
+import type { WmsDocumentClassification } from '@/api/wms-document.types'
 import type { WmsInitialMaterial, WmsInitializationOption } from './initialization.types'
 
 export type WmsInitialSalesKind =
@@ -77,7 +78,7 @@ export interface WmsInitialSalesDocument {
   lines: WmsInitialSalesLine[]
 }
 
-export interface WmsInitialSalesListRow {
+export interface WmsInitialSalesListRow extends WmsDocumentClassification {
   documentId: string
   tenantId: string
   organizationId: string

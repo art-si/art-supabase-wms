@@ -1,0 +1,1 @@
+import{An as e,Br as t,Rn as n,rr as r}from"./supabase-DdJzUeof.js";import{t as i}from"./wms-purchase-document-workspace-CavOlrFC.js";import{r as a}from"./permissions-DchWetX0.js";var o=n({name:`WmsOtherInbound`,__name:`index`,setup(n){let o=a;return(n,a)=>(r(),e(i,{kind:`other_inbound`,permissions:t(o)},null,8,[`permissions`]))}});export{o as default};

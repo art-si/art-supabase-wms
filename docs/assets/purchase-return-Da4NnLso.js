@@ -1,0 +1,1 @@
+import{An as e,Br as t,Rn as n,rr as r}from"./supabase-DdJzUeof.js";import{t as i}from"./wms-purchase-document-workspace-CavOlrFC.js";import{a}from"./permissions-DchWetX0.js";var o=n({name:`WmsPurchaseReturn`,__name:`index`,setup(n){let o=a;return(n,a)=>(r(),e(i,{kind:`purchase_return`,permissions:t(o)},null,8,[`permissions`]))}});export{o as default};

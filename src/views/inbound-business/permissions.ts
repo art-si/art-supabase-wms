@@ -8,6 +8,7 @@ export const WMS_PURCHASE_INBOUND_PERMISSIONS = {
   Export: 'WmsPurchaseInbound:Export',
   Push: 'WmsPurchaseInbound:Push',
   Submit: 'WmsPurchaseInbound:Submit',
+  Withdraw: 'WmsPurchaseInbound:Withdraw',
   Approve: 'WmsPurchaseInbound:Approve'
 }
 
@@ -21,6 +22,7 @@ export const WMS_PURCHASE_RETURN_PERMISSIONS = {
   Export: 'WmsPurchaseReturn:Export',
   Push: 'WmsPurchaseReturn:Push',
   Submit: 'WmsPurchaseReturn:Submit',
+  Withdraw: 'WmsPurchaseReturn:Withdraw',
   Approve: 'WmsPurchaseReturn:Approve'
 }
 
@@ -35,6 +37,7 @@ export const WMS_OTHER_INBOUND_PERMISSIONS = {
   Select: 'WmsOtherInbound:Select',
   Push: 'WmsOtherInbound:Push',
   Submit: 'WmsOtherInbound:Submit',
+  Withdraw: 'WmsOtherInbound:Withdraw',
   Approve: 'WmsOtherInbound:Approve'
 }
 
@@ -48,6 +51,7 @@ export const WMS_ENTRUSTED_PROCESSING_INBOUND_PERMISSIONS = {
   Export: 'WmsEntrustedProcessingInbound:Export',
   Push: 'WmsEntrustedProcessingInbound:Push',
   Submit: 'WmsEntrustedProcessingInbound:Submit',
+  Withdraw: 'WmsEntrustedProcessingInbound:Withdraw',
   Approve: 'WmsEntrustedProcessingInbound:Approve'
 }
 
@@ -61,5 +65,6 @@ export const WMS_ENTRUSTED_PROCESSING_RETURN_PERMISSIONS = {
   Export: 'WmsEntrustedProcessingReturn:Export',
   Push: 'WmsEntrustedProcessingReturn:Push',
   Submit: 'WmsEntrustedProcessingReturn:Submit',
+  Withdraw: 'WmsEntrustedProcessingReturn:Withdraw',
   Approve: 'WmsEntrustedProcessingReturn:Approve'
 }

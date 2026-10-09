@@ -17,6 +17,7 @@
     Export: 'WmsInitialPurchaseInbound:Export',
     Push: 'WmsInitialPurchaseInbound:Push',
     Submit: 'WmsInitialPurchaseInbound:Submit',
+    Withdraw: 'WmsInitialPurchaseInbound:Withdraw',
     Approve: 'WmsInitialPurchaseInbound:Approve'
   } as const
 </script>

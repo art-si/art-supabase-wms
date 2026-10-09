@@ -748,7 +748,7 @@ export async function saveWmsTransferRequest(payload: WmsTransferRequestInput): 
 
 export async function changeWmsTransferRequestStatus(
   id: string,
-  action: 'submit' | 'approve' | 'delete'
+  action: 'submit' | 'approve' | 'withdraw' | 'delete'
 ): Promise<void> {
   await responseHandle(
     () =>
@@ -760,11 +760,13 @@ export async function changeWmsTransferRequestStatus(
       ...writeOptions,
       showMessage: true,
       message:
-        action === 'submit'
-          ? '调拨申请已提交'
-          : action === 'approve'
-            ? '调拨申请已审核'
-            : '调拨申请已删除'
+        action === 'withdraw'
+          ? '单据已撤回，可继续修改'
+          : action === 'submit'
+            ? '调拨申请已提交'
+            : action === 'approve'
+              ? '调拨申请已审核'
+              : '调拨申请已删除'
     }
   )
 }
@@ -838,7 +840,7 @@ export async function saveWmsCountAdjustment(payload: WmsCountAdjustmentInput): 
 
 export async function changeWmsCountAdjustmentStatus(
   id: string,
-  action: 'submit' | 'approve' | 'delete'
+  action: 'submit' | 'approve' | 'withdraw' | 'delete'
 ): Promise<void> {
   await responseHandle(
     () =>
@@ -850,11 +852,13 @@ export async function changeWmsCountAdjustmentStatus(
       ...writeOptions,
       showMessage: true,
       message:
-        action === 'submit'
-          ? '盘点单已提交'
-          : action === 'approve'
-            ? '盘点单已审核'
-            : '盘点单已删除'
+        action === 'withdraw'
+          ? '单据已撤回，可继续修改'
+          : action === 'submit'
+            ? '盘点单已提交'
+            : action === 'approve'
+              ? '盘点单已审核'
+              : '盘点单已删除'
     }
   )
 }
