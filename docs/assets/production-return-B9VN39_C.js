@@ -1,1 +1,0 @@
-import{Vn as e,Yn as t,mr as n}from"./supabase-CJ0m1K10.js";import{t as r}from"./production-material-workspace-StVJ2_UY.js";var i=t({name:`WmsProductionReturn`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{kind:`return`}))}});export{i as default};

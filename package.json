@@ -15,16 +15,16 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc --noEmit --pretty false && vite build",
+    "build": "pnpm typecheck && vite build",
     "preview": "vite preview",
     "boundary:audit": "tsx scripts/audit-module-boundary.ts",
     "ui:audit": "tsx node_modules/art-supabase-pro/scripts/ui-audit.ts",
     "lint": "eslint \"src/**/*.{ts,vue}\" \"scripts/**/*.ts\" vite.config.ts",
-    "typecheck": "vue-tsc --noEmit --pretty false",
+    "typecheck": "tsx vite.config.ts --typecheck",
     "check": "pnpm boundary:audit && pnpm ui:audit && pnpm typecheck && pnpm lint"
   },
   "dependencies": {
-    "art-supabase-pro": "https://gitee.com/wangyanghub/art-supabase-pro/repository/archive/cb23bb2bdf3bddabe6fd6c8a905d841e8014ef59.tar.gz"
+    "art-supabase-pro": "https://gitee.com/wangyanghub/art-supabase-pro/repository/archive/d71d170a2098351c26f7d4b1fcd41eb363790d4f.tar.gz"
   },
   "peerDependencies": {
     "vue": "^3.5.43",
