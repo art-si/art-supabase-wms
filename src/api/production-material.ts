@@ -1,4 +1,4 @@
-import { useSupabase } from '@/hooks'
+import { useSupabase } from '@/hooks/core/useSupabase'
 import { uniq } from 'lodash-es'
 import { buildOrIlikeFilter } from '@/utils/supabase/search'
 import { buildSupabasePageRange } from '@/utils/supabase/pagination'

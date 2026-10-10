@@ -1,4 +1,4 @@
-import { useSupabase } from '@/hooks'
+import { useSupabase } from '@/hooks/core/useSupabase'
 import { isPlainObject } from 'lodash-es'
 import { normalizeNullableText } from '@/utils/form/normalize'
 

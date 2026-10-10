@@ -1,0 +1,1 @@
+import{Q as e,R as t,U as n,q as r,z as i}from"./_baseForOwn-CerGzgWQ.js";function a(e,t){return n(i(e,t,r),e+``)}function o(n){return e(n)&&t(n)}export{a as n,o as t};

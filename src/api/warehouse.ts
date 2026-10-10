@@ -1,6 +1,6 @@
 import { buildSupabasePageRange, fetchAllRangePages } from '@/utils/supabase/pagination'
 import { uniq } from 'lodash-es'
-import { useSupabase } from '@/hooks'
+import { useSupabase } from '@/hooks/core/useSupabase'
 import { loadAllDocumentPages } from '@/utils/business/document-detail-list'
 import { buildOrIlikeFilter } from '@/utils/supabase/search'
 import { normalizeNullableText } from '@/utils/form/normalize'

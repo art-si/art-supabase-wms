@@ -22,14 +22,15 @@
     </ElAlert>
 
     <div class="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.8fr)]">
-      <ArtSectionCard title="仓内作业" subtitle="根据当前任务进入收料、库存、追溯或项目复盘。">
-        <ArtEmptyState
-          v-if="!visibleEntries.length"
-          title="暂无可用作业入口"
-          description="请联系管理员为当前角色配置仓储作业权限。"
-          size="compact"
-        />
-        <div v-else class="grid gap-3 sm:grid-cols-2">
+      <ArtSectionCard
+        title="仓内作业"
+        subtitle="根据当前任务进入收料、库存、追溯或项目复盘。"
+        :empty="!visibleEntries.length"
+        empty-title="暂无可用作业入口"
+        empty-description="请联系管理员为当前角色配置仓储作业权限。"
+        :empty-visual-size="72"
+      >
+        <div class="grid gap-3 sm:grid-cols-2">
           <RouterLink
             v-for="entry in visibleEntries"
             :key="entry.path"
@@ -108,19 +109,23 @@
     type BusinessWorkspaceMetric
   } from '@/components/business/business-workspace-header/index.vue'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
-  import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
+  import { useAsyncState } from '@vueuse/core'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import { useAuth } from '@/hooks/core/useAuth'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
-  import { fetchWmsWorkbenchStats, type WmsWorkbenchStats } from '@wms/api'
+  import { fetchWmsWorkbenchStats } from '@wms/api'
 
   defineOptions({ name: 'WmsWorkbench' })
   const { hasAuth } = useAuth()
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
-  const stats = shallowRef<WmsWorkbenchStats>()
-  const loading = ref(false)
-  const loadError = ref(false)
-  let requestId = 0
+  const request = useAsyncState(fetchWmsWorkbenchStats, undefined, {
+    immediate: false,
+    // The warning preserves usable business navigation while offering a retry.
+    onError: () => undefined
+  })
+  const stats = request.state
+  const loading = request.isLoading
+  const loadError = computed(() => request.error.value !== undefined)
   const metrics = computed<BusinessWorkspaceMetric[]>(() => [
     {
       label: '在库批次',
@@ -289,18 +294,7 @@
   ]
 
   async function loadStats(): Promise<void> {
-    const id = ++requestId
-    stats.value = undefined
-    loading.value = true
-    loadError.value = false
-    try {
-      const value = await fetchWmsWorkbenchStats(effectiveTenantId.value || undefined)
-      if (id === requestId) stats.value = value
-    } catch {
-      if (id === requestId) loadError.value = true
-    } finally {
-      if (id === requestId) loading.value = false
-    }
+    await request.executeImmediate(effectiveTenantId.value || undefined)
   }
   watch(effectiveTenantId, () => void loadStats())
   onMounted(() => void loadStats())

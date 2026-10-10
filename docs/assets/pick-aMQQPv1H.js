@@ -1,0 +1,1 @@
+import{C as e,T as t,a as n}from"./_baseForOwn-CerGzgWQ.js";import{t as r,u as i}from"./_baseSet-D2ldNdjJ.js";function a(n,i,a){for(var o=-1,s=i.length,c={};++o<s;){var l=i[o],u=e(n,l);a(u,l)&&r(c,t(l,n),u)}return c}function o(e,t){return a(e,t,function(t,r){return n(e,r)})}var s=i(function(e,t){return e==null?{}:o(e,t)});export{s as t};

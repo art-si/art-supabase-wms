@@ -1,4 +1,4 @@
-import { useSupabase } from '@/hooks'
+import { useSupabase } from '@/hooks/core/useSupabase'
 import { fetchWmsInventoryOrganizationOptions } from '@/api/wms-inventory-organization'
 import { buildOrIlikeFilter } from '@/utils/supabase/search'
 import { buildSupabasePageRange } from '@/utils/supabase/pagination'
