@@ -1,0 +1,1 @@
+import{Jn as e,nr as t,xr as n}from"./supabase-CslnX642.js";import{t as r}from"./workspace-CSnhoO7v.js";var i=t({name:`WmsInitialSalesReturn`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{kind:`initial_return`}))}});export{i as default};

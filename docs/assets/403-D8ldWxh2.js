@@ -1,1 +1,0 @@
-import{Hn as e,Xn as t,hr as n}from"./supabase-zaVzt3t2.js";import{t as r}from"./art-permission-guard-DDH__-KF.js";var i=t({name:`Exception403`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{"force-denied":``,"resource-name":`目标页面`,"show-relogin":``,"viewport-centered":``}))}});export{i as default};

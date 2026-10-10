@@ -1,0 +1,1 @@
+import{Jn as e,nr as t,xr as n}from"./supabase-CslnX642.js";import{t as r}from"./inventory-report-workspace-BqD3yKNH.js";var i=t({name:`WmsInventoryLedger`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{kind:`movement`}))}});export{i as default};

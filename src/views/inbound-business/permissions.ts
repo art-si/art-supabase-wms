@@ -1,5 +1,6 @@
 export const WMS_PURCHASE_INBOUND_PERMISSIONS = {
   View: 'WmsPurchaseInbound:View',
+  Print: 'WmsPurchaseInbound:Print',
   Add: 'WmsPurchaseInbound:Add',
   Copy: 'WmsPurchaseInbound:Copy',
   Edit: 'WmsPurchaseInbound:Edit',
@@ -14,6 +15,7 @@ export const WMS_PURCHASE_INBOUND_PERMISSIONS = {
 
 export const WMS_PURCHASE_RETURN_PERMISSIONS = {
   View: 'WmsPurchaseReturn:View',
+  Print: 'WmsPurchaseReturn:Print',
   Add: 'WmsPurchaseReturn:Add',
   Copy: 'WmsPurchaseReturn:Copy',
   Edit: 'WmsPurchaseReturn:Edit',
@@ -43,6 +45,7 @@ export const WMS_OTHER_INBOUND_PERMISSIONS = {
 
 export const WMS_ENTRUSTED_PROCESSING_INBOUND_PERMISSIONS = {
   View: 'WmsEntrustedProcessingInbound:View',
+  Print: 'WmsEntrustedProcessingInbound:Print',
   Add: 'WmsEntrustedProcessingInbound:Add',
   Copy: 'WmsEntrustedProcessingInbound:Copy',
   Edit: 'WmsEntrustedProcessingInbound:Edit',
@@ -57,6 +60,7 @@ export const WMS_ENTRUSTED_PROCESSING_INBOUND_PERMISSIONS = {
 
 export const WMS_ENTRUSTED_PROCESSING_RETURN_PERMISSIONS = {
   View: 'WmsEntrustedProcessingReturn:View',
+  Print: 'WmsEntrustedProcessingReturn:Print',
   Add: 'WmsEntrustedProcessingReturn:Add',
   Copy: 'WmsEntrustedProcessingReturn:Copy',
   Edit: 'WmsEntrustedProcessingReturn:Edit',
