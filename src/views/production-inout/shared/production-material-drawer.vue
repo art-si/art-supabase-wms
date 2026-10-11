@@ -776,7 +776,10 @@
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import dayjs from 'dayjs'
   import { ElMessage } from 'element-plus'
-  import type { EmployeeIntegrationItem } from '@/api/integration/employees'
+  import {
+    fetchEmployeeReferencesByIds,
+    type EmployeeIntegrationItem
+  } from '@/api/integration/employees'
   import { fetchOrganizationOptionsTree } from '@/api/system-manage'
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
@@ -817,7 +820,6 @@
     fetchWmsProductionBomItems,
     fetchWmsProductionBusinessTypes,
     fetchWmsProductionDocumentTypes,
-    fetchWmsProductionEmployeesByIds,
     fetchWmsProductionMaterialDocument,
     fetchWmsProductionMaterialsByCodes,
     fetchWmsProductionMaterialsByIds,
@@ -2201,10 +2203,7 @@
         ...lines.value.map((line) => line.keeperId)
       ].filter((id): id is string => Boolean(id))
       if (ids.length && form.value.tenantId) {
-        const fetchedEmployees = await fetchWmsProductionEmployeesByIds(
-          form.value.tenantId,
-          uniq(ids)
-        )
+        const fetchedEmployees = await fetchEmployeeReferencesByIds(form.value.tenantId, uniq(ids))
         if (request !== documentRequest) return
         employees.value = fetchedEmployees
         selectedApplicant.value = fetchedEmployees.filter(

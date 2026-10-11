@@ -3,7 +3,6 @@ import { uniq } from 'lodash-es'
 import { buildOrIlikeFilter } from '@/utils/supabase/search'
 import { buildSupabasePageRange } from '@/utils/supabase/pagination'
 import type { WmsMaterialOption } from './warehouse.types'
-import type { EmployeeIntegrationItem } from '@/api/integration/employees'
 import type {
   WmsProductionBomItem,
   WmsProductionBusinessTypeOption,
@@ -281,25 +280,6 @@ export async function fetchWmsFinishedInboundSourcePage(params: {
     readOptions
   )
   return { data: data ?? [], total: total ?? 0 }
-}
-
-export async function fetchWmsProductionEmployeesByIds(
-  tenantId: string,
-  ids: string[]
-): Promise<EmployeeIntegrationItem[]> {
-  if (!ids.length) return []
-  const { data } = await responseHandle<EmployeeIntegrationItem[]>(
-    () =>
-      supabase
-        .from('mdm_employee')
-        .select(
-          'id,tenant_id,organization_id,employee_no,employee_name,job_title,employment_status,organization:mdm_organization(id,organization_code,organization_name)'
-        )
-        .eq('tenant_id', tenantId)
-        .in('id', ids),
-    readOptions
-  )
-  return data ?? []
 }
 
 interface BomSnapshotItem {

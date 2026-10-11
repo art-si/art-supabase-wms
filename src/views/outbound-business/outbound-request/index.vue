@@ -44,6 +44,7 @@
         :columns-factory="columnsFactory"
         :columns-context-key="displayMode"
         :header-actions="headerActions"
+        :selection-actions="selectionActions"
         header-actions-placement="workspace"
         :search-bar-props="{ span: 6, labelWidth: 82 }"
         :table-props="{
@@ -54,6 +55,7 @@
           emptyDescription: '新增申请并填写申请类型、日期、项目、物料和数量。'
         }"
         focusable
+        @selection-change="onSelectionChange"
       >
         <template #search-displayMode>
           <ElRadioGroup v-model="displayMode" aria-label="单据列表展示方式" @change="refresh">
@@ -61,8 +63,34 @@
             <ElRadioButton label="line" value="line">按明细</ElRadioButton>
           </ElRadioGroup>
         </template>
+        <template #selection-action-request-push>
+          <ArtButtonMore
+            :list="[
+              {
+                key: 'other_outbound',
+                label: '其他出库单',
+                icon: 'ri:inbox-unarchive-line',
+                auth: 'WmsIssueRequest:Push'
+              }
+            ]"
+            trigger="click"
+            @click="pushOtherOutbound"
+          >
+            <template #trigger
+              ><ElButton size="small" plain :loading="pushing" :disabled="!selectedRequests.length"
+                ><ArtSvgIcon icon="ri:file-transfer-line" />下推<ArtSvgIcon
+                  icon="ri:arrow-down-s-line" /></ElButton
+            ></template>
+          </ArtButtonMore>
+        </template>
       </ArtTableQuery>
       <IssueRequestCreateDialog ref="createRef" @success="refresh" />
+      <InitialSalesDrawer
+        ref="otherOutboundRef"
+        kind="other_outbound"
+        import-permission="WmsOtherOutbound:Import"
+        @success="refresh"
+      />
       <IssueRequestDetailDrawer ref="detailRef" @success="refresh" />
       <MasterDataDeleteGuard ref="deleteGuardRef" />
     </div>
@@ -78,6 +106,11 @@
   import { useAuth } from '@/hooks/core/useAuth'
   import { useRouteDocumentDrawer } from '@/hooks/core/useRouteDocumentDrawer'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
+  import dayjs from 'dayjs'
+  import { uniq } from 'lodash-es'
+  import ArtButtonMore from '@/components/core/forms/art-button-more/index.vue'
+  import InitialSalesDrawer from '../../initialization/initial-sales/modules/initial-sales-drawer.vue'
   import { recordDeleteGuardOptions } from '@/hooks/core/useRecordDeleteGuard'
   import { useDocumentBulkDelete } from '@/hooks/business/useDocumentBulkDelete'
   import type { MasterDataDeleteResource } from '@/components/business/master-data-delete-guard/index.vue'
@@ -226,6 +259,126 @@
       : ([1, 1] as [number, number])
   }
   const createRef = ref<InstanceType<typeof IssueRequestCreateDialog>>()
+  const otherOutboundRef = ref<InstanceType<typeof InitialSalesDrawer>>()
+  const selectedRequests = ref<Array<{ id: string; lineId?: string }>>([])
+  const pushing = ref(false)
+  const selectionActions = computed<ArtTableQueryHeaderAction[]>(() => [
+    bulkDeleteAction(),
+    ...(hasAuth('WmsOtherOutbound:Add')
+      ? [
+          {
+            key: 'request-push',
+            slot: 'request-push',
+            permission: 'WmsIssueRequest:Push',
+            label: '下推',
+            disabled: () => pushing.value
+          }
+        ]
+      : [])
+  ])
+  function onSelectionChange(rows: Record<string, unknown>[]): void {
+    selectedRequests.value = rows.flatMap((row) =>
+      typeof row.id === 'string'
+        ? [
+            {
+              id: row.id,
+              lineId:
+                typeof row.detailRowId === 'string'
+                  ? row.detailRowId.slice(row.id.length + 1)
+                  : undefined
+            }
+          ]
+        : []
+    )
+  }
+  async function pushOtherOutbound(): Promise<void> {
+    if (
+      pushing.value ||
+      !selectedRequests.value.length ||
+      !hasAuth('WmsIssueRequest:Push') ||
+      !hasAuth('WmsOtherOutbound:Add')
+    )
+      return
+    pushing.value = true
+    try {
+      const requests = await Promise.all(
+        uniq(selectedRequests.value.map((row) => row.id)).map(fetchWmsIssueRequest)
+      )
+      const first = requests[0]
+      if (
+        requests.some(
+          (row) =>
+            !['approved', 'partially_issued'].includes(row.status) ||
+            row.tenantId !== first.tenantId ||
+            row.organizationId !== first.organizationId ||
+            row.warehouseId !== first.warehouseId ||
+            row.customerId !== first.customerId ||
+            row.usingDepartmentId !== first.usingDepartmentId
+        )
+      ) {
+        ElMessage.warning('请选择同一租户、组织、仓库及业务归属下已审核的申请明细')
+        return
+      }
+      const sourceLines = await fetchWmsIssueRequestLinesForDocuments(requests.map((row) => row.id))
+      const lines = sourceLines.flatMap((line) => {
+        if (
+          !line.details ||
+          line.requestedQuantity <= line.issuedQuantity ||
+          (displayMode.value === 'line' &&
+            !selectedRequests.value.some((row) => row.lineId === line.id))
+        )
+          return []
+        const source = requests.find((row) => row.id === line.requestId)
+        return [
+          {
+            ...line.details,
+            id: undefined,
+            quantity: line.requestedQuantity - line.issuedQuantity,
+            sourceDocumentId: line.requestId,
+            sourceLineId: line.id,
+            sourceDocument: source?.documentNo || null,
+            sourceLineNo: String(line.lineNo || '')
+          }
+        ]
+      })
+      if (!lines.length) {
+        ElMessage.warning('所选申请已全部出库，请重新选择')
+        return
+      }
+      await otherOutboundRef.value?.handleOpen({
+        mode: 'copy',
+        document: {
+          id: first.id,
+          tenantId: first.tenantId,
+          organizationId: first.organizationId,
+          kind: 'other_outbound',
+          documentNo: first.documentNo,
+          documentTypeId: '',
+          businessTypeId: '',
+          businessDate: dayjs().format('YYYY-MM-DD'),
+          accountingDate: dayjs().format('YYYY-MM-DD'),
+          customerId: first.customerId || '',
+          usingDepartmentId: first.usingDepartmentId,
+          projectId: first.projectId,
+          warehouseId: first.warehouseId,
+          salespersonId: first.applicantId,
+          salesDepartmentId: null,
+          keeperId: first.keeperId || null,
+          status: 'draft',
+          isInitialization: false,
+          remark: first.remark,
+          createdAt: first.createdAt,
+          updatedAt: first.createdAt,
+          approvedAt: null,
+          lines
+        }
+      })
+    } catch (error) {
+      notifyFriendlyError(error, '下推其他出库单失败，请重新加载申请后重试')
+    } finally {
+      pushing.value = false
+    }
+  }
   const detailRef = ref<InstanceType<typeof IssueRequestDetailDrawer>>()
   const warehouses = ref<WmsWarehouse[]>([])
   const projects = ref<WmsProject[]>([])
@@ -561,6 +714,7 @@
       },
       { prop: 'applicationDate', label: '申请日期', minWidth: 118 },
       { prop: 'documentTypeName', label: '单据类型', minWidth: 150, showOverflowTooltip: true },
+      { prop: 'businessTypeName', label: '业务类型', minWidth: 150, showOverflowTooltip: true },
       {
         prop: 'status',
         label: '状态',

@@ -1,1 +1,0 @@
-var e=(...e)=>t=>{e.forEach(e=>{e.value=t})},t=Symbol(`artFormFocus`);export{e as n,t};

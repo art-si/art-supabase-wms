@@ -44,6 +44,13 @@
         empty-description="添加申请明细后可按批次查看出库记录。"
         @retry="loadDetail"
       >
+        <ArtTable
+          :data="lines"
+          :columns="lineColumns"
+          :pagination="false"
+          row-key="id"
+          table-layout="fixed"
+        />
         <ul class="divide-y divide-[var(--el-border-color-light)]">
           <li
             v-for="item in lines"
@@ -112,6 +119,8 @@
 
 <script setup lang="ts">
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
+  import ArtTable from '@/components/core/tables/art-table/index.vue'
+  import type { ColumnOption } from '@/types'
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
   import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
@@ -140,19 +149,62 @@
     { key: 'date', label: '申请日期', field: 'applicationDate', format: 'date' },
     {
       key: 'workOrder',
-      label: '关联工单',
+      label: '生产工单',
       value: (row: WmsIssueRequest) => row.workOrder?.workOrderNo || row.workOrderNo
     },
     {
       key: 'warehouse',
-      label: '领料仓库',
+      label: '仓库号',
       value: (row: WmsIssueRequest) => row.warehouse?.warehouseName || row.warehouseName
     },
     { key: 'project', label: '项目', value: () => projectName.value },
     { key: 'constructionNo', label: '施工号', field: 'constructionNo' },
+    { key: 'departmentName', label: '领用部门', field: 'departmentName' },
+    { key: 'applicantName', label: '申请人', field: 'applicantName' },
+    { key: 'customerName', label: '客户', field: 'customerName' },
     { key: 'remark', label: '申请备注', field: 'remark', span: 2 }
   ]
   const lines = ref<WmsIssueRequestLine[]>([])
+  const lineColumns: ColumnOption<WmsIssueRequestLine>[] = [
+    { prop: 'lineNo', label: '行号', width: 70 },
+    { prop: 'material.materialCode', label: '物料编码', minWidth: 150 },
+    { prop: 'material.materialName', label: '物料描述', minWidth: 220 },
+    { prop: 'details.material.specificationModel', label: '规格型号', minWidth: 160 },
+    { prop: 'details.material.drawingNo', label: '图号', minWidth: 140 },
+    { prop: 'details.material.brand', label: '品牌', minWidth: 120 },
+    { prop: 'details.project.name', label: '项目名称', minWidth: 180 },
+    { prop: 'details.constructionNo', label: '施工号', minWidth: 150 },
+    { prop: 'requestedQuantity', label: '申请数量', width: 120 },
+    { prop: 'details.inventoryUnitName', label: '库存单位', width: 110 },
+    { prop: 'details.availableQuantity', label: '可用库存量', width: 130 },
+    { prop: 'details.allocatedQuantity', label: '已分配量', width: 120 },
+    { prop: 'details.batchNo', label: '批次号', minWidth: 150 },
+    {
+      prop: 'details.serialNos',
+      label: '序列号',
+      minWidth: 180,
+      formatter: (row) => row.details?.serialNos?.join('、') || '—'
+    },
+    { prop: 'details.unitPrice', label: '单价(元)', width: 120 },
+    { prop: 'details.amount', label: '金额(元)', width: 120 },
+    { prop: 'details.warehouseName', label: '仓库', minWidth: 160 },
+    { prop: 'details.zoneName', label: '库区', minWidth: 130 },
+    { prop: 'details.bin.binName', label: '库位', minWidth: 130 },
+    { prop: 'issuedQuantity', label: '累计出库数量', width: 140 },
+    {
+      prop: 'remainingQuantity',
+      label: '未出库数量',
+      width: 140,
+      formatter: (row) => Math.max(row.requestedQuantity - row.issuedQuantity, 0)
+    },
+    { prop: 'details.keeperName', label: '仓管员', minWidth: 130 },
+    {
+      prop: 'details.material.materialSource',
+      label: '物料来源',
+      minWidth: 140,
+      dict: { code: 'mdmMaterialSource', display: 'text' }
+    }
+  ]
   const allocations = ref<WmsIssueRequestAllocation[]>([])
   const loading = ref(false)
   const loadError = ref(false)

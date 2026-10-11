@@ -79,7 +79,7 @@ const documentSelect = `id,tenant_id,organization_id,document_no,document_type_i
   keeper:mdm_employee!wms_initial_stock_keeper_fkey(employee_name),
   organization:mdm_organization!wms_initial_stock_document_organization_id_fkey(id,tenant_id,organization_code,organization_name,organization_type,status),
   lines:wms_initial_stock_line(id,line_no,material_id,project_id,construction_no,gift,unit_price,amount,inventory_unit_id,opening_quantity,base_unit_id,base_quantity,yearly_opening_quantity,yearly_received_quantity,yearly_issued_quantity,batch_no,inbound_date,warehouse_id,bin_id,stock_type,owner_type,owner_id,stock_status,keeper_id,auxiliary_unit_id,opening_aux_quantity,yearly_opening_aux_quantity,yearly_received_aux_quantity,yearly_issued_aux_quantity,production_date,expiry_date,tracking_no,source_document,remark,serial_nos,
-    material:mdm_material!wms_initial_stock_line_material_id_fkey(id,tenant_id,code:material_code,name:material_name,description,specification_model,inventory_unit_id,base_unit_id,auxiliary_unit_id,unit_conversions,serial_management_enabled),
+    material:mdm_material!wms_initial_stock_line_material_id_fkey(id,tenant_id,code:material_code,name:material_name,description,specification_model,drawing_no,brand,material_source,inventory_unit_id,base_unit_id,auxiliary_unit_id,unit_conversions,serial_management_enabled),
     project:mdm_project!wms_initial_stock_line_project_id_fkey(id,tenant_id,code:project_code,name:project_name),
     warehouse:mdm_warehouse!wms_initial_stock_line_warehouse_id_fkey(id,tenant_id,code:warehouse_code,name:warehouse_name),
     inventoryUnit:mdm_unit_of_measure!wms_initial_stock_line_inventory_unit_fkey(unit_name),
@@ -168,7 +168,7 @@ export async function fetchWmsInitialMaterials(params: {
   let request = supabase
     .from('mdm_material')
     .select(
-      'id,tenant_id,code:material_code,name:material_name,description,specification_model,inventory_unit_id,base_unit_id,auxiliary_unit_id,auxiliary_unit_2_id,unit_conversions,serial_management_enabled,batch_management_enabled',
+      'id,tenant_id,code:material_code,name:material_name,description,specification_model,drawing_no,brand,material_source,inventory_unit_id,base_unit_id,auxiliary_unit_id,auxiliary_unit_2_id,unit_conversions,serial_management_enabled,batch_management_enabled',
       { count: 'exact' }
     )
     .eq('tenant_id', params.tenantId)
@@ -207,7 +207,7 @@ export async function fetchWmsInitialOptions(
       name: 'businessTypeName'
     },
     mdm_project: {
-      fields: 'id,tenant_id,project_code,project_name',
+      fields: 'id,tenant_id,project_code,project_name,customer_id',
       code: 'projectCode',
       name: 'projectName'
     },
@@ -234,6 +234,7 @@ export async function fetchWmsInitialOptions(
       tenantId: typeof row.tenantId === 'string' ? row.tenantId : '',
       code: typeof code === 'string' ? code : '',
       name: typeof name === 'string' ? name : '',
+      customerId: typeof row.customerId === 'string' ? row.customerId : null,
       documentTypeId: typeof row.documentTypeId === 'string' ? row.documentTypeId : undefined,
       documentTypeIds: Array.isArray(row.documentTypeIds)
         ? row.documentTypeIds.filter((id): id is string => typeof id === 'string')

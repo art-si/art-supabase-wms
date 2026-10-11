@@ -22,7 +22,7 @@
       :disabled="!enabled || disabled || !warehouseId || !materialId || !quantity || quantity <= 0"
       @click="recommend"
     >
-      <ArtSvgIcon icon="ri:magic-line" class="mr-1" />自动选位
+      <ArtSvgIcon icon="ri:magic-line" />自动选位
     </ElButton>
   </div>
 </template>

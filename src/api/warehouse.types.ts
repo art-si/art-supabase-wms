@@ -42,6 +42,12 @@ export interface WmsMaterialOption {
 }
 
 export interface WmsWorkOrderOption {
+  projectName?: string | null
+  customerId?: string | null
+  materialCode?: string | null
+  materialDescription?: string | null
+  specificationModel?: string | null
+  drawingNo?: string | null
   id: string
   tenantId: string
   organizationId: string
@@ -378,12 +384,13 @@ export type WmsIssueRequestStatus =
   'draft' | 'submitted' | 'approved' | 'partially_issued' | 'fulfilled' | 'rejected' | 'cancelled'
 
 export interface WmsIssueRequest {
+  keeperId?: string | null
   id: string
   tenantId: string
   documentNo: string
   warehouseId: string
   organizationId: string
-  workOrderId: string
+  workOrderId: string | null
   projectId: string | null
   constructionNo: string | null
   requestType: string
@@ -435,6 +442,9 @@ export interface WmsIssueRequestAllocation {
 }
 
 export interface WmsIssueRequestLine {
+  lineNo?: number
+  details?: import('./initial-sales.types').WmsInitialSalesLine
+  stockBatchId?: string | null
   id: string
   requestId: string
   materialId: string
@@ -455,16 +465,25 @@ export interface WmsIssueReservationLine {
 }
 
 export interface WmsIssueRequestInput {
+  tenantId?: string
+  projectId?: string | null
+  constructionNo?: string | null
+  customerId?: string | null
+  applicantId?: string | null
+  usingDepartmentId?: string | null
+  keeperId?: string | null
   organizationId: string
   documentTypeId: string
   businessTypeId: string
   warehouseId: string
-  workOrderId: string
+  workOrderId: string | null
   documentNo?: string | null
   requestType: string
   applicationDate: string
   remark?: string | null
-  lines: Array<{ materialId: string; quantity: number }>
+  lines:
+    | Array<{ materialId: string; quantity: number }>
+    | import('./initial-sales.types').WmsInitialSalesLine[]
 }
 
 export interface WmsIssuePostInput {

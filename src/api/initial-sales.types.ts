@@ -5,7 +5,74 @@ export type WmsInitialSalesKind =
   'initial_outbound' | 'initial_return' | 'outbound' | 'return' | 'other_outbound' | 'other_return'
 export type WmsInitialSalesStatus = 'draft' | 'submitted' | 'approved'
 
+export type WmsSalesSourceKind =
+  | 'stock'
+  | 'sales_order'
+  | 'shipping_notice'
+  | 'outbound'
+  | 'return_request'
+  | 'request_stock'
+  | 'other_stock'
+  | 'issue_request'
+  | 'other_outbound'
+export interface WmsSalesChoice {
+  id: string
+  selectionDisabled?: boolean
+  selectionHint?: string | null
+  sourceDocumentId: string | null
+  sourceLineId: string | null
+  documentNo: string | null
+  documentType: string | null
+  lineNo: number | null
+  customerId: string | null
+  customerName: string | null
+  materialCode: string
+  materialDescription: string | null
+  specificationModel: string | null
+  drawingNo: string | null
+  brand: string | null
+  projectName: string | null
+  constructionNo: string | null
+  salesOrderQuantity: number | null
+  shippingNoticeQuantity: number | null
+  outboundQuantity: number
+  returnedQuantity: number
+  deliverableQuantity: number
+  inventoryQuantity: number
+  inventoryUnit: string | null
+  availableQuantity: number
+  allocatedQuantity: number
+  batchNo: string | null
+  serialNos: string[]
+  unitPrice: number
+  taxRate: number
+  warehouseName: string
+  zoneName: string | null
+  binName: string | null
+  keeperName: string | null
+  materialSource: string | null
+  contractNo: string | null
+  requestType?: string | null
+  requestedQuantity?: number
+  departmentName?: string | null
+  applicantName?: string | null
+  usingDepartmentId?: string | null
+  applicantId?: string | null
+  material: WmsInitialMaterial
+  line: Partial<WmsInitialSalesLine>
+}
+
 export interface WmsInitialSalesLine {
+  warehouseName?: string | null
+  zoneName?: string | null
+  keeperName?: string | null
+  inventoryUnitName?: string | null
+  availableQuantity?: number
+  allocatedQuantity?: number
+  issuedQuantity?: number
+  stockBatchId?: string | null
+  sourceDocumentId?: string | null
+  sourceLineId?: string | null
   id?: string
   lineNo: number
   returnType: 'return' | 'replace' | 'refund_only' | null
@@ -52,6 +119,10 @@ export interface WmsInitialSalesLine {
 }
 
 export interface WmsInitialSalesDocument {
+  usingDepartment?: { organizationName: string } | null
+  usingDepartmentId?: string | null
+  projectId?: string | null
+  warehouseId?: string | null
   id: string
   tenantId: string
   organizationId: string
@@ -79,6 +150,7 @@ export interface WmsInitialSalesDocument {
 }
 
 export interface WmsInitialSalesListRow extends WmsDocumentClassification {
+  departmentName?: string | null
   documentId: string
   tenantId: string
   organizationId: string

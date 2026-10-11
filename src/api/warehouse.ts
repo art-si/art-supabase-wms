@@ -907,44 +907,25 @@ export async function fetchWmsIssueRequest(id: string): Promise<WmsIssueRequest>
 }
 
 export async function fetchWmsIssueRequestLines(id: string): Promise<WmsIssueRequestLine[]> {
-  const { data } = await responseHandle<WmsIssueRequestLine[]>(
-    () =>
-      supabase
-        .from('wms_issue_request_line')
-        .select(
-          '*,material:mdm_material!wms_issue_request_line_material_fk(material_code,material_name,serial_management_enabled,baseUnit:mdm_unit_of_measure!mdm_material_base_unit_fkey(unit_name))'
-        )
-        .eq('request_id', id)
-        .order('id'),
-    readOptions
-  )
-  return data ?? []
+  return fetchWmsIssueRequestLinesForDocuments([id])
 }
 
 export async function fetchWmsIssueRequestLinesForDocuments(
   documentIds: string[]
 ): Promise<WmsIssueRequestLine[]> {
-  const lineBatches: WmsIssueRequestLine[][] = []
+  const lines: WmsIssueRequestLine[] = []
   for (let offset = 0; offset < documentIds.length; offset += 100) {
-    const ids = documentIds.slice(offset, offset + 100)
-    const result = await fetchAllRangePages<WmsIssueRequestLine>(({ from, to }) =>
-      responseHandle<WmsIssueRequestLine[]>(
-        () =>
-          supabase
-            .from('wms_issue_request_line')
-            .select(
-              '*,material:mdm_material!wms_issue_request_line_material_fk(material_code,material_name,serial_management_enabled,baseUnit:mdm_unit_of_measure!mdm_material_base_unit_fkey(unit_name))'
-            )
-            .in('request_id', ids)
-            .order('id')
-            .range(from, to),
-        readOptions
-      )
+    const { data } = await responseHandle<WmsIssueRequestLine[]>(
+      () =>
+        supabase.rpc('wms_issue_request_lines_secure', {
+          p_request_ids: documentIds.slice(offset, offset + 100)
+        }),
+      readOptions
     )
-    if (result.error) throw result.error
-    lineBatches.push(result.data ?? [])
+    if (!Array.isArray(data)) throw new Error('申请明细加载失败，请重试')
+    lines.push(...data)
   }
-  return lineBatches.flat()
+  return lines
 }
 
 export async function fetchWmsIssueRequestAllocations(

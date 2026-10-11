@@ -6,6 +6,7 @@ import type {
   WmsInitialSalesListRow,
   WmsInitialSalesPayload
 } from './initial-sales.types'
+import type { WmsSalesChoice, WmsSalesSourceKind } from './initial-sales.types'
 
 export * from './initial-sales.types'
 
@@ -24,11 +25,14 @@ const writeOptions = {
 }
 
 const documentSelect = `*,
+ using_department:mdm_organization!wms_sales_document_using_department_id_fkey(organization_name),
+ salesperson:mdm_employee!wms_sales_document_salesperson_id_fkey(employee_name),
+ keeper:mdm_employee!wms_sales_document_keeper_id_fkey(employee_name),
  organization:mdm_organization!wms_sales_document_organization_id_fkey(organization_name,organization_code),
  customer:mdm_customer!wms_sales_document_customer_id_fkey(customer_name),
- lines:wms_sales_document_line(*,
+ lines:wms_sales_document_line!wms_sales_document_line_document_id_fkey(*,
  bin:mdm_warehouse_bin!wms_sales_document_line_bin_id_fkey(bin_name,bin_code),
- material:mdm_material!wms_sales_document_line_material_id_fkey(id,tenant_id,code:material_code,name:material_name,description,specification_model,inventory_unit_id,base_unit_id,auxiliary_unit_id,auxiliary_unit_2_id,unit_conversions,serial_management_enabled,batch_management_enabled),
+ material:mdm_material!wms_sales_document_line_material_id_fkey(id,tenant_id,code:material_code,name:material_name,description,specification_model,drawing_no,brand,material_source,inventory_unit_id,base_unit_id,auxiliary_unit_id,auxiliary_unit_2_id,unit_conversions,serial_management_enabled,batch_management_enabled),
  project:mdm_project!wms_sales_document_line_project_id_fkey(id,tenant_id,code:project_code,name:project_name))`
 
 export async function fetchWmsInitialSalesPage(query: {
@@ -79,6 +83,35 @@ export async function fetchWmsInitialSalesDocument(id: string): Promise<WmsIniti
   return data
 }
 
+export async function fetchWmsSalesChoices(query: {
+  kind: WmsSalesSourceKind
+  tenantId: string
+  organizationId: string
+  warehouseId?: string
+  keyword: string
+  current: number
+  size: number
+  excludeDocumentId?: string
+}): Promise<{ data: WmsSalesChoice[]; total: number }> {
+  const { data } = await responseHandle<{ data: WmsSalesChoice[]; total: number }>(
+    () =>
+      supabase.rpc('wms_sales_choices_secure', {
+        p_kind: query.kind,
+        p_tenant_id: query.tenantId,
+        p_organization_id: query.organizationId,
+        p_warehouse_id: query.warehouseId || null,
+        p_keyword: query.keyword || null,
+        p_limit: query.size,
+        p_offset: (query.current - 1) * query.size,
+        p_exclude_document_id: query.excludeDocumentId || null
+      }),
+    readOptions
+  )
+  if (!data || !Array.isArray(data.data) || typeof data.total !== 'number')
+    throw new Error('选单数据异常，请重试')
+  return data
+}
+
 export async function saveWmsInitialSalesDocument(
   payload: WmsInitialSalesPayload
 ): Promise<string> {
@@ -88,6 +121,18 @@ export async function saveWmsInitialSalesDocument(
   )
   if (!data) throw new Error('销售单据保存失败')
   return data
+}
+
+export async function fetchWmsSalesReturnRemaining(
+  documentIds: string[]
+): Promise<Array<{ lineId: string; remainingQuantity: number; serialNos: string[] }>> {
+  const { data } = await responseHandle<
+    Array<{ lineId: string; remainingQuantity: number; serialNos: string[] }>
+  >(
+    () => supabase.rpc('wms_sales_return_remaining_secure', { p_document_ids: documentIds }),
+    readOptions
+  )
+  return data ?? []
 }
 
 export async function changeWmsInitialSalesStatus(

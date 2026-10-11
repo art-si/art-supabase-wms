@@ -59,7 +59,8 @@
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import ArtTableQuery, {
     type ArtTableQueryExpose,
-    type ArtTableQueryHeaderAction
+    type ArtTableQueryHeaderAction,
+    type ArtTableQueryHeaderActionContext
   } from '@/components/core/tables/art-table-query/index.vue'
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import ArtButtonMore, {
@@ -319,12 +320,13 @@
       workingId.value = undefined
     }
   }
-  async function pushSelected(): Promise<void> {
-    if (!selectedDocumentIds.value.length) {
+  async function pushSelected({ selectedRows }: ArtTableQueryHeaderActionContext): Promise<void> {
+    const ids = uniq(selectedRows.map((row) => String(row.documentId)))
+    if (!ids.length) {
       ElMessage.warning('请先勾选已审核单据')
       return
     }
-    for (const id of [...selectedDocumentIds.value]) await push(id)
+    for (const id of ids) await push(id)
   }
   const { bulkDeleteAction, bulkDeleting } = useDocumentBulkDelete({
     permission: () => permissions.value.Delete,
@@ -516,6 +518,13 @@
           />
         )
       },
+      {
+        prop: 'documentTypeName',
+        label: '单据类型',
+        minWidth: 160,
+        showOverflowTooltip: true
+      },
+      { prop: 'businessTypeName', label: '业务类型', minWidth: 140, showOverflowTooltip: true },
       {
         prop: 'status',
         label: '单据状态',

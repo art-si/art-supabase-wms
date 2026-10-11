@@ -12,6 +12,7 @@ export interface WmsInventoryOrganization {
 }
 
 export interface WmsInitializationOption {
+  customerId?: string | null
   id: string
   name: string
   code: string
@@ -24,6 +25,9 @@ export interface WmsInitializationOption {
 }
 
 export interface WmsInitialMaterial extends WmsInitializationOption {
+  drawingNo?: string | null
+  brand?: string | null
+  materialSource?: string | null
   description: string | null
   specificationModel: string | null
   inventoryUnitId: string | null

@@ -25,6 +25,7 @@
         :columns-factory="columnsFactory"
         :columns-context-key="displayMode"
         :header-actions="headerActions"
+        :selection-actions="selectionActions"
         header-actions-placement="workspace"
         :search-bar-props="{ span: 6, labelWidth: 76 }"
         :table-props="{
@@ -44,7 +45,25 @@
             <ElRadioButton label="line" value="line">按明细</ElRadioButton>
           </ElRadioGroup>
         </template>
+        <template #sales-push>
+          <ArtButtonMore :list="pushActions" trigger="click" @click="onSalesPush">
+            <template #trigger
+              ><ElButton size="small" plain :disabled="!selectedRows.length || pushingSales"
+                ><ArtSvgIcon icon="ri:file-transfer-line" />下推<ArtSvgIcon
+                  icon="ri:arrow-down-s-line" /></ElButton
+            ></template>
+          </ArtButtonMore>
+        </template>
       </ArtTableQuery>
+      <SalesPrintSheet ref="printSheetRef" />
+      <WmsAssetCapitalizationDialog ref="assetDialogRef" @success="refresh" />
+      <InitialSalesDrawer
+        v-if="kind === 'outbound'"
+        ref="salesReturnDrawerRef"
+        kind="return"
+        import-permission="WmsSalesReturnDocument:Import"
+        @success="refresh"
+      />
       <InitialSalesDrawer
         ref="drawerRef"
         :kind="kind"
@@ -58,39 +77,14 @@
         :import-permission="permission.Import"
         @success="refresh"
       />
-      <ArtDialog ref="sourceDialogRef" size="sm" :show-footer="false">
-        <ArtEntitySummary
-          icon="ri:file-search-line"
-          eyebrow="SOURCE DOCUMENT"
-          title="选择来源单据"
-          description="选择业务来源后建立其他出库草稿，并在明细中保留来源单据与源行号。"
-        />
-        <div class="mt-5 grid gap-3">
-          <ElSelect v-model="sourceDocumentType" class="w-full" placeholder="选择来源业务">
-            <ElOption
-              v-for="option in sourceDocumentTypeOptions"
-              :key="option.value"
-              :label="option.label"
-              :value="option.value"
-            />
-          </ElSelect>
-          <ElButton type="primary" :disabled="!sourceDocumentType" @click="createFromSource">
-            建立出库草稿
-          </ElButton>
-        </div>
-      </ArtDialog>
       <ArtDialog ref="pushDialogRef" size="sm" :show-footer="false">
         <ArtEntitySummary
           icon="ri:file-transfer-line"
           eyebrow="DOCUMENT PUSH"
-          :title="isInitial ? '下推期初应收' : '下推发票'"
-          :description="
-            isInitial
-              ? '登记上线前未结清应收；退货冲减应收，不影响库存。可在结束初始化的对账表核对。'
-              : '普通发票与专用发票下推规则将在发票业务接入后开放。'
-          "
+          title="下推期初应收"
+          description="登记上线前未结清应收；退货冲减应收，不影响库存。可在结束初始化的对账表核对。"
         />
-        <div v-if="isInitial" class="mt-5">
+        <div class="mt-5">
           <ElButton
             type="primary"
             class="w-full!"
@@ -99,10 +93,6 @@
             >{{ isReturn ? '期初应收冲减' : '期初应收单' }}</ElButton
           >
         </div>
-        <div v-else class="mt-5 grid gap-3 sm:grid-cols-2">
-          <ElButton disabled class="w-full!">普通发票</ElButton>
-          <ElButton disabled class="w-full!">专用发票</ElButton>
-        </div>
       </ArtDialog>
       <MasterDataDeleteGuard ref="deleteGuardRef" />
     </div>
@@ -110,6 +100,7 @@
 </template>
 
 <script setup lang="tsx">
+  import WmsAssetCapitalizationDialog from '@/components/business/wms-asset-capitalization-dialog/index.vue'
   import { wmsDocumentClassificationColumns } from '@/utils/business/wms-document-columns'
   import { useWmsInitialObligationPush } from '@/hooks/business/useWmsInitialObligationPush'
   import { replaceReactiveModel } from '@/utils/form/model'
@@ -150,14 +141,19 @@
   import {
     changeWmsInitialSalesStatus,
     fetchWmsInitialSalesDocument,
+    fetchWmsSalesReturnRemaining,
+    pushWmsSalesInvoices,
     fetchWmsInitialSalesPage,
     type WmsInitialSalesKind,
     type WmsInitialSalesListRow
   } from '@wms/api'
   import InitialSalesDrawer from './modules/initial-sales-drawer.vue'
+  import SalesPrintSheet from './modules/sales-print-sheet.vue'
+  import { uniq } from 'lodash-es'
+  import { navigateToApplication } from '@/utils/application-navigation'
+  import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
 
   const commonDocumentReviewStatusOptions = useDictionaryOptions('commonDocumentReviewStatus')
-  const sourceDocumentTypeOptions = useDictionaryOptions('wmsOutboundSourceDocumentType')
 
   const props = defineProps<{ kind: WmsInitialSalesKind }>()
   const { confirmAction } = useArtFeedback()
@@ -207,10 +203,193 @@
   const drawerRef = ref<InstanceType<typeof InitialSalesDrawer>>()
   const otherReturnDrawerRef = ref<InstanceType<typeof InitialSalesDrawer>>()
   const pushDialogRef = ref<ArtDialogExpose>()
-  const sourceDialogRef = ref<ArtDialogExpose>()
-  const sourceDocumentType = ref('')
   const workingId = ref<string>()
-  const selectedRows = ref<Array<{ documentId: string; kind: unknown; status: unknown }>>([])
+  const selectedRows = ref<
+    Array<{ documentId: string; lineId: string; kind: unknown; status: unknown }>
+  >([])
+  const printSheetRef = ref<InstanceType<typeof SalesPrintSheet>>()
+  const salesReturnDrawerRef = ref<InstanceType<typeof InitialSalesDrawer>>()
+  const printing = ref(false)
+  const assetDialogRef = ref<InstanceType<typeof WmsAssetCapitalizationDialog>>()
+  const pushingSales = ref(false)
+  const isDailySales = computed(() => ['outbound', 'return', 'other_outbound'].includes(props.kind))
+  const pushActions = computed<ButtonMoreItem[]>(() => [
+    ...(props.kind === 'other_outbound'
+      ? [
+          {
+            key: 'other-return',
+            label: '其他出库退回',
+            icon: 'ri:arrow-go-back-line',
+            auth: 'WmsOtherOutbound:Push'
+          },
+          ...(hasAuth('FinanceFixedAsset:Add')
+            ? [
+                {
+                  key: 'asset',
+                  label: '采购转固',
+                  icon: 'ri:building-2-line',
+                  auth: 'WmsOtherOutbound:Push'
+                }
+              ]
+            : [])
+        ]
+      : []),
+    ...(props.kind !== 'other_outbound' &&
+    hasAuth('WmsSalesInvoice:Add') &&
+    hasAuth('WmsSalesInvoice:View')
+      ? [
+          { key: 'ordinary', label: '普通发票', icon: 'ri:bill-line', auth: permission.value.Push },
+          {
+            key: 'special',
+            label: '专用发票',
+            icon: 'ri:file-paper-2-line',
+            auth: permission.value.Push
+          }
+        ]
+      : []),
+    ...(props.kind === 'outbound' && hasAuth('WmsSalesReturnDocument:Add')
+      ? [
+          {
+            key: 'return',
+            label: '销售退货单',
+            icon: 'ri:arrow-go-back-line',
+            auth: 'WmsSalesOutbound:Push'
+          }
+        ]
+      : [])
+  ])
+  async function printSelection(): Promise<void> {
+    if (printing.value || !selectedRows.value.length) return
+    printing.value = true
+    try {
+      await printSheetRef.value?.print(
+        await Promise.all(
+          uniq(selectedRows.value.map((row) => row.documentId)).map(fetchWmsInitialSalesDocument)
+        )
+      )
+    } catch (error) {
+      notifyFriendlyError(error, '打印资料加载失败，请重试')
+    } finally {
+      printing.value = false
+    }
+  }
+  async function onSalesPush(item: ButtonMoreItem): Promise<void> {
+    if (pushingSales.value || !selectedRows.value.length || !hasAuth(permission.value.Push)) return
+    pushingSales.value = true
+    try {
+      if (item.key === 'asset') {
+        const ids = uniq(selectedRows.value.map((row) => row.documentId))
+        const documents = await Promise.all(ids.map(fetchWmsInitialSalesDocument))
+        if (
+          !hasAuth('FinanceFixedAsset:Add') ||
+          documents.some(
+            (doc) =>
+              doc.kind !== 'other_outbound' ||
+              doc.status !== 'approved' ||
+              doc.tenantId !== documents[0].tenantId
+          )
+        ) {
+          ElMessage.warning('请选择同一租户下已审核的其他出库单')
+          return
+        }
+        await assetDialogRef.value?.open(
+          documents[0].tenantId,
+          ids.map((documentId) => ({
+            documentId,
+            lineIds:
+              displayMode.value === 'document'
+                ? null
+                : selectedRows.value
+                    .filter((row) => row.documentId === documentId)
+                    .map((row) => row.lineId)
+          }))
+        )
+        return
+      }
+      if (item.key === 'ordinary' || item.key === 'special') {
+        const ids = uniq(selectedRows.value.map((row) => row.documentId))
+        const invoices = await pushWmsSalesInvoices(
+          item.key,
+          ids.map((documentId) => ({
+            documentId,
+            lineIds:
+              displayMode.value === 'document'
+                ? null
+                : selectedRows.value
+                    .filter((row) => row.documentId === documentId)
+                    .map((row) => row.lineId)
+          }))
+        )
+        ElMessage.success(`已生成 ${invoices.length} 张销售发票草稿`)
+        await navigateToApplication('wms', '/wms/outbound-business/sales-invoice', {
+          documentId: invoices[0]
+        })
+        return
+      }
+      const documents = await Promise.all(
+        uniq(selectedRows.value.map((row) => row.documentId)).map(fetchWmsInitialSalesDocument)
+      )
+      const first = documents[0]
+      if (
+        documents.some(
+          (doc) =>
+            doc.status !== 'approved' ||
+            doc.kind !== (props.kind === 'other_outbound' ? 'other_outbound' : 'outbound') ||
+            doc.tenantId !== first.tenantId ||
+            doc.customerId !== first.customerId ||
+            doc.organizationId !== first.organizationId
+        )
+      ) {
+        ElMessage.warning('请选择同一租户、客户和库存组织下已审核的销售出库明细')
+        return
+      }
+      const selectedIds = new Set(selectedRows.value.map((row) => row.lineId))
+      const remaining = await fetchWmsSalesReturnRemaining(documents.map((doc) => doc.id))
+      const lines = documents.flatMap((doc) =>
+        doc.lines
+          .filter(
+            (line) => displayMode.value === 'document' || (line.id && selectedIds.has(line.id))
+          )
+          .filter((line) =>
+            remaining.some((item) => item.lineId === line.id && item.remainingQuantity > 0)
+          )
+          .map((line) => ({
+            ...line,
+            quantity: remaining.find((item) => item.lineId === line.id)?.remainingQuantity || 0,
+            serialNos: remaining.find((item) => item.lineId === line.id)?.serialNos || [],
+            id: undefined,
+            sourceDocumentId: doc.id,
+            sourceLineId: line.id || null,
+            sourceDocument: doc.documentNo,
+            sourceLineNo: String(line.lineNo),
+            returnType: 'return' as const
+          }))
+      )
+      if (!lines.length) {
+        ElMessage.warning('所选明细已全部退货，请重新选择')
+        return
+      }
+      await (
+        props.kind === 'other_outbound' ? otherReturnDrawerRef.value : salesReturnDrawerRef.value
+      )?.handleOpen({
+        mode: 'copy',
+        document: {
+          ...first,
+          warehouseId: documents.every((doc) => doc.warehouseId === first.warehouseId)
+            ? first.warehouseId
+            : null,
+          projectId: documents.every((doc) => doc.projectId === first.projectId)
+            ? first.projectId
+            : null,
+          lines
+        }
+      })
+    } catch (error) {
+      notifyFriendlyError(error, '下推失败，请重试')
+    } finally {
+      pushingSales.value = false
+    }
+  }
   const { pushing: pushingInitialObligation, push: pushInitialObligation } =
     useWmsInitialObligationPush({
       area: 'sales',
@@ -222,7 +401,7 @@
 
   useRouteDocumentDrawer({
     routeName: () => permission.value.View.split(':')[0],
-    canOpen: () => (isInitial.value || props.kind === 'return') && hasAuth(permission.value.View),
+    canOpen: () => hasAuth(permission.value.View),
     fetchDocument: async (id) => {
       const document = await fetchWmsInitialSalesDocument(id)
       if (document.kind !== props.kind) throw new Error('单据类型不匹配')
@@ -460,13 +639,21 @@
     column: { property?: string }
   }): string {
     if (
-      row.kind === 'initial_return' &&
+      row.kind === 'other_outbound' &&
+      ['quantity', 'baseQuantity', 'amount', 'taxAmount', 'totalAmount'].includes(
+        column.property || ''
+      )
+    )
+      return 'opening-return-negative-cell'
+    if (
+      returnKinds.includes(String(row.kind) as WmsInitialSalesKind) &&
       [
         'quantity',
         'baseQuantity',
         'auxiliaryQuantity',
         'auxiliaryQuantity2',
         'amount',
+        'taxAmount',
         'discountAmount',
         'totalAmount'
       ].includes(column.property || '')
@@ -477,27 +664,11 @@
       : ''
   }
   function onSelectionChange(rows: Record<string, unknown>[]): void {
-    selectedRows.value = rows.flatMap(({ documentId, kind, status }) =>
-      typeof documentId === 'string' ? [{ documentId, kind, status }] : []
+    selectedRows.value = rows.flatMap(({ documentId, lineId, kind, status }) =>
+      typeof documentId === 'string' && typeof lineId === 'string'
+        ? [{ documentId, lineId, kind, status }]
+        : []
     )
-  }
-  async function createFromSource(): Promise<void> {
-    if (!sourceDocumentType.value) return
-    await sourceDialogRef.value?.handleClose()
-    await drawerRef.value?.handleOpen({ mode: 'create' })
-  }
-  async function pushOtherReturn(): Promise<void> {
-    const documents = new Map(selectedRows.value.map((row) => [row.documentId, row]))
-    if (documents.size !== 1) {
-      ElMessage.warning('请先勾选一张已审核的其他出库单')
-      return
-    }
-    const source = [...documents.values()][0]
-    if (source.kind !== 'other_outbound' || source.status !== 'approved') {
-      ElMessage.warning('仅支持下推已审核的其他出库单')
-      return
-    }
-    await otherReturnDrawerRef.value?.handleOpen({ mode: 'copy', documentId: source.documentId })
   }
   async function openDocument(
     mode: 'view' | 'edit' | 'copy',
@@ -523,6 +694,16 @@
     deleteResourceLabel.value = row.kind === 'other_return' ? '其他出库退回单' : title.value
     workingId.value = row.documentId
     try {
+      if (action === 'submit' && ['other_outbound', 'other_return'].includes(row.kind)) {
+        const document = await fetchWmsInitialSalesDocument(row.documentId)
+        if (!document.customerId && !document.usingDepartmentId) {
+          await confirmAction('领用部门和客户不能同时为空', '请补充业务归属', {
+            showCancelButton: false,
+            confirmButtonText: '返回补充'
+          })
+          return
+        }
+      }
       if (action === 'delete' && (await inspectDeleteReferences(resources))) return
       await confirmAction(
         `${action === 'withdraw' ? '撤回后恢复暂存，可修改或删除；关联审批待办将取消。' : ''}确定${label} ${row.documentNo}？`,
@@ -563,9 +744,9 @@
             icon: 'ri:link-m',
             permission: 'WmsOtherOutbound:Select',
             buttonProps: { type: 'primary' as const, plain: true },
-            onClick: () => {
-              sourceDocumentType.value = ''
-              return sourceDialogRef.value?.handleOpen(undefined, { title: '选择来源单据' })
+            onClick: async () => {
+              await drawerRef.value?.handleOpen({ mode: 'create' })
+              await drawerRef.value?.openSourceChoice({ key: 'issue_request', label: '出库申请单' })
             }
           }
         ]
@@ -616,15 +797,39 @@
     },
     {
       key: 'push',
+      hidden: isDailySales.value,
       label: '下推',
       icon: 'ri:file-transfer-line',
       permission: permission.value.Push,
       buttonProps: { type: 'info', plain: true },
-      onClick: () =>
-        props.kind === 'other_outbound'
-          ? pushOtherReturn()
-          : pushDialogRef.value?.handleOpen(undefined, { title: '下推发票' })
+      onClick: () => pushDialogRef.value?.handleOpen(undefined, { title: '下推期初应收' })
     }
+  ])
+  const selectionActions = computed<ArtTableQueryHeaderAction[]>(() => [
+    bulkDeleteAction(),
+    ...(isDailySales.value
+      ? [
+          {
+            key: 'sales-push',
+            slot: 'sales-push',
+            label: '下推',
+            permission: permission.value.Push
+          },
+          {
+            key: 'batch-print',
+            label: '批量打印',
+            icon: 'ri:printer-line',
+            permission:
+              props.kind === 'other_outbound'
+                ? 'WmsOtherOutbound:Print'
+                : props.kind === 'outbound'
+                  ? 'WmsSalesOutbound:Print'
+                  : 'WmsSalesReturnDocument:Print',
+            buttonProps: { loading: printing.value },
+            onClick: printSelection
+          }
+        ]
+      : [])
   ])
   function statusLabel(value: WmsInitialSalesListRow['status']): string {
     return { draft: '暂存', submitted: '已提交', approved: '已审核' }[value]
@@ -697,7 +902,7 @@
           />
         )
       },
-      ...(isInitial.value ? wmsDocumentClassificationColumns<WmsInitialSalesListRow>() : []),
+      ...wmsDocumentClassificationColumns<WmsInitialSalesListRow>(),
       { prop: 'businessDate', label: '业务日期', minWidth: 118 },
       {
         prop: 'status',
@@ -719,6 +924,9 @@
         )
       },
       { prop: 'customerName', label: '客户', minWidth: 170, showOverflowTooltip: true },
+      ...(props.kind === 'other_outbound'
+        ? [{ prop: 'departmentName', label: '领用部门', minWidth: 160 }]
+        : []),
       ...(props.kind !== 'other_outbound' && isReturn.value
         ? ([
             {
@@ -757,13 +965,22 @@
                 : 'font-semibold tabular-nums'
             }
           >
+            {['return', 'other_outbound', 'other_return'].includes(row.kind) ? '￥' : ''}
             {Number(row.quantity).toFixed(4)}
           </span>
         )
       },
-      ...(displayMode.value === 'line' && props.kind === 'initial_return'
+      ...(displayMode.value === 'line' &&
+      ['initial_return', 'return', 'other_outbound', 'other_return'].includes(props.kind)
         ? ([
-            { prop: 'baseQuantity', label: '基本数量', minWidth: 115, align: 'right' },
+            {
+              prop: 'baseQuantity',
+              label: '基本数量',
+              minWidth: 115,
+              align: 'right',
+              formatter: (row) =>
+                `${['return', 'other_outbound', 'other_return'].includes(row.kind) ? '￥' : ''}${Number(row.baseQuantity).toFixed(4)}`
+            },
             { prop: 'auxiliaryQuantity', label: '辅助数量', minWidth: 115, align: 'right' },
             { prop: 'auxiliaryQuantity2', label: '辅助数量2', minWidth: 125, align: 'right' }
           ] as ColumnOption<WmsInitialSalesListRow>[])
@@ -771,14 +988,35 @@
       { prop: 'unitPrice', label: '单价(元)', minWidth: 108, align: 'right' },
       { prop: 'taxInclusiveUnitPrice', label: '含税单价(元)', minWidth: 125, align: 'right' },
       { prop: 'taxRate', label: '税率(%)', minWidth: 100, align: 'right' },
-      { prop: 'amount', label: '金额(元)', minWidth: 110, align: 'right' },
+      {
+        prop: 'amount',
+        label: '金额(元)',
+        minWidth: 110,
+        align: 'right',
+        formatter: (row) =>
+          `${['return', 'other_outbound', 'other_return'].includes(row.kind) ? '￥' : ''}${Number(row.amount).toFixed(2)}`
+      },
       ...(props.kind === 'initial_return'
         ? ([
             { prop: 'discountAmount', label: '折扣额(元)', minWidth: 115, align: 'right' }
           ] as ColumnOption<WmsInitialSalesListRow>[])
         : []),
-      { prop: 'taxAmount', label: '税额(元)', minWidth: 110, align: 'right' },
-      { prop: 'totalAmount', label: '价税合计(元)', minWidth: 130, align: 'right' },
+      {
+        prop: 'taxAmount',
+        label: '税额(元)',
+        minWidth: 110,
+        align: 'right',
+        formatter: (row) =>
+          `${['return', 'other_outbound', 'other_return'].includes(row.kind) ? '￥' : ''}${Number(row.taxAmount).toFixed(2)}`
+      },
+      {
+        prop: 'totalAmount',
+        label: '价税合计(元)',
+        minWidth: 130,
+        align: 'right',
+        formatter: (row) =>
+          `${['return', 'other_outbound', 'other_return'].includes(row.kind) ? '￥' : ''}${Number(row.totalAmount).toFixed(2)}`
+      },
       { prop: 'batchNo', label: '批号', minWidth: 120 },
       { prop: 'warehouseName', label: '仓库', minWidth: 140 },
       { prop: 'binName', label: '仓位', minWidth: 120 },
