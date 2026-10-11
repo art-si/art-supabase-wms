@@ -1,1 +1,0 @@
-import{Hn as e,Xn as t,hr as n}from"./supabase-zaVzt3t2.js";import{t as r}from"./workspace-uFRXfLSQ.js";var i=t({name:`WmsSalesOutbound`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{kind:`outbound`}))}});export{i as default};

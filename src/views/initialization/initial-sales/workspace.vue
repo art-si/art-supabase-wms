@@ -273,12 +273,12 @@
       printing.value = false
     }
   }
-  async function onSalesPush(item: ButtonMoreItem): Promise<void> {
-    if (pushingSales.value || !selectedRows.value.length || !hasAuth(permission.value.Push)) return
+  async function onSalesPush(item: ButtonMoreItem, rows = selectedRows.value): Promise<void> {
+    if (pushingSales.value || !rows.length || !hasAuth(permission.value.Push)) return
     pushingSales.value = true
     try {
       if (item.key === 'asset') {
-        const ids = uniq(selectedRows.value.map((row) => row.documentId))
+        const ids = uniq(rows.map((row) => row.documentId))
         const documents = await Promise.all(ids.map(fetchWmsInitialSalesDocument))
         if (
           !hasAuth('FinanceFixedAsset:Add') ||
@@ -299,15 +299,13 @@
             lineIds:
               displayMode.value === 'document'
                 ? null
-                : selectedRows.value
-                    .filter((row) => row.documentId === documentId)
-                    .map((row) => row.lineId)
+                : rows.filter((row) => row.documentId === documentId).map((row) => row.lineId)
           }))
         )
         return
       }
       if (item.key === 'ordinary' || item.key === 'special') {
-        const ids = uniq(selectedRows.value.map((row) => row.documentId))
+        const ids = uniq(rows.map((row) => row.documentId))
         const invoices = await pushWmsSalesInvoices(
           item.key,
           ids.map((documentId) => ({
@@ -315,9 +313,7 @@
             lineIds:
               displayMode.value === 'document'
                 ? null
-                : selectedRows.value
-                    .filter((row) => row.documentId === documentId)
-                    .map((row) => row.lineId)
+                : rows.filter((row) => row.documentId === documentId).map((row) => row.lineId)
           }))
         )
         ElMessage.success(`已生成 ${invoices.length} 张销售发票草稿`)
@@ -327,7 +323,7 @@
         return
       }
       const documents = await Promise.all(
-        uniq(selectedRows.value.map((row) => row.documentId)).map(fetchWmsInitialSalesDocument)
+        uniq(rows.map((row) => row.documentId)).map(fetchWmsInitialSalesDocument)
       )
       const first = documents[0]
       if (
@@ -343,7 +339,7 @@
         ElMessage.warning('请选择同一租户、客户和库存组织下已审核的销售出库明细')
         return
       }
-      const selectedIds = new Set(selectedRows.value.map((row) => row.lineId))
+      const selectedIds = new Set(rows.map((row) => row.lineId))
       const remaining = await fetchWmsSalesReturnRemaining(documents.map((doc) => doc.id))
       const lines = documents.flatMap((doc) =>
         doc.lines
@@ -640,6 +636,7 @@
   }): string {
     if (
       row.kind === 'other_outbound' &&
+      Number(row[column.property || '']) < 0 &&
       ['quantity', 'baseQuantity', 'amount', 'taxAmount', 'totalAmount'].includes(
         column.property || ''
       )
@@ -647,6 +644,7 @@
       return 'opening-return-negative-cell'
     if (
       returnKinds.includes(String(row.kind) as WmsInitialSalesKind) &&
+      Number(row[column.property || '']) < 0 &&
       [
         'quantity',
         'baseQuantity',
@@ -659,7 +657,9 @@
       ].includes(column.property || '')
     )
       return 'opening-return-negative-cell'
-    return column.property === 'quantity' && returnKinds.some((kind) => kind === row.kind)
+    return column.property === 'quantity' &&
+      Number(row.quantity) < 0 &&
+      returnKinds.some((kind) => kind === row.kind)
       ? 'initial-sales-negative-cell'
       : ''
   }
@@ -838,6 +838,9 @@
   function moreActions(row: WmsInitialSalesListRow): ButtonMoreItem[] {
     return [
       { key: 'copy', label: '复制单据', icon: 'ri:file-copy-line', auth: permission.value.Copy },
+      ...(row.status === 'approved' && row.kind === props.kind && hasAuth(permission.value.Push)
+        ? pushActions.value
+        : []),
       ...(row.status === 'draft'
         ? [
             { key: 'edit', label: '编辑单据', icon: 'ri:edit-line', auth: permission.value.Edit },
@@ -875,7 +878,9 @@
     ]
   }
   function onMoreAction(item: ButtonMoreItem, row: WmsInitialSalesListRow): void {
-    if (item.key === 'copy' || item.key === 'edit') {
+    if (pushActions.value.some((action) => action.key === item.key)) {
+      void onSalesPush(item, [row])
+    } else if (item.key === 'copy' || item.key === 'edit') {
       void openDocument(item.key, row)
     } else if (
       item.key === 'submit' ||

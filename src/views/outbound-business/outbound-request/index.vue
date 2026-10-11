@@ -99,6 +99,7 @@
 
 <script setup lang="tsx">
   import { formatDateTimeValue } from '@/utils/ui/format'
+  import { issueRequestTypeLabels as requestTypeLabels } from '@wms/views/shared/issue-request-types'
   import { replaceReactiveModel } from '@/utils/form/model'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { ElMessage, ElTag } from 'element-plus'
@@ -404,14 +405,6 @@
     fulfilled: '已领完',
     rejected: '已驳回',
     cancelled: '已取消'
-  }
-  const requestTypeLabels: Record<string, string> = {
-    damage_outbound: '货损出库',
-    consumables_outbound: '耗材出库',
-    scrap_outbound: '报废出库',
-    welfare_use: '福利领用',
-    office_supplies_use: '办公用品领用',
-    labor_protection_use: '劳保用品领用'
   }
   const { bulkDeleteAction, bulkDeleting } = useDocumentBulkDelete({
     permission: 'WmsIssueRequest:Delete',

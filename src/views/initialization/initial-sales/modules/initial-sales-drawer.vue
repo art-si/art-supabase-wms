@@ -686,6 +686,7 @@
 
 <script setup lang="ts">
   import { getMaterialCategoryIds } from '@/utils/business/material-category'
+  import { issueRequestTypeLabels } from '@wms/views/shared/issue-request-types'
   import { readWmsDocumentImportRows } from '@/utils/wms/document-import'
   import { formatWmsOwnerName } from '@/utils/wms/owner-display'
   import { replaceReactiveModel } from '@/utils/form/model'
@@ -764,7 +765,13 @@
   } from '@wms/api'
 
   const wmsLineDiscountModeOptions = useDictionaryOptions('wmsLineDiscountMode')
-  const requestTypeOptions = useDictionaryOptions('wmsIssueReason')
+  const requestTypeDictionary = useDictionaryOptions('wmsIssueReason')
+  const requestTypeOptions = computed(() =>
+    Object.entries(issueRequestTypeLabels).map(([value, label]) => ({
+      value,
+      label: requestTypeDictionary.find((option) => option.value === value)?.label || label
+    }))
+  )
   const taxRateDictionary = useDictionaryOptions('scmTaxRate', Number)
   const taxRateOptions = computed(() =>
     taxRateDictionary.filter((item) => Number.isFinite(item.value))
@@ -1392,7 +1399,12 @@
       : []),
     ...(props.issueRequest
       ? ([
-          { key: 'requestType', label: '申请类型', type: 'select', options: requestTypeOptions },
+          {
+            key: 'requestType',
+            label: '申请类型',
+            type: 'select',
+            options: requestTypeOptions.value
+          },
           { key: 'workOrderId', label: '生产工单', type: 'input' },
           { key: 'constructionNo', label: '施工号', type: 'input' }
         ] as FormItem[])

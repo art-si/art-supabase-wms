@@ -196,6 +196,18 @@
         border: 1px solid #000;
       }
 
+      :is(th, td):is(
+        :nth-child(3),
+        :nth-child(4),
+        :nth-child(5),
+        :nth-child(6),
+        :nth-child(9),
+        :nth-child(10)
+      ) {
+        padding-inline: 1mm;
+        white-space: nowrap;
+      }
+
       thead {
         display: table-header-group;
       }

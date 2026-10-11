@@ -105,6 +105,10 @@
   const editing = ref(false)
   const loadError = ref(false)
   const form = ref({ issueDate: '', remark: '' })
+  const invoiceTypeLabels: Record<WmsSalesInvoice['invoiceType'], string> = {
+    ordinary: '普通发票',
+    special: '专用发票'
+  }
   let requestVersion = 0
   const searchItems: SearchFormItem[] = [
     {
@@ -129,9 +133,7 @@
     {
       key: 'invoiceType',
       label: '发票类型',
-      field: 'invoiceType',
-      dictCode: 'wmsSalesInvoiceType',
-      dictDisplay: 'text'
+      value: (data: WmsSalesInvoice) => invoiceTypeLabels[data.invoiceType]
     },
     {
       key: 'redLetter',
@@ -246,8 +248,7 @@
         prop: 'invoiceType',
         label: '发票类型',
         minWidth: 120,
-        dictCode: 'wmsSalesInvoiceType',
-        dictDisplay: 'text'
+        formatter: (row) => invoiceTypeLabels[row.invoiceType]
       },
       {
         prop: 'redLetter',
@@ -348,7 +349,10 @@
     routeName: 'WmsSalesInvoice',
     canOpen: () => hasAuth('WmsSalesInvoice:View'),
     fetchDocument: fetchWmsSalesInvoice,
-    openDocument: (data) => open(data, false)
+    openDocument: async (data) => {
+      await open(data, false)
+      await tableRef.value?.refreshCreate()
+    }
   })
 </script>
 <style scoped lang="scss">
