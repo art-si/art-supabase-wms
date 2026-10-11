@@ -1,0 +1,1 @@
+import{Hn as e,Xn as t,hr as n}from"./supabase-zaVzt3t2.js";import{t as r}from"./inventory-report-workspace-ByKQ-2pi.js";var i=t({name:`WmsStockLedger`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{kind:`ledger`}))}});export{i as default};
