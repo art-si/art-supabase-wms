@@ -31,6 +31,9 @@ export interface WmsInventoryReportRow {
   documentType: string | null
   documentNo: string | null
   documentStatus: string | null
+  sourceDocumentId?: string | null
+  sourceDocumentKind?: 'outbound' | 'return' | 'other_outbound' | 'other_return' | null
+  sourceLineNo?: number | null
   direction: 'in' | 'out' | null
   materialCode: string
   materialDescription: string | null
@@ -123,6 +126,20 @@ function isReportPage(value: unknown): value is WmsInventoryReportPage {
         typeof row.batchId === 'string' &&
         typeof row.materialCode === 'string' &&
         typeof row.materialName === 'string' &&
+        (row.sourceDocumentId === undefined ||
+          row.sourceDocumentId === null ||
+          typeof row.sourceDocumentId === 'string') &&
+        (row.sourceDocumentKind === undefined ||
+          row.sourceDocumentKind === null ||
+          (typeof row.sourceDocumentKind === 'string' &&
+            ['outbound', 'return', 'other_outbound', 'other_return'].includes(
+              row.sourceDocumentKind
+            ))) &&
+        (row.sourceLineNo === undefined ||
+          row.sourceLineNo === null ||
+          (typeof row.sourceLineNo === 'number' &&
+            Number.isInteger(row.sourceLineNo) &&
+            row.sourceLineNo > 0)) &&
         typeof row.warehouseId === 'string' &&
         typeof row.warehouseName === 'string' &&
         typeof row.inventoryQuantity === 'number' &&

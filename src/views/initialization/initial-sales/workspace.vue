@@ -400,11 +400,16 @@
     canOpen: () => hasAuth(permission.value.View),
     fetchDocument: async (id) => {
       const document = await fetchWmsInitialSalesDocument(id)
-      if (document.kind !== props.kind) throw new Error('单据类型不匹配')
+      if (
+        document.kind !== props.kind &&
+        !(props.kind === 'other_outbound' && document.kind === 'other_return')
+      )
+        throw new Error('单据类型不匹配')
       return document
     },
     openDocument: async (document) => {
-      await drawerRef.value?.handleOpen({ mode: 'view', document })
+      const target = document.kind === 'other_return' ? otherReturnDrawerRef.value : drawerRef.value
+      await target?.handleOpen({ mode: 'view', document })
     },
     onError: () => ElMessage.error(`${title.value}加载失败，请刷新后重试`)
   })
@@ -430,9 +435,11 @@
   const description = computed(() =>
     isInitial.value
       ? '记录上线前未结清销售往来，只初始化应收，不更新库存。退货表单录入正数，列表以红色负数呈现。'
-      : isReturn.value
-        ? `登记${isInitial.value ? '库存初始化前' : '日常'}的销售退货。退货数量以负数呈现，税价和折扣随数量同步计算。`
-        : `登记${isInitial.value ? '库存初始化前' : '日常'}的销售出库。支持客户、项目与物料组合筛选，以及税价联动。`
+      : props.kind === 'other_outbound'
+        ? '其他出库审核后扣减库存，退回审核后增加库存；单据与库存流水同步记账。'
+        : isReturn.value
+          ? '退货审核后增加库存并生成收料流水；仅退款不增加库存。列表数量以负数呈现。'
+          : '出库审核后扣减库存并生成发料流水；库存不足或批次不匹配时审核不通过。'
   )
   const permissionCodes = {
     initial_outbound: {
@@ -706,7 +713,7 @@
       }
       if (action === 'delete' && (await inspectDeleteReferences(resources))) return
       await confirmAction(
-        `${action === 'withdraw' ? '撤回后恢复暂存，可修改或删除；关联审批待办将取消。' : ''}确定${label} ${row.documentNo}？`,
+        `${action === 'withdraw' ? '撤回后恢复暂存，可修改或删除；关联审批待办将取消。' : ''}${action === 'approve' && !row.kind.startsWith('initial_') ? (['return', 'other_return'].includes(row.kind) ? '审核后实物退回将增加库存，仅退款不变更库存。' : '审核后将扣减库存并生成库存流水。') : ''}确定${label} ${row.documentNo}？`,
         `${label}${deleteResourceLabel.value}`,
         {
           type: action === 'delete' ? 'warning' : 'info',

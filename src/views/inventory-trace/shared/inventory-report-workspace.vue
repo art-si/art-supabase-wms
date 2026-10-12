@@ -93,6 +93,7 @@
   } from '@/utils/ui/format'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { useAuth } from '@/hooks/core/useAuth'
+  import { RouterLink } from 'vue-router'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import {
     fetchWmsInventoryLocations,
@@ -306,6 +307,32 @@
     }
   }
 
+  function salesDocumentSource(row: WmsInventoryReportRow): { path: string } | null {
+    if (!row.sourceDocumentId) return null
+    const sources = {
+      outbound: {
+        path: '/wms/outbound-business/sales-outbound',
+        permission: 'WmsSalesOutbound:View'
+      },
+      return: {
+        path: '/wms/outbound-business/sales-return',
+        permission: 'WmsSalesReturnDocument:View'
+      },
+      other_outbound: {
+        path: '/wms/outbound-business/other-outbound',
+        permission: 'WmsOtherOutbound:View'
+      },
+      other_return: {
+        path: '/wms/outbound-business/other-outbound',
+        permission: 'WmsOtherOutbound:View'
+      }
+    }
+    const kind = row.sourceDocumentKind
+    if (!kind || !Object.hasOwn(sources, kind)) return null
+    const source = sources[kind]
+    return hasAuth(source.permission) ? source : null
+  }
+
   function columnsFactory(): ColumnOption<WmsInventoryReportRow>[] {
     const selected = search.summaryValues?.length
       ? search.summaryValues
@@ -374,9 +401,21 @@
         },
         {
           prop: 'documentNo',
-          label: '单据编号',
+          label: props.kind === 'ledger' ? '最近单据编号' : '单据编号',
           minWidth: 170,
-          formatter: (row) => row.documentNo || '—'
+          formatter: (row) => {
+            const source = salesDocumentSource(row)
+            return source ? (
+              <RouterLink
+                to={{ path: source.path, query: { documentId: row.sourceDocumentId } }}
+                class="text-[var(--el-color-primary)] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2"
+              >
+                {row.documentNo}
+              </RouterLink>
+            ) : (
+              row.documentNo || '—'
+            )
+          }
         },
         {
           prop: 'documentStatus',
@@ -392,6 +431,14 @@
         formatter: (row) =>
           row.direction === 'in' ? '入库' : row.direction === 'out' ? '出库' : '—'
       })
+      if (props.kind === 'movement' || props.kind === 'receipt-issue') {
+        columns.splice(4, 0, {
+          prop: 'sourceLineNo',
+          label: '业务明细行号',
+          minWidth: 120,
+          formatter: (row) => row.sourceLineNo ?? '—'
+        })
+      }
     }
     if (props.kind === 'stock') {
       columns.push({
@@ -550,6 +597,15 @@
     resetLocation()
     void loadLocations()
     void tableRef.value?.getData()
+  })
+  let returningToReport = false
+  onDeactivated(() => {
+    returningToReport = true
+  })
+  onActivated(() => {
+    if (!returningToReport) return
+    returningToReport = false
+    void refresh()
   })
   onMounted(() => void loadLocations())
 </script>
