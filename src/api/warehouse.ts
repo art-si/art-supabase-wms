@@ -4,6 +4,7 @@ import { useSupabase } from '@/hooks/core/useSupabase'
 import { loadAllDocumentPages } from '@/utils/business/document-detail-list'
 import { buildOrIlikeFilter } from '@/utils/supabase/search'
 import { normalizeNullableText } from '@/utils/form/normalize'
+import dayjs from 'dayjs'
 import type {
   WmsAdjustmentDocument,
   WmsAdjustmentInput,
@@ -58,6 +59,7 @@ import type {
   WmsTransferInput,
   WmsTransferRequestInput,
   WmsTransferRequestRow,
+  WmsTransferStockOption,
   WmsUnitOption,
   WmsWarehouse,
   WmsWorkOrderOption,
@@ -268,6 +270,21 @@ export async function fetchWmsProjects(tenantId?: string): Promise<WmsProject[]>
   return data ?? []
 }
 
+async function fetchWmsProjectIdsByName(
+  tenantId: string | undefined,
+  keyword: string
+): Promise<string[]> {
+  const result = await fetchAllRangePages<{ id: string }>(({ from, to }) =>
+    responseHandle<Array<{ id: string }>>(() => {
+      let query = supabase.from('mdm_project').select('id').ilike('project_name', `%${keyword}%`)
+      if (tenantId) query = query.eq('tenant_id', tenantId)
+      return query.order('id').range(from, to)
+    }, readOptions)
+  )
+  if (result.error) throw result.error
+  return (result.data ?? []).map((row) => row.id)
+}
+
 export async function fetchWmsProjectSections(projectId?: string): Promise<WmsProjectSection[]> {
   let query = supabase.from('mdm_project_construction').select('*').order('construction_no')
   if (projectId) query = query.eq('project_id', projectId)
@@ -331,6 +348,248 @@ export async function fetchWmsStockPage(params: WmsStockQuery) {
     readOptions
   )
   return { data: data ?? [], total: total ?? 0 }
+}
+
+export async function fetchWmsTransferStockPage(
+  params: WmsStockQuery & {
+    ids?: string[]
+    categoryIds?: string[]
+    batchNo?: string
+    zoneId?: string
+    binId?: string
+  }
+) {
+  const pageRange = buildSupabasePageRange(params)
+  let query = supabase
+    .from('wms_inventory_batch')
+    .select(
+      '*,warehouse:mdm_warehouse!wms_inventory_batch_warehouse_fk(warehouse_code,warehouse_name,responsible_employee_id),bin:mdm_warehouse_bin!wms_inventory_batch_bin_fk(bin_code,bin_name),material:mdm_material!inner(material_code,material_name,description,specification_model,drawing_no,brand,category_id,material_source,material_type,material_type_id,custodian_id,serial_management_enabled,base_unit_id,inventory_unit_id,auxiliary_unit_id,auxiliary_unit_2_id,unit_conversions)',
+      { count: 'exact' }
+    )
+    .order('last_movement_at', { ascending: false })
+    .order('id')
+  if (!params.ids?.length) query = query.eq('status', 'normal').gt('quantity', 0)
+  if (params.tenantId) query = query.eq('tenant_id', params.tenantId)
+  if (params.ids?.length) query = query.in('id', params.ids)
+  if (params.organizationId) query = query.eq('organization_id', params.organizationId)
+  if (params.materialId) query = query.eq('material_id', params.materialId)
+  if (params.projectId) query = query.eq('project_id', params.projectId)
+  if (params.batchNo) query = query.eq('batch_no', params.batchNo)
+  if (params.categoryIds?.length) query = query.in('material.category_id', params.categoryIds)
+  if (params.warehouseId) query = query.eq('warehouse_id', params.warehouseId)
+  if (params.zoneId) query = query.eq('zone_id', params.zoneId)
+  if (params.binId) query = query.eq('bin_id', params.binId)
+  if (params.keyword?.trim())
+    query = query.or(
+      buildOrIlikeFilter(['material_code', 'material_name', 'description'], params.keyword),
+      { referencedTable: 'material' }
+    )
+  const { data, total } = await responseHandle<
+    Array<
+      Omit<
+        WmsTransferStockOption,
+        'availableQuantity' | 'reservedQuantity' | 'ownerName' | 'keeperName' | 'serialNumbers'
+      >
+    >
+  >(() => query.range(pageRange.from, pageRange.to), readOptions)
+  const batches = data ?? []
+  if (!batches.length) return { data: [] as WmsTransferStockOption[], total: total ?? 0 }
+  const warehouseIds = uniq(batches.map((row) => row.warehouseId))
+  const materialIds = uniq(batches.map((row) => row.materialId))
+  const batchIds = batches.map((row) => row.id)
+  const supplierIds = uniq(
+    batches
+      .filter((row) => row.ownerType === 'supplier')
+      .map((row) => row.ownerId)
+      .filter((id): id is string => Boolean(id))
+  )
+  const customerIds = uniq(
+    batches
+      .filter((row) => row.ownerType === 'customer')
+      .map((row) => row.ownerId)
+      .filter((id): id is string => Boolean(id))
+  )
+  const keeperIds = uniq(
+    batches
+      .flatMap((row) => [row.warehouse?.responsibleEmployeeId, row.material?.custodianId])
+      .filter((id): id is string => Boolean(id))
+  )
+  const materialTypeIds = uniq(
+    batches.map((row) => row.material?.materialTypeId).filter((id): id is string => Boolean(id))
+  )
+  type Reservation = {
+    batchId: string | null
+    organizationId: string
+    warehouseId: string
+    binId: string | null
+    materialId: string
+    projectId: string | null
+    constructionNo: string | null
+    reservedQuantity: number
+  }
+  const reservationPromise = fetchAllRangePages<Reservation>(({ from, to }) =>
+    responseHandle<Reservation[]>(() => {
+      let reservationQuery = supabase
+        .from('wms_inventory_reservation')
+        .select(
+          'batch_id,organization_id,warehouse_id,bin_id,material_id,project_id,construction_no,reserved_quantity'
+        )
+        .eq('status', 'active')
+        .in('warehouse_id', warehouseIds)
+        .in('material_id', materialIds)
+      if (params.tenantId) reservationQuery = reservationQuery.eq('tenant_id', params.tenantId)
+      return reservationQuery.order('id').range(from, to)
+    }, readOptions)
+  )
+  const supplierPromise = supplierIds.length
+    ? responseHandle<Array<{ id: string; supplierName: string }>>(
+        () => supabase.from('mdm_supplier').select('id,supplier_name').in('id', supplierIds),
+        readOptions
+      )
+    : Promise.resolve({ data: [] as Array<{ id: string; supplierName: string }> })
+  const customerPromise = customerIds.length
+    ? responseHandle<Array<{ id: string; customerName: string }>>(
+        () => supabase.from('mdm_customer').select('id,customer_name').in('id', customerIds),
+        readOptions
+      )
+    : Promise.resolve({ data: [] as Array<{ id: string; customerName: string }> })
+  const keeperPromise = keeperIds.length
+    ? responseHandle<Array<{ id: string; employeeName: string }>>(
+        () => supabase.from('mdm_employee').select('id,employee_name').in('id', keeperIds),
+        readOptions
+      )
+    : Promise.resolve({ data: [] as Array<{ id: string; employeeName: string }> })
+  const materialTypePromise = materialTypeIds.length
+    ? responseHandle<Array<{ id: string; typeName: string }>>(
+        () => supabase.from('mdm_material_type').select('id,type_name').in('id', materialTypeIds),
+        readOptions
+      )
+    : Promise.resolve({ data: [] as Array<{ id: string; typeName: string }> })
+  const serialPromise = fetchAllRangePages<{ batchId: string; serialNo: string }>(({ from, to }) =>
+    responseHandle<Array<{ batchId: string; serialNo: string }>>(
+      () =>
+        supabase
+          .from('wms_serial_number')
+          .select('batch_id,serial_no')
+          .in('batch_id', batchIds)
+          .eq('status', 'in_stock')
+          .order('id')
+          .range(from, to),
+      readOptions
+    )
+  )
+  const [
+    reservationResult,
+    supplierResult,
+    customerResult,
+    keeperResult,
+    materialTypeResult,
+    serialResult
+  ] = await Promise.all([
+    reservationPromise,
+    supplierPromise,
+    customerPromise,
+    keeperPromise,
+    materialTypePromise,
+    serialPromise
+  ])
+  if (reservationResult.error) throw reservationResult.error
+  if (serialResult.error) throw serialResult.error
+  const reservations = reservationResult.data ?? []
+  const supplierNames = new Map(
+    (supplierResult.data ?? []).map((row) => [row.id, row.supplierName])
+  )
+  const customerNames = new Map(
+    (customerResult.data ?? []).map((row) => [row.id, row.customerName])
+  )
+  const keeperNames = new Map((keeperResult.data ?? []).map((row) => [row.id, row.employeeName]))
+  const materialTypeNames = new Map(
+    (materialTypeResult.data ?? []).map((row) => [row.id, row.typeName])
+  )
+  const serialsByBatch = new Map<string, string[]>()
+  for (const serial of serialResult.data ?? []) {
+    const serials = serialsByBatch.get(serial.batchId) ?? []
+    serials.push(serial.serialNo)
+    serialsByBatch.set(serial.batchId, serials)
+  }
+  return {
+    data: batches.map((batch) => {
+      const reservedQuantity = reservations.reduce((sum, reservation) => {
+        if (
+          reservation.organizationId !== batch.organizationId ||
+          reservation.warehouseId !== batch.warehouseId ||
+          reservation.binId !== batch.binId ||
+          reservation.materialId !== batch.materialId ||
+          (reservation.batchId !== batch.id &&
+            (reservation.batchId !== null ||
+              (batch.projectId !== null &&
+                (reservation.projectId !== batch.projectId ||
+                  reservation.constructionNo !== batch.constructionNo))))
+        )
+          return sum
+        return sum + Number(reservation.reservedQuantity)
+      }, 0)
+      return {
+        ...batch,
+        material: batch.material
+          ? {
+              ...batch.material,
+              materialTypeName: materialTypeNames.get(batch.material.materialTypeId || '') || null
+            }
+          : null,
+        reservedQuantity,
+        availableQuantity: Math.max(0, Number(batch.quantity) - reservedQuantity),
+        ownerName:
+          batch.ownerType === 'self'
+            ? '自有'
+            : batch.ownerType === 'supplier'
+              ? supplierNames.get(batch.ownerId || '') || null
+              : customerNames.get(batch.ownerId || '') || null,
+        keeperName:
+          keeperNames.get(batch.warehouse?.responsibleEmployeeId || '') ||
+          keeperNames.get(batch.material?.custodianId || '') ||
+          null,
+        serialNumbers: serialsByBatch.get(batch.id) ?? []
+      }
+    }),
+    total: total ?? 0
+  }
+}
+
+export async function fetchWmsTransferStockByScan(
+  tenantId: string,
+  code: string
+): Promise<{ data: WmsTransferStockOption[]; total: number }> {
+  const scan = code.trim()
+  if (!scan) return { data: [], total: 0 }
+  const { data: serial } = await responseHandle<{ batchId: string }>(
+    () =>
+      supabase
+        .from('wms_serial_number')
+        .select('batch_id')
+        .eq('tenant_id', tenantId)
+        .eq('serial_no', scan)
+        .eq('status', 'in_stock')
+        .maybeSingle(),
+    readOptions
+  )
+  if (serial?.batchId)
+    return fetchWmsTransferStockPage({ tenantId, ids: [serial.batchId], current: 1, size: 1 })
+  const batches = await fetchWmsTransferStockPage({ tenantId, batchNo: scan, current: 1, size: 2 })
+  if (batches.total) return batches
+  const { data: material } = await responseHandle<{ id: string }>(
+    () =>
+      supabase
+        .from('mdm_material')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('material_code', scan)
+        .maybeSingle(),
+    readOptions
+  )
+  return material?.id
+    ? fetchWmsTransferStockPage({ tenantId, materialId: material.id, current: 1, size: 2 })
+    : { data: [], total: 0 }
 }
 
 export async function fetchWmsShippingNotices(
@@ -430,10 +689,12 @@ export async function fetchWmsMovementPage(params: WmsStockQuery) {
 
 export async function fetchWmsDirectTransferPage(params: WmsStockQuery) {
   const pageRange = buildSupabasePageRange(params)
+  const materialJoin =
+    params.materialCode?.trim() || params.materialDescription?.trim() ? '!inner' : ''
   let query = supabase
     .from('wms_inventory_movement')
     .select(
-      '*,material:mdm_material!wms_inventory_movement_material_fk(material_code,material_name),sourceBatch:wms_inventory_batch!wms_inventory_movement_source_fk(batch_no,warehouse_id,bin_id,warehouse:mdm_warehouse!wms_inventory_batch_warehouse_fk(warehouse_code,warehouse_name),bin:mdm_warehouse_bin!wms_inventory_batch_bin_fk(bin_code,bin_name)),targetBatch:wms_inventory_batch!wms_inventory_movement_target_fk(batch_no,warehouse_id,bin_id,warehouse:mdm_warehouse!wms_inventory_batch_warehouse_fk(warehouse_code,warehouse_name),bin:mdm_warehouse_bin!wms_inventory_batch_bin_fk(bin_code,bin_name)),sourceOrganization:mdm_organization!wms_movement_source_organization_fk(organization_name),targetOrganization:mdm_organization!wms_movement_target_organization_fk(organization_name),serialMovements:wms_serial_movement!wms_serial_movement_movement_fk(serial_id,serial:wms_serial_number!wms_serial_movement_serial_fk(serial_no))',
+      `*,material:mdm_material!wms_inventory_movement_material_fk${materialJoin}(material_code,material_name,description),sourceBatch:wms_inventory_batch!wms_inventory_movement_source_fk(batch_no,warehouse_id,bin_id,warehouse:mdm_warehouse!wms_inventory_batch_warehouse_fk(warehouse_code,warehouse_name),bin:mdm_warehouse_bin!wms_inventory_batch_bin_fk(bin_code,bin_name)),targetBatch:wms_inventory_batch!wms_inventory_movement_target_fk(batch_no,warehouse_id,bin_id,warehouse:mdm_warehouse!wms_inventory_batch_warehouse_fk(warehouse_code,warehouse_name),bin:mdm_warehouse_bin!wms_inventory_batch_bin_fk(bin_code,bin_name)),sourceOrganization:mdm_organization!wms_movement_source_organization_fk(organization_name),targetOrganization:mdm_organization!wms_movement_target_organization_fk(organization_name),serialMovements:wms_serial_movement!wms_serial_movement_movement_fk(serial_id,serial:wms_serial_number!wms_serial_movement_serial_fk(serial_no))`,
       { count: 'exact' }
     )
     .eq('movement_type', 'transfer')
@@ -444,7 +705,30 @@ export async function fetchWmsDirectTransferPage(params: WmsStockQuery) {
       `source_organization_id.eq.${params.organizationId},target_organization_id.eq.${params.organizationId}`
     )
   if (params.projectId) query = query.eq('project_id', params.projectId)
+  const projectKeyword = params.projectName?.trim()
+  if (projectKeyword) {
+    const matchingProjects = await fetchWmsProjectIdsByName(params.tenantId, projectKeyword)
+    if (!matchingProjects.length) return { data: [] as WmsDirectTransfer[], total: 0 }
+    query = query.in('project_id', matchingProjects)
+  }
   if (params.constructionNo) query = query.eq('construction_no', params.constructionNo)
+  if (params.documentTypeId) query = query.eq('document_type_id', params.documentTypeId)
+  if (params.status && params.status !== 'approved')
+    return { data: [] as WmsDirectTransfer[], total: 0 }
+  if (params.materialCode?.trim())
+    query = query.ilike('material.material_code', `%${params.materialCode.trim()}%`)
+  if (params.materialDescription?.trim())
+    query = query.or(
+      buildOrIlikeFilter(['description', 'material_name'], params.materialDescription),
+      { referencedTable: 'material' }
+    )
+  if (params.applicationDateStart)
+    query = query.gte('occurred_at', `${params.applicationDateStart}T00:00:00+08:00`)
+  if (params.applicationDateEnd)
+    query = query.lt(
+      'occurred_at',
+      `${dayjs(params.applicationDateEnd).add(1, 'day').format('YYYY-MM-DD')}T00:00:00+08:00`
+    )
   if (params.keyword?.trim()) query = query.ilike('reference_no', `%${params.keyword.trim()}%`)
   const { data, total } = await responseHandle<WmsDirectTransfer[]>(
     () => query.order('id').range(pageRange.from, pageRange.to),
@@ -666,6 +950,24 @@ export async function fetchWmsBatchSerials(batchId: string): Promise<WmsBatchSer
   return data ?? []
 }
 
+export async function fetchWmsTransferSerialOptions(
+  tenantId: string,
+  ids: string[]
+): Promise<Array<{ id: string; serialNo: string }>> {
+  if (!ids.length) return []
+  const { data } = await responseHandle<Array<{ id: string; serialNo: string }>>(
+    () =>
+      supabase
+        .from('wms_serial_number')
+        .select('id,serial_no')
+        .eq('tenant_id', tenantId)
+        .in('id', ids)
+        .order('serial_no'),
+    readOptions
+  )
+  return data ?? []
+}
+
 export async function transferWmsProject(payload: WmsProjectTransferInput): Promise<void> {
   await responseHandle(
     () => supabase.rpc('wms_transfer_project_secure', { p_payload: keysToSnakeDeep(payload) }),
@@ -675,17 +977,40 @@ export async function transferWmsProject(payload: WmsProjectTransferInput): Prom
 
 export async function fetchWmsTransferPage(params: WmsStockQuery) {
   const pageRange = buildSupabasePageRange(params)
+  const materialJoin =
+    params.materialCode?.trim() || params.materialDescription?.trim() ? '!inner' : ''
   let query = supabase
     .from('wms_transfer_document')
     .select(
-      '*,sourceBatch:wms_inventory_batch!wms_transfer_document_source_fk(batch_no,quantity,pack_id),material:mdm_material!wms_transfer_document_material_fk(material_code,material_name),sourceWarehouse:mdm_warehouse!wms_transfer_document_source_warehouse_fk(warehouse_code,warehouse_name),targetWarehouse:mdm_warehouse!wms_transfer_document_target_warehouse_fk(warehouse_code,warehouse_name,enable_locations),sourceOrganization:mdm_organization!wms_transfer_source_organization_fk(organization_name),targetOrganization:mdm_organization!wms_transfer_target_organization_fk(organization_name)',
+      `*,sourceBatch:wms_inventory_batch!wms_transfer_document_source_fk(batch_no,quantity,pack_id),material:mdm_material!wms_transfer_document_material_fk${materialJoin}(material_code,material_name,description),sourceWarehouse:mdm_warehouse!wms_transfer_document_source_warehouse_fk(warehouse_code,warehouse_name),targetWarehouse:mdm_warehouse!wms_transfer_document_target_warehouse_fk(warehouse_code,warehouse_name,enable_locations),sourceOrganization:mdm_organization!wms_transfer_source_organization_fk(organization_name),targetOrganization:mdm_organization!wms_transfer_target_organization_fk(organization_name)`,
       { count: 'exact' }
     )
     .order('created_at', { ascending: false })
   if (params.tenantId) query = query.eq('tenant_id', params.tenantId)
   if (params.projectId) query = query.eq('project_id', params.projectId)
+  const projectKeyword = params.projectName?.trim()
+  if (projectKeyword) {
+    const matchingProjects = await fetchWmsProjectIdsByName(params.tenantId, projectKeyword)
+    if (!matchingProjects.length) return { data: [] as WmsTransferDocument[], total: 0 }
+    query = query.in('project_id', matchingProjects)
+  }
   if (params.constructionNo) query = query.eq('construction_no', params.constructionNo)
   if (params.status) query = query.eq('status', params.status)
+  if (params.documentTypeId) query = query.eq('document_type_id', params.documentTypeId)
+  if (params.materialCode?.trim())
+    query = query.ilike('material.material_code', `%${params.materialCode.trim()}%`)
+  if (params.materialDescription?.trim())
+    query = query.or(
+      buildOrIlikeFilter(['description', 'material_name'], params.materialDescription),
+      { referencedTable: 'material' }
+    )
+  if (params.applicationDateStart)
+    query = query.gte('created_at', `${params.applicationDateStart}T00:00:00+08:00`)
+  if (params.applicationDateEnd)
+    query = query.lt(
+      'created_at',
+      `${dayjs(params.applicationDateEnd).add(1, 'day').format('YYYY-MM-DD')}T00:00:00+08:00`
+    )
   if (params.keyword?.trim()) query = query.ilike('document_no', `%${params.keyword.trim()}%`)
   const { data, total } = await responseHandle<WmsTransferDocument[]>(
     () => query.order('id').range(pageRange.from, pageRange.to),
@@ -701,7 +1026,10 @@ export async function createWmsTransfer(payload: WmsTransferInput): Promise<void
   )
 }
 
-export async function fetchWmsTransferRequestPage(params: WmsStockQuery) {
+export async function fetchWmsTransferRequestPage(
+  params: WmsStockQuery & { unpushedOnly?: boolean }
+) {
+  if (params.documentTypeIds && !params.documentTypeIds.length) return { data: [], total: 0 }
   const pageRange = buildSupabasePageRange(params)
   let query = supabase
     .from('wms_transfer_request_list')
@@ -710,7 +1038,9 @@ export async function fetchWmsTransferRequestPage(params: WmsStockQuery) {
     .order('line_no')
   if (params.tenantId) query = query.eq('tenant_id', params.tenantId)
   if (params.status) query = query.eq('status', params.status)
+  if (params.unpushedOnly) query = query.is('pushed_document_id', null)
   if (params.documentTypeId) query = query.eq('document_type_id', params.documentTypeId)
+  if (params.documentTypeIds) query = query.in('document_type_id', params.documentTypeIds)
   if (params.applicationDateStart)
     query = query.gte('application_date', params.applicationDateStart)
   if (params.applicationDateEnd) query = query.lte('application_date', params.applicationDateEnd)
@@ -723,6 +1053,27 @@ export async function fetchWmsTransferRequestPage(params: WmsStockQuery) {
   if (params.keyword?.trim()) query = query.ilike('document_no', `%${params.keyword.trim()}%`)
   const { data, total } = await responseHandle<WmsTransferRequestRow[]>(
     () => query.order('document_id').order('line_id').range(pageRange.from, pageRange.to),
+    readOptions
+  )
+  return { data: data ?? [], total: total ?? 0 }
+}
+
+export async function fetchWmsTransferRequestUnpushedPage(
+  documentIds: string[],
+  params: Pick<WmsStockQuery, 'current' | 'size'>
+): Promise<{ data: Array<{ documentId: string; lineId: string }>; total: number }> {
+  if (!documentIds.length) return { data: [], total: 0 }
+  const { from, to } = buildSupabasePageRange(params)
+  const { data, total } = await responseHandle<Array<{ documentId: string; lineId: string }>>(
+    () =>
+      supabase
+        .from('wms_transfer_request_list')
+        .select('document_id,line_id', { count: 'exact' })
+        .in('document_id', documentIds)
+        .is('pushed_document_id', null)
+        .order('document_id')
+        .order('line_id')
+        .range(from, to),
     readOptions
   )
   return { data: data ?? [], total: total ?? 0 }
@@ -767,24 +1118,6 @@ export async function changeWmsTransferRequestStatus(
             : action === 'approve'
               ? '调拨申请已审核'
               : '调拨申请已删除'
-    }
-  )
-}
-
-export async function pushWmsTransferRequest(
-  id: string,
-  mode: 'direct' | 'in_transit'
-): Promise<void> {
-  await responseHandle(
-    () =>
-      supabase.rpc('wms_push_transfer_request_secure', {
-        p_document_id: id,
-        p_mode: mode
-      }),
-    {
-      ...writeOptions,
-      showMessage: true,
-      message: mode === 'direct' ? '已下推直接调拨' : '已下推调出在途'
     }
   )
 }
@@ -1038,14 +1371,18 @@ export async function fetchWmsCountPlanPage(params: WmsStockQuery) {
   let query = supabase
     .from('wms_count_plan')
     .select(
-      '*,warehouse:mdm_warehouse!wms_count_plan_warehouse_fk(warehouse_code,warehouse_name)',
+      '*,warehouse:mdm_warehouse!wms_count_plan_warehouse_fk(warehouse_code,warehouse_name),organization:mdm_organization!wms_count_plan_organization_fk(organization_code,organization_name)',
       {
         count: 'exact'
       }
     )
     .order('created_at', { ascending: false })
   if (params.tenantId) query = query.eq('tenant_id', params.tenantId)
-  if (params.warehouseId) query = query.eq('warehouse_id', params.warehouseId)
+  if (params.organizationId) query = query.eq('organization_id', params.organizationId)
+  if (params.warehouseId)
+    query = query.or(
+      `warehouse_id.eq.${params.warehouseId},warehouse_ids.cs.{${params.warehouseId}},warehouse_ids.eq.{}`
+    )
   if (params.projectId) query = query.eq('scope_project_id', params.projectId)
   if (params.constructionNo) query = query.eq('scope_construction_no', params.constructionNo)
   if (params.status) query = query.eq('status', params.status)
@@ -1063,7 +1400,7 @@ export async function fetchWmsCountLines(planId: string): Promise<WmsCountLine[]
       supabase
         .from('wms_count_line')
         .select(
-          '*,batch:wms_inventory_batch!wms_count_line_batch_fk(batch_no,warehouse_id,bin_id,pack_id),material:mdm_material!wms_count_line_material_fk(material_code,material_name,serial_management_enabled)'
+          '*,batch:wms_inventory_batch!wms_count_line_batch_fk(batch_no,warehouse_id,bin_id,pack_id),material:mdm_material!wms_count_line_material_fk(material_code,material_name,description,specification_model,serial_management_enabled)'
         )
         .eq('plan_id', planId)
         .order('id'),
@@ -1082,7 +1419,7 @@ export async function fetchWmsCountLinesForPlans(planIds: string[]): Promise<Wms
           supabase
             .from('wms_count_line')
             .select(
-              '*,batch:wms_inventory_batch!wms_count_line_batch_fk(batch_no,warehouse_id,bin_id,pack_id),material:mdm_material!wms_count_line_material_fk(material_code,material_name,serial_management_enabled)'
+              '*,batch:wms_inventory_batch!wms_count_line_batch_fk(batch_no,warehouse_id,bin_id,pack_id),material:mdm_material!wms_count_line_material_fk(material_code,material_name,description,specification_model,serial_management_enabled)'
             )
             .in('plan_id', ids)
             .order('id')

@@ -26,18 +26,12 @@
         :show-submit="false"
       >
         <template #sourceBatchId>
-          <ArtTableSingleSelect
+          <TransferStockPicker
             :model-value="form.sourceBatchId || undefined"
-            :api-fn="batchApi"
             :selected-data="selectedBatch ? [selectedBatch] : []"
-            :columns="batchColumns"
-            title="选择来源库存"
-            subtitle="仅显示有库存的批次；项目归属随来源锁定"
-            placeholder="选择来源批次"
-            search-placeholder="输入批号或备注"
-            label-key="batchLabel"
-            :show-pagination="true"
-            :page-size="20"
+            :tenant-id="context?.tenantId"
+            :projects="context?.projects"
+            :units="units"
             @update:selected-data="onBatchSelected"
             @update:model-value="form.sourceBatchId = String($event || '')"
           />
@@ -62,12 +56,7 @@
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
-  import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
-  import type {
-    DataSelectColumn,
-    DataSelectFetchParams,
-    DataSelectRecord
-  } from '@/components/core/forms/art-data-select/types'
+  import TransferStockPicker from '../../shared/transfer-stock-picker.vue'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
   import { isWmsBusinessTypeAvailable } from '@/utils/wms/business-type'
   import { normalizeNullableText } from '@/utils/form/normalize'
@@ -78,11 +67,12 @@
     fetchWmsInitialOptions,
     fetchWmsInventoryOrganizations,
     fetchWmsBatchSerials,
-    fetchWmsStockPage,
+    fetchWmsUnitOptions,
     fetchWmsWarehouses,
     type WmsBatchSerial,
     type WmsProject,
-    type WmsStockBatch,
+    type WmsTransferStockOption,
+    type WmsUnitOption,
     type WmsWarehouse,
     type WmsInitializationOption,
     type WmsInventoryOrganization
@@ -92,7 +82,7 @@
     tenantId?: string
     projects: WmsProject[]
   }
-  type BatchOption = WmsStockBatch & { batchLabel: string }
+  type BatchOption = WmsTransferStockOption
   const emit = defineEmits<{ success: [] }>()
   const dialogRef = ref<ArtDialogExpose<Context>>()
   const formRef = ref<InstanceType<typeof ArtForm>>()
@@ -105,6 +95,7 @@
   const businessTypes = ref<WmsInitializationOption[]>([])
   const menuId = ref('')
   const serials = ref<WmsBatchSerial[]>([])
+  const units = ref<WmsUnitOption[]>([])
   const selectedBatch = shallowRef<BatchOption | null>(null)
   const loadError = ref(false)
   watch(loadError, (value) => dialogRef.value?.setOptions({ confirmDisabled: value }))
@@ -150,12 +141,6 @@
         (!selectedBatch.value || row.tenantId === selectedBatch.value.tenantId)
     )
   )
-  const batchColumns: DataSelectColumn[] = [
-    { prop: 'batchLabel', label: '物料 / 批号', minWidth: 260 },
-    { prop: 'warehouseName', label: '来源仓库', minWidth: 150 },
-    { prop: 'constructionNo', label: '施工号', minWidth: 130 },
-    { prop: 'quantity', label: '在库', width: 90, align: 'right' }
-  ]
   const items = computed<FormItem[]>(() => [
     {
       key: 'documentNo',
@@ -231,7 +216,7 @@
       type: 'number',
       props: {
         min: selectedBatch.value?.packId ? selectedBatch.value.quantity : 0.001,
-        max: selectedBatch.value?.quantity ?? 1,
+        max: selectedBatch.value?.availableQuantity ?? 1,
         precision: 3,
         class: 'w-full!',
         disabled: Boolean(selectedBatch.value?.packId)
@@ -284,31 +269,10 @@
     ]
   }
 
-  async function batchApi(params: DataSelectFetchParams) {
-    const result = await fetchWmsStockPage({
-      tenantId: context.value?.tenantId,
-      positiveOnly: true,
-      status: 'normal',
-      keyword: params.keyword,
-      current: params.page,
-      size: params.pageSize
-    })
-    return {
-      data: result.data.map((row) => ({
-        ...row,
-        batchLabel: `${row.material?.materialName || '物料'} · ${row.batchNo}`,
-        warehouseName: row.warehouse?.warehouseName || '—'
-      })),
-      total: result.total
-    }
-  }
-  async function onBatchSelected(rows: DataSelectRecord[]): Promise<void> {
+  async function onBatchSelected(rows: WmsTransferStockOption[]): Promise<void> {
     generation++
     const row = rows[0]
-    selectedBatch.value =
-      row && typeof row.id === 'string' && typeof row.quantity === 'number'
-        ? (row as BatchOption)
-        : null
+    selectedBatch.value = row || null
     form.value.targetWarehouseId = ''
     form.value.targetOrganizationId = ''
     form.value.serialIds = []
@@ -325,9 +289,15 @@
     loadError.value = false
     dialogRef.value?.setLoading(true)
     try {
-      const warehouseRows = await fetchWmsWarehouses(currentContext.tenantId)
+      const [warehouseRows, unitRows] = await Promise.all([
+        fetchWmsWarehouses(currentContext.tenantId),
+        batch?.tenantId || currentContext.tenantId
+          ? fetchWmsUnitOptions(batch?.tenantId || currentContext.tenantId || '')
+          : Promise.resolve([])
+      ])
       if (requestGeneration !== generation) return
       warehouses.value = warehouseRows
+      units.value = unitRows
       if (batch) {
         const [serialRows, organizationResult, documentRows, businessRows, currentMenuId] =
           await Promise.all([
@@ -369,7 +339,7 @@
       const batch = selectedBatch.value
       if (!batch || loadError.value) return false
       if (
-        form.value.quantity > batch.quantity ||
+        form.value.quantity > batch.availableQuantity ||
         (batch.packId && form.value.quantity !== batch.quantity)
       ) {
         ElMessage.warning('调拨数量超过库存或未按整包办理')

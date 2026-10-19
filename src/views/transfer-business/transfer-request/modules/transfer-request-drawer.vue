@@ -47,13 +47,21 @@
           :show-reset="false"
           :show-submit="false"
         >
-          <template #applicantId>
-            <ArtEmployeeSelect
-              v-model="form.applicantId"
-              :tenant-id="context?.tenantId"
-              placeholder="选择申请人"
-              @selected="onApplicantSelected"
+          <template #applicantUserId>
+            <ArtUserSelect
+              :model-value="form.applicantUserId || undefined"
+              :options="applicantOptions"
+              placeholder="选择申请账号"
+              @update:model-value="onApplicantUserChange"
             />
+            <p
+              v-if="form.applicantId && !form.applicantUserId"
+              class="mt-1 text-xs text-[var(--el-text-color-secondary)]"
+            >
+              历史员工申请人：{{
+                documentRows[0]?.applicantName || '未找到员工资料'
+              }}；选择账号后替换。
+            </p>
           </template>
         </ArtForm>
       </ArtSectionCard>
@@ -74,6 +82,7 @@
             <ArtExcelImport
               v-if="mode !== 'view'"
               v-auth="'WmsTransfer:Import'"
+              icon="ri:file-upload-line"
               :context-key="openData"
               :disabled="importing || parsing"
               :button-props="{ type: 'success', plain: true, loading: importing || parsing }"
@@ -84,29 +93,23 @@
               "
               >导入明细</ArtExcelImport
             >
-            <ArtTableMultipleSelect
+            <TransferStockPicker
               class="w-auto!"
               v-if="mode !== 'view'"
-              :model-value="selectedMaterialIds"
-              :api-fn="materialApi"
-              :selected-data="selectedMaterials"
-              :columns="materialColumns"
-              :navigation="materialNavigation"
-              title="选择调拨物料"
-              subtitle="按物料分类筛选，可一次选择多种物料"
-              placeholder="添加物料"
-              search-placeholder="输入物料编码、名称或规格"
-              label-key="materialName"
-              :show-pagination="true"
-              :page-size="20"
-              @update:selected-data="onMaterialsSelected"
+              :model-value="selectedStockBatchIds"
+              :selected-data="selectedStockBatches"
+              :tenant-id="context?.tenantId"
+              :projects="projects"
+              :units="units"
+              multiple
+              @update:selected-data="onStockSelected"
             >
               <template #trigger="{ open }">
                 <ElButton type="primary" @click="open">
                   <ArtSvgIcon icon="ri:add-line" />添加物料
                 </ElButton>
               </template>
-            </ArtTableMultipleSelect>
+            </TransferStockPicker>
           </div>
         </template>
         <ArtTable
@@ -171,13 +174,10 @@
             }}</template></ElTableColumn
           >
           <ElTableColumn label="库存类型" width="110"
-            ><template #default="{ row }"
-              ><ArtDictDisplay
-                :value="row.stockType"
-                dict-code="wmsCountStockType"
-                display="text"
-                empty-text="—" /></template
-          ></ElTableColumn>
+            ><template #default="{ row }">{{
+              stockTypeLabel(row.stockType)
+            }}</template></ElTableColumn
+          >
           <ElTableColumn label="库存状态" width="105"
             ><template #default="{ row }">{{
               stockStatusLabel(row.stockStatus)
@@ -232,6 +232,7 @@
                 filterable
                 :disabled="false"
                 placeholder="选择项目"
+                @change="detachStockBatch(row)"
               >
                 <ElOption
                   v-for="item in projects"
@@ -243,7 +244,8 @@
             </template>
           </ElTableColumn>
           <ElTableColumn label="施工号" min-width="130"
-            ><template #default="{ row }"><ElInput v-model="row.constructionNo" /></template
+            ><template #default="{ row }"
+              ><ElInput v-model="row.constructionNo" @change="detachStockBatch(row)" /></template
           ></ElTableColumn>
           <ElTableColumn label="库存单位" min-width="140">
             <template #default="{ row }"
@@ -268,14 +270,15 @@
           <ElTableColumn label="基本数量" min-width="160"
             ><template #default="{ row }"
               ><span class="whitespace-nowrap tabular-nums">{{
-                row.quantity.toFixed(4)
+                baseQuantityForLine(row)?.toFixed(4) || '—'
               }}</span></template
             ></ElTableColumn
           >
           <ElTableColumn label="批号" min-width="140"
-            ><template #default="{ row }"><ElInput v-model="row.batchNo" /></template
+            ><template #default="{ row }"
+              ><ElInput v-model="row.batchNo" @change="detachStockBatch(row)" /></template
           ></ElTableColumn>
-          <ElTableColumn label="调出组织" min-width="190"
+          <ElTableColumn label="调出组织 *" min-width="190"
             ><template #default="{ row }"
               ><ElTreeSelect
                 v-model="row.sourceOrganizationId"
@@ -295,7 +298,7 @@
                 v-model="row.sourceWarehouseId"
                 filterable
                 :disabled="false"
-                @change="loadSourceBins(row)"
+                @change="onSourceWarehouseChange(row)"
                 ><ElOption
                   v-for="item in warehouseOptions(row.sourceOrganizationId)"
                   :key="item.id"
@@ -309,13 +312,14 @@
                 clearable
                 filterable
                 :disabled="!row.sourceWarehouseId"
+                @change="detachStockBatch(row)"
                 ><ElOption
                   v-for="item in row.sourceBins"
                   :key="item.id"
                   :label="`${item.binCode} · ${item.binName}`"
                   :value="item.id" /></ElSelect></template
           ></ElTableColumn>
-          <ElTableColumn label="调入组织" min-width="190"
+          <ElTableColumn label="调入组织 *" min-width="190"
             ><template #default="{ row }"
               ><ElTreeSelect
                 v-model="row.targetOrganizationId"
@@ -357,26 +361,41 @@
           ></ElTableColumn>
           <ElTableColumn label="货主类型" min-width="155"
             ><template #default="{ row }"
-              ><ElSelect v-model="row.ownerType"
-                ><template #label
-                  ><ArtDictDisplay
-                    :value="row.ownerType"
-                    dict-code="mdmBusinessOwnerType"
-                    display="text" /></template
+              ><ElSelect
+                v-model="row.ownerType"
+                :disabled="!!row.stockBatchId"
+                @change="row.ownerId = null"
+                ><template #label>{{
+                  ownerTypes.find((item) => item.value === row.ownerType)?.label || '自有'
+                }}</template
                 ><ElOption
                   v-for="option in ownerTypes"
                   :key="option.value"
                   :label="option.label"
                   :value="option.value" /></ElSelect></template
           ></ElTableColumn>
+          <ElTableColumn label="货主" min-width="185">
+            <template #default="{ row }">
+              <span v-if="row.stockBatchId || row.ownerType === 'self'">{{
+                formatWmsOwnerName(row.ownerType, row.ownerId, suppliers, customers)
+              }}</span>
+              <ArtTableSingleSelect
+                v-else
+                :model-value="row.ownerId || undefined"
+                :data="row.ownerType === 'supplier' ? suppliers : customers"
+                :columns="ownerColumns"
+                row-key="id"
+                label-key="name"
+                description-key="code"
+                title="选择货主"
+                @update:model-value="row.ownerId = String($event || '') || null"
+              />
+            </template>
+          </ElTableColumn>
           <ElTableColumn label="库存类型" min-width="155"
             ><template #default="{ row }"
-              ><ElSelect v-model="row.stockType"
-                ><template #label
-                  ><ArtDictDisplay
-                    :value="row.stockType"
-                    dict-code="wmsCountStockType"
-                    display="text" /></template
+              ><ElSelect v-model="row.stockType" :disabled="!!row.stockBatchId"
+                ><template #label>{{ stockTypeLabel(row.stockType) }}</template
                 ><ElOption
                   v-for="item in stockTypes"
                   :key="item.value"
@@ -385,7 +404,7 @@
           ></ElTableColumn>
           <ElTableColumn label="库存状态" min-width="155"
             ><template #default="{ row }"
-              ><ElSelect v-model="row.stockStatus"
+              ><ElSelect v-model="row.stockStatus" :disabled="!!row.stockBatchId"
                 ><template #label
                   ><ArtDictDisplay
                     :value="row.stockStatus"
@@ -402,14 +421,21 @@
           ></ElTableColumn>
           <ElTableColumn label="生产日期" min-width="190"
             ><template #default="{ row }"
-              ><ElDatePicker v-model="row.productionDate" value-format="YYYY-MM-DD" /></template
+              ><ElDatePicker
+                v-model="row.productionDate"
+                value-format="YYYY-MM-DD"
+                :disabled="!!row.stockBatchId" /></template
           ></ElTableColumn>
           <ElTableColumn label="有效期至" min-width="190"
             ><template #default="{ row }"
-              ><ElDatePicker v-model="row.expiryDate" value-format="YYYY-MM-DD" /></template
+              ><ElDatePicker
+                v-model="row.expiryDate"
+                value-format="YYYY-MM-DD"
+                :disabled="!!row.stockBatchId" /></template
           ></ElTableColumn>
           <ElTableColumn label="跟踪号" min-width="140"
-            ><template #default="{ row }"><ElInput v-model="row.trackingNo" /></template
+            ><template #default="{ row }"
+              ><ElInput v-model="row.trackingNo" :disabled="!!row.stockBatchId" /></template
           ></ElTableColumn>
           <ElTableColumn label="来源单据" min-width="150"
             ><template #default="{ row }"><ElInput v-model="row.sourceDocument" /></template
@@ -432,20 +458,15 @@
 </template>
 
 <script setup lang="ts">
-  import {
-    buildMaterialCategoryNavigation,
-    getMaterialCategoryIds
-  } from '@/utils/business/material-category'
-  import { fetchWmsMaterialCategories } from '@/api/wms-material-category'
-  import type { MaterialSelectCategory } from '@/components/business/art-material-select/types'
-  const materialCategories = ref<MaterialSelectCategory[]>([])
-  const materialNavigation = computed(() =>
-    buildMaterialCategoryNavigation(materialCategories.value)
-  )
+  import { uniqBy } from 'lodash-es'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
+  import { convertWmsMaterialQuantity } from '@/utils/wms/material-quantity'
+  import { formatWmsOwnerName } from '@/utils/wms/owner-display'
+  import { WMS_STOCK_TYPE_LABELS } from '@/utils/wms/stock-type'
   import { isWmsBusinessTypeAvailable } from '@/utils/wms/business-type'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { useBreakpoints } from '@vueuse/core'
+  import dayjs from 'dayjs'
   import { useWarehouseRowBinLoader } from '@/hooks/core/useWarehouseBinOptions'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { ElMessage } from 'element-plus'
@@ -458,16 +479,21 @@
   import { prepareWmsMaterialImport } from '../../../shared/material-import'
   import ArtExcelImport from '@/components/core/forms/art-excel-import/index.vue'
   import ArtTable from '@/components/core/tables/art-table/index.vue'
-  import ArtTableMultipleSelect from '@/components/core/forms/art-data-select/table-multiple.vue'
-  import ArtEmployeeSelect from '@/components/business/art-employee-select/index.vue'
+  import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
+  import ArtUserSelect from '@/components/core/forms/art-user-select/index.vue'
+  import type {
+    ArtUserSelectOption,
+    ArtUserSelectValue
+  } from '@/components/core/forms/art-user-select/types'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
-  import type {
-    DataSelectColumn,
-    DataSelectFetchParams,
-    DataSelectRecord
-  } from '@/components/core/forms/art-data-select/types'
+  import TransferStockPicker from '../../shared/transfer-stock-picker.vue'
   import { normalizeNullableText } from '@/utils/form/normalize'
+  import { useUserStore } from '@/store/modules/user'
+  import {
+    fetchEnabledOrganizationTree,
+    fetchEnabledOrganizationUserList
+  } from '@/api/system-manage'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
   import {
@@ -488,6 +514,7 @@
     type WmsMaterialOption,
     type WmsProject,
     type WmsTransferRequestRow,
+    type WmsTransferStockOption,
     type WmsUnitOption,
     type WmsWarehouse
   } from '@wms/api'
@@ -502,6 +529,8 @@
   }
   interface DraftLine {
     key: string
+    stockBatchId?: string
+    stockBatch?: WmsTransferStockOption
     materialId: string
     material: WmsMaterialOption | null
     projectId: string
@@ -518,6 +547,7 @@
     targetBinId: string
     targetBins: WmsBin[]
     ownerType: 'self' | 'supplier' | 'customer'
+    ownerId: string | null
     stockType: string
     stockStatus: string
     gift: boolean
@@ -529,8 +559,30 @@
     remark: string
   }
   const emit = defineEmits<{ success: [] }>()
-  const ownerTypes = useDictionaryOptions('mdmBusinessOwnerType')
-  const stockTypes = useDictionaryOptions('wmsCountStockType')
+  const userStore = useUserStore()
+  const ownerTypeLabels: Record<string, string> = {
+    self: '自有',
+    supplier: '供应商',
+    customer: '客户'
+  }
+  const ownerTypeDictionary = useDictionaryOptions('mdmBusinessOwnerType')
+  const ownerTypes = computed(() =>
+    Object.entries(ownerTypeLabels).map(([value, fallback]) => ({
+      value,
+      label: ownerTypeDictionary.find((item) => item.value === value)?.label || fallback
+    }))
+  )
+  const countStockTypes = useDictionaryOptions('wmsCountStockType')
+  const initialStockTypes = useDictionaryOptions('wmsInitialStockType')
+  const stockTypes = computed(() => uniqBy([...countStockTypes, ...initialStockTypes], 'value'))
+  function stockTypeLabel(value: string): string {
+    return (
+      stockTypes.value.find((item) => item.value === value)?.label ||
+      WMS_STOCK_TYPE_LABELS[value] ||
+      value ||
+      '—'
+    )
+  }
   const stockStatuses = useDictionaryOptions('wmsStockStatus')
   const drawerRef = ref<ArtDrawerExpose<OpenData>>()
   const formRef = ref<InstanceType<typeof ArtForm>>()
@@ -549,7 +601,26 @@
   const projects = ref<WmsProject[]>([])
   const units = ref<WmsUnitOption[]>([])
   const warehouses = ref<WmsWarehouse[]>([])
+  const suppliers = ref<WmsInitializationOption[]>([])
+  const customers = ref<WmsInitializationOption[]>([])
+  const ownerColumns = [
+    { prop: 'code', label: '编码', width: 150 },
+    { prop: 'name', label: '名称', minWidth: 200 }
+  ]
   const organizations = ref<WmsInventoryOrganization[]>([])
+  const departmentTree = ref<Api.SystemManage.OrganizationListItem[]>([])
+  const applicantUsers = ref<Api.SystemManage.OrganizationMember[]>([])
+  const applicantOptions = computed<ArtUserSelectOption[]>(() =>
+    applicantUsers.value.map((user) => ({
+      value: user.id,
+      label: user.nickName || user.userName,
+      userName: user.userName,
+      nickName: user.nickName,
+      userEmail: user.userEmail,
+      avatar: user.avatar,
+      departmentName: user.organization?.organizationName
+    }))
+  )
   const availableOrganizations = computed(() => organizations.value.filter((row) => row.enabledOn))
   const businessMenuId = ref('')
   type OrganizationSelectNode = WmsInventoryOrganization & {
@@ -572,25 +643,25 @@
     organizationId: '',
     documentTypeId: '',
     businessTypeId: '',
-    applicationDate: new Date().toISOString().slice(0, 10),
+    applicationDate: dayjs().format('YYYY-MM-DD'),
     applicantId: '',
+    applicantUserId: '',
     departmentId: '',
     remark: ''
   })
-  const selectedMaterialIds = computed(() => lines.value.map((row) => row.materialId))
-  const selectedMaterials = computed(() =>
-    lines.value.map((row) => row.material).filter((row): row is WmsMaterialOption => Boolean(row))
+  const selectedStockBatchIds = computed(() =>
+    lines.value.map((row) => row.stockBatchId).filter((id): id is string => Boolean(id))
+  )
+  const selectedStockBatches = computed(() =>
+    lines.value
+      .map((row) => row.stockBatch)
+      .filter((row): row is WmsTransferStockOption => Boolean(row))
   )
   const stockStatusLabels: Record<string, string> = {
     available: '可用',
     scrap: '报废',
     defective: '不良',
     frozen: '冻结'
-  }
-  const ownerTypeLabels: Record<string, string> = {
-    self: '自有',
-    supplier: '供应商',
-    customer: '客户'
   }
   const firstDocumentRow = computed(() => documentRows.value[0])
   const viewData = computed(() => ({
@@ -621,12 +692,6 @@
     { key: 'status', label: '单据状态', field: 'status' },
     { key: 'pushedMode', label: '下推状态', field: 'pushedMode', span: 2 },
     { key: 'remark', label: '备注', field: 'remark', span: 2 }
-  ]
-  const materialColumns: DataSelectColumn[] = [
-    { prop: 'materialCode', label: '物料编码', minWidth: 150 },
-    { prop: 'materialName', label: '物料名称', minWidth: 190 },
-    { prop: 'description', label: '物料描述', minWidth: 210 },
-    { prop: 'specificationModel', label: '规格型号', minWidth: 140 }
   ]
   const headerItems = computed<FormItem[]>(() => [
     { key: 'documentNo', label: '单据编号', type: 'input', props: { disabled: true } },
@@ -670,12 +735,12 @@
       type: 'date',
       props: { valueFormat: 'YYYY-MM-DD', class: 'w-full!' }
     },
-    { key: 'applicantId', label: '申请人', type: 'slot' },
+    { key: 'applicantUserId', label: '申请人', type: 'slot' },
     {
       key: 'departmentId',
       label: '申请部门',
       type: 'treeSelect',
-      options: availableOrganizations.value,
+      options: departmentTree.value,
       valueField: 'id',
       labelField: 'organizationName',
       childrenField: 'children',
@@ -703,6 +768,29 @@
   }
   function numberText(value: number | null | undefined): string {
     return Number(value || 0).toFixed(4)
+  }
+  function baseQuantityForLine(value: unknown): number | null {
+    if (
+      !value ||
+      typeof value !== 'object' ||
+      !('material' in value) ||
+      !value.material ||
+      typeof value.material !== 'object' ||
+      !('baseUnitId' in value.material) ||
+      !('inventoryUnitId' in value) ||
+      typeof value.inventoryUnitId !== 'string' ||
+      !('quantity' in value)
+    )
+      return null
+    const row = value as DraftLine
+    const baseUnitId = row.material?.baseUnitId
+    if (!baseUnitId || !row.inventoryUnitId) return null
+    return convertWmsMaterialQuantity(
+      row.material || {},
+      Number(row.quantity),
+      row.inventoryUnitId,
+      baseUnitId
+    )
   }
   function stockStatusLabel(value: string): string {
     return stockStatusLabels[value] || value || '—'
@@ -732,9 +820,27 @@
       (row) => row.organizationId === organizationId && row.status === 'enabled'
     )
   }
-  function onApplicantSelected(rows: Array<{ departmentId?: string | null }>) {
-    if (!form.value.departmentId && rows[0]?.departmentId)
-      form.value.departmentId = rows[0].departmentId
+  function defaultApplicantUserId(tenantId?: string): string {
+    return tenantId && userStore.getUserInfo.tenantId === tenantId
+      ? userStore.getUserInfo.userId || ''
+      : ''
+  }
+  function defaultApplicantDepartmentId(tenantId?: string): string {
+    return tenantId && userStore.getUserInfo.tenantId === tenantId
+      ? applicantUsers.value.find((user) => user.id === userStore.getUserInfo.userId)
+          ?.organizationId ||
+          userStore.getUserInfo.hrEmployee?.organizationId ||
+          userStore.getUserInfo.organizationId ||
+          ''
+      : ''
+  }
+  function onApplicantUserChange(value: ArtUserSelectValue): void {
+    const userId = typeof value === 'string' ? value : ''
+    form.value.applicantUserId = userId
+    if (!userId) return
+    form.value.applicantId = ''
+    form.value.departmentId =
+      applicantUsers.value.find((user) => user.id === userId)?.organizationId || ''
   }
   function selectDefaultBusinessType() {
     const available = businessTypes.value.filter((row) =>
@@ -765,6 +871,7 @@
       targetBinId: '',
       targetBins: [],
       ownerType: 'self',
+      ownerId: null,
       stockType: 'normal',
       stockStatus: 'available',
       gift: false,
@@ -776,25 +883,95 @@
       remark: ''
     }
   }
-  async function materialApi(params: DataSelectFetchParams) {
-    return context.value?.tenantId
-      ? fetchWmsMaterialOptions(
-          context.value.tenantId,
-          params.keyword,
-          params.page,
-          params.pageSize,
-          false,
-          getMaterialCategoryIds(materialCategories.value, String(params.filters.categoryId || ''))
-        )
-      : { data: [], total: 0 }
+  function stockMaterial(stock: WmsTransferStockOption): WmsMaterialOption {
+    return {
+      id: stock.materialId,
+      materialCode: stock.material?.materialCode || '',
+      materialName: stock.material?.materialName || '历史物料',
+      description: stock.material?.description || null,
+      specificationModel: stock.material?.specificationModel || null,
+      serialManagementEnabled: stock.material?.serialManagementEnabled || false,
+      inventoryUnitId: stock.material?.inventoryUnitId,
+      baseUnitId: stock.material?.baseUnitId,
+      unitConversions: stock.material?.unitConversions || []
+    }
   }
-  function onMaterialsSelected(rows: DataSelectRecord[]) {
-    const materials = rows.filter(
-      (row): row is WmsMaterialOption =>
-        typeof row.id === 'string' && typeof row.materialCode === 'string'
+  function stockAttributes(
+    stock: WmsTransferStockOption
+  ): Pick<
+    DraftLine,
+    | 'ownerType'
+    | 'ownerId'
+    | 'stockType'
+    | 'stockStatus'
+    | 'productionDate'
+    | 'expiryDate'
+    | 'trackingNo'
+  > {
+    return {
+      ownerType:
+        stock.ownerType === 'supplier' || stock.ownerType === 'customer' ? stock.ownerType : 'self',
+      ownerId: stock.ownerId,
+      stockType: stock.stockType || 'normal',
+      stockStatus: stock.status === 'normal' ? 'available' : stock.status,
+      productionDate: stock.productionDate || '',
+      expiryDate: stock.expiryDate || '',
+      trackingNo: stock.trackingNo || ''
+    }
+  }
+  async function onStockSelected(stocks: WmsTransferStockOption[]) {
+    const previous = new Map(
+      lines.value.filter((row) => row.stockBatchId).map((row) => [row.stockBatchId, row])
     )
-    const previous = new Map(lines.value.map((row) => [row.materialId, row]))
-    lines.value = materials.map((item) => previous.get(item.id) || newLine(item))
+    const request = loadRequest
+    try {
+      const stockLines = await Promise.all(
+        stocks.map(async (stock) => {
+          const existing = previous.get(stock.id)
+          if (existing) {
+            existing.stockBatch = stock
+            Object.assign(existing, stockAttributes(stock))
+            return existing
+          }
+          const targetWarehouse =
+            warehouseOptions(stock.organizationId).find((row) => row.id !== stock.warehouseId) ||
+            warehouseOptions(stock.organizationId)[0]
+          const [sourceBins, targetBins] = await Promise.all([
+            fetchWmsBins(stock.warehouseId),
+            targetWarehouse?.id ? fetchWmsBins(targetWarehouse.id) : Promise.resolve([])
+          ])
+          return {
+            ...newLine(stockMaterial(stock)),
+            stockBatchId: stock.id,
+            stockBatch: stock,
+            projectId: stock.projectId || '',
+            constructionNo: stock.constructionNo || '',
+            quantity: Math.min(
+              1,
+              convertWmsMaterialQuantity(
+                stock.material || {},
+                stock.availableQuantity,
+                stock.material?.baseUnitId || '',
+                stock.material?.inventoryUnitId || stock.material?.baseUnitId || ''
+              ) ?? 0
+            ),
+            batchNo: stock.batchNo,
+            sourceOrganizationId: stock.organizationId,
+            sourceWarehouseId: stock.warehouseId,
+            sourceBinId: stock.binId || '',
+            sourceBins,
+            targetOrganizationId: stock.organizationId,
+            targetWarehouseId: targetWarehouse?.id || '',
+            targetBins,
+            ...stockAttributes(stock)
+          }
+        })
+      )
+      if (request !== loadRequest) return
+      lines.value = [...lines.value.filter((row) => !row.stockBatchId), ...stockLines]
+    } catch (error) {
+      notifyFriendlyError(error, '调拨库存选择失败，请重试')
+    }
   }
   function onImportParsing(value: boolean): void {
     parsing.value = value
@@ -845,9 +1022,20 @@
   }
   function onSourceOrganizationChange(value: unknown) {
     const row = value as DraftLine
+    detachStockBatch(row)
     row.sourceWarehouseId = warehouseOptions(row.sourceOrganizationId)[0]?.id || ''
     row.sourceBinId = ''
     row.sourceBins = []
+    void loadSourceBins(row)
+  }
+  function detachStockBatch(value: unknown): void {
+    const row = value as DraftLine
+    row.stockBatchId = undefined
+    row.stockBatch = undefined
+  }
+  function onSourceWarehouseChange(value: unknown): void {
+    const row = value as DraftLine
+    detachStockBatch(row)
     void loadSourceBins(row)
   }
   function onTargetOrganizationChange(value: unknown) {
@@ -896,7 +1084,7 @@
       baseUnitId: row.baseUnitId,
       auxiliaryUnitId: row.auxiliaryUnitId,
       auxiliaryUnit2Id: row.auxiliaryUnit2Id,
-      unitConversions: [],
+      unitConversions: row.unitConversions || [],
       serialManagementEnabled: false
     }
   }
@@ -914,12 +1102,14 @@
       businessTypeId: first.businessTypeId,
       applicationDate: first.applicationDate,
       applicantId: first.applicantId || '',
+      applicantUserId: first.applicantUserId || '',
       departmentId: first.departmentId || '',
       remark: first.documentRemark || ''
     })
     const loadedLines = await Promise.all(
       rows.map(async (row) => ({
         key: crypto.randomUUID(),
+        stockBatchId: row.sourceBatchId || undefined,
         materialId: row.materialId,
         material: rowMaterial(row),
         projectId: row.projectId || '',
@@ -936,6 +1126,7 @@
         targetBinId: row.targetBinId || '',
         targetBins: row.targetWarehouseId ? await fetchWmsBins(row.targetWarehouseId) : [],
         ownerType: row.ownerType,
+        ownerId: row.ownerId,
         stockType: row.stockType,
         stockStatus: row.stockStatus,
         gift: row.gift,
@@ -958,7 +1149,10 @@
       warehouseRows,
       orgPage,
       menuId,
-      categories
+      departmentResult,
+      applicantResult,
+      supplierRows,
+      customerRows
     ] = await Promise.all([
       fetchWmsInitialDocumentTypes(tenantId, 'WmsTransfer'),
       fetchWmsInitialOptions('mdm_business_type', tenantId),
@@ -967,16 +1161,24 @@
       fetchWmsWarehouses(tenantId),
       fetchWmsInventoryOrganizations({ tenantId, enabled: 'enabled', current: 1, size: 2000 }),
       fetchWmsInitialMenuId('WmsTransfer'),
-      fetchWmsMaterialCategories(tenantId)
+      fetchEnabledOrganizationTree({ tenantId }),
+      fetchEnabledOrganizationUserList({ tenantId }),
+      fetchWmsInitialOptions('mdm_supplier', tenantId),
+      fetchWmsInitialOptions('mdm_customer', tenantId)
     ])
     if (request !== loadRequest) return
+    if (departmentResult.error) throw departmentResult.error
+    if (applicantResult.error) throw applicantResult.error
     documentTypes.value = docRows
-    materialCategories.value = categories
     businessTypes.value = businessRows
     projects.value = projectRows
     units.value = unitRows
     warehouses.value = warehouseRows
     organizations.value = orgPage.data
+    departmentTree.value = departmentResult.data ?? []
+    applicantUsers.value = applicantResult.data ?? []
+    suppliers.value = supplierRows
+    customers.value = customerRows
     businessMenuId.value = menuId
   }
   async function save(): Promise<boolean> {
@@ -1001,6 +1203,18 @@
         ElMessage.warning('请完整填写物料、数量、调出和调入信息')
         return false
       }
+      const invalidUnitIndex = lines.value.findIndex((row) => {
+        const baseQuantity = baseQuantityForLine(row)
+        return baseQuantity === null || baseQuantity <= 0
+      })
+      if (invalidUnitIndex >= 0) {
+        ElMessage.warning(`第 ${invalidUnitIndex + 1} 行物料单位缺少有效换算关系`)
+        return false
+      }
+      if (lines.value.some((row) => row.ownerType !== 'self' && !row.ownerId)) {
+        ElMessage.warning('供应商或客户货主须选择对应的货主')
+        return false
+      }
       await saveWmsTransferRequest({
         id: mode.value === 'edit' ? form.value.id : undefined,
         tenantId: context.value?.tenantId,
@@ -1009,15 +1223,18 @@
         businessTypeId: form.value.businessTypeId,
         applicationDate: form.value.applicationDate,
         applicantId: form.value.applicantId || null,
+        applicantUserId: form.value.applicantUserId || null,
         departmentId: form.value.departmentId || null,
         remark: normalizeNullableText(form.value.remark),
         lines: lines.value.map((row) => ({
           materialId: row.materialId,
+          sourceBatchId: row.stockBatchId || null,
           projectId: row.projectId || null,
           constructionNo: normalizeNullableText(row.constructionNo),
           inventoryUnitId: row.inventoryUnitId,
           quantity: row.quantity,
-          baseQuantity: row.quantity,
+          baseUnitId: row.material?.baseUnitId || null,
+          baseQuantity: baseQuantityForLine(row) ?? 0,
           batchNo: normalizeNullableText(row.batchNo),
           sourceOrganizationId: row.sourceOrganizationId,
           sourceWarehouseId: row.sourceWarehouseId,
@@ -1026,6 +1243,7 @@
           targetWarehouseId: row.targetWarehouseId,
           targetBinId: row.targetBinId || null,
           ownerType: row.ownerType,
+          ownerId: row.ownerId,
           stockType: row.stockType,
           stockStatus: row.stockStatus,
           gift: row.gift,
@@ -1060,9 +1278,10 @@
       organizationId: '',
       documentTypeId: '',
       businessTypeId: '',
-      applicationDate: new Date().toISOString().slice(0, 10),
+      applicationDate: dayjs().format('YYYY-MM-DD'),
       applicantId: '',
-      departmentId: '',
+      applicantUserId: defaultApplicantUserId(data.tenantId),
+      departmentId: defaultApplicantDepartmentId(data.tenantId),
       remark: ''
     })
     await drawerRef.value?.handleOpen(data, {
@@ -1104,6 +1323,9 @@
         availableOrganizations.value.find((row) => row.isDefault)?.id ||
         availableOrganizations.value[0]?.id ||
         ''
+      form.value.applicantId = ''
+      form.value.applicantUserId = defaultApplicantUserId(data.tenantId)
+      form.value.departmentId = defaultApplicantDepartmentId(data.tenantId)
       form.value.documentTypeId = documentTypes.value.find((row) => row.isDefault)?.id || ''
       selectDefaultBusinessType()
       if (data.documentId) {
@@ -1112,6 +1334,9 @@
         if (data.mode === 'copy') {
           form.value.id = ''
           form.value.documentNo = '保存后自动生成'
+          form.value.applicantId = ''
+          form.value.applicantUserId = defaultApplicantUserId(data.tenantId)
+          form.value.departmentId = defaultApplicantDepartmentId(data.tenantId)
         }
       }
       await nextTick()

@@ -15,6 +15,11 @@
       >
         <template #actions><BusinessTableWorkspaceActions :table="tableRef" /></template>
       </BusinessWorkspaceHeader>
+      <ElAlert v-if="optionError" type="warning" :closable="false" show-icon class="mb-3">
+        单据类型加载失败。<ElButton link type="primary" @click="loadDocumentTypes"
+          >重新加载</ElButton
+        >
+      </ElAlert>
       <ArtTableQuery
         ref="tableRef"
         :model-value="search"
@@ -24,6 +29,7 @@
         :columns-factory="columnsFactory"
         :columns-context-key="displayMode"
         :header-actions="headerActions"
+        :selection-actions="selectionActions"
         header-actions-placement="workspace"
         :search-bar-props="{ span: 6, labelWidth: 76 }"
         :table-props="{
@@ -35,12 +41,6 @@
         }"
         focusable
       >
-        <template #search-displayMode>
-          <ElRadioGroup v-model="displayMode" aria-label="单据列表展示方式" @change="refresh">
-            <ElRadioButton label="document" value="document">按单据</ElRadioButton>
-            <ElRadioButton label="line" value="line">按明细</ElRadioButton>
-          </ElRadioGroup>
-        </template>
       </ArtTableQuery>
       <TransferRequestDrawer ref="drawerRef" @success="refresh" />
       <ArtDialog ref="pushDialogRef" size="sm" :show-footer="false">
@@ -48,10 +48,11 @@
           icon="ri:route-line"
           eyebrow="TRANSFER MODE"
           title="选择下推方式"
-          :description="`调拨申请 ${pushRow?.documentNo || ''} 已审核，请选择执行方式。`"
+          :description="`调拨申请 ${pushRow?.documentNo || ''}；${pushLineIds.length ? `已选 ${pushLineIds.length} 行` : '下推全部未处理明细'}，生成目标暂存单。`"
         />
         <div class="mt-5 grid gap-3 sm:grid-cols-2">
           <ElButton
+            v-auth="'WmsDirectTransfer:Create'"
             type="primary"
             :loading="pushingMode === 'direct'"
             :disabled="!!pushingMode"
@@ -59,6 +60,7 @@
             >直接调拨</ElButton
           >
           <ElButton
+            v-auth="'WmsStepTransfer:Create'"
             type="warning"
             plain
             :loading="pushingMode === 'in_transit'"
@@ -68,20 +70,49 @@
           >
         </div>
       </ArtDialog>
+      <ArtDialog ref="pushResultDialogRef" size="sm" :show-footer="false">
+        <ArtEntitySummary
+          icon="ri:route-line"
+          eyebrow="TRANSFER DOCUMENTS"
+          title="调拨单已生成"
+          :description="`申请单按组织组合生成 ${pushResults.length} 张暂存单，请逐张完善并提交。`"
+        />
+        <div class="mt-5 grid gap-3">
+          <div
+            v-for="item in pushResults"
+            :key="item.id"
+            class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--el-border-color)] p-3"
+          >
+            <div class="min-w-0">
+              <div class="font-medium">{{ item.documentNo }}</div>
+              <div class="text-sm text-[var(--el-text-color-secondary)]">
+                {{ item.sourceOrganizationName }} → {{ item.targetOrganizationName }} ·
+                {{ item.lineCount }} 行
+              </div>
+            </div>
+            <ElButton type="primary" text @click="openPushResult(item.id)">打开单据</ElButton>
+          </div>
+        </div>
+      </ArtDialog>
       <MasterDataDeleteGuard ref="deleteGuardRef" />
     </div>
   </ArtPermissionGuard>
 </template>
 
 <script setup lang="tsx">
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
+  import { uniqBy } from 'lodash-es'
   import { replaceReactiveModel } from '@/utils/form/model'
+  import { useRouter } from 'vue-router'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
+  import { WMS_STOCK_TYPE_LABELS } from '@/utils/wms/stock-type'
   import { ElMessage, ElTag } from 'element-plus'
-  import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { notifyFriendlyError, useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { useDocumentBulkDelete } from '@/hooks/business/useDocumentBulkDelete'
   import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
   import MasterDataDeleteGuard from '@/components/business/master-data-delete-guard/index.vue'
   import { useTenantScopeFormPolicy } from '@/hooks/core/useTenantScopeFormPolicy'
+  import { useAuth } from '@/hooks/core/useAuth'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
@@ -108,9 +139,11 @@
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import {
     changeWmsTransferRequestStatus,
-    fetchWmsInitialOptions,
+    fetchWmsInitialDocumentTypes,
     fetchWmsTransferRequestPage,
-    pushWmsTransferRequest,
+    fetchWmsTransferRequestUnpushedPage,
+    createWmsTransferBusinessFromRequest,
+    type WmsTransferPushResult,
     type WmsInitializationOption,
     type WmsStockQuery,
     type WmsTransferRequestRow
@@ -118,7 +151,10 @@
   import TransferRequestDrawer from './modules/transfer-request-drawer.vue'
 
   defineOptions({ name: 'WmsTransfer' })
+  type RequestWorkspaceRow = WmsTransferRequestRow & { unpushedLineCount?: number }
+  const router = useRouter()
   const { confirmAction } = useArtFeedback()
+  const { hasAuth, hasAnyAuth } = useAuth()
   const { deleteGuardRef, inspectDeleteReferences } = useRecordDeleteGuard(
     'wms_transfer_request_document',
     '调拨申请单'
@@ -126,7 +162,6 @@
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const { defaultWriteTenantId } = useTenantScopeFormPolicy()
   const tableRef = ref<ArtTableQueryExpose>()
-  const displayMode = ref<'document' | 'line'>('document')
   const visibleRows = ref<WmsTransferRequestRow[]>([])
   const lineProperties = new Set([
     'materialCode',
@@ -159,30 +194,30 @@
   }
   const drawerRef = ref<InstanceType<typeof TransferRequestDrawer>>()
   const pushDialogRef = ref<ArtDialogExpose>()
+  const pushResultDialogRef = ref<ArtDialogExpose>()
+  const pushResults = ref<WmsTransferPushResult[]>([])
+  const pushResultKind = ref<'direct' | 'step'>('direct')
   const pushRow = ref<WmsTransferRequestRow>()
+  const pushLineIds = ref<string[]>([])
   const pushingMode = ref<'direct' | 'in_transit'>()
   const workingId = ref<string>()
   const documentTypes = ref<WmsInitializationOption[]>([])
+  const optionError = ref(false)
+  let optionsLoadVersion = 0
   const search = reactive({
+    displayMode: 'document' as 'document' | 'line',
     status: '',
-    documentTypeId: '',
+    documentTypeCode: '',
     applicationDateRange: [] as string[],
     projectName: '',
     materialDescription: '',
     materialCode: '',
     keyword: ''
   })
+  const displayMode = toRef(search, 'displayMode')
+  watch(displayMode, () => void refresh())
+  const displayModeOptions = useDictionaryOptions('commonDocumentDisplayMode')
   const statusLabels = { draft: '暂存', submitted: '已提交', approved: '已审核' } as const
-  const stockTypeLabels: Record<string, string> = {
-    normal: '普通',
-    gift: '赠品',
-    asset: '资产',
-    vmi: 'VMI',
-    consignment: '委托代销',
-    outsourced: '委托加工',
-    internal: '内协加工',
-    bonded: '保税'
-  }
   const stockStatusLabels: Record<string, string> = {
     available: '可用',
     scrap: '报废',
@@ -190,7 +225,13 @@
     frozen: '冻结'
   }
   const searchItems = computed<SearchFormItem[]>(() => [
-    { label: '展示方式', key: 'displayMode', type: 'text' },
+    {
+      label: '展示方式',
+      key: 'displayMode',
+      type: 'radioGroup',
+      options: displayModeOptions,
+      props: { optionType: 'button', 'aria-label': '单据列表展示方式' }
+    },
     {
       label: '单据状态',
       key: 'status',
@@ -203,13 +244,19 @@
     },
     {
       label: '单据类型',
-      key: 'documentTypeId',
+      key: 'documentTypeCode',
       type: 'select',
       props: {
         clearable: true,
         filterable: true,
         placeholder: '全部类型',
-        options: documentTypes.value.map((row) => ({ value: row.id, label: row.name }))
+        options: uniqBy(
+          documentTypes.value.filter((row) => row.code),
+          'code'
+        ).map((row) => ({
+          value: row.code,
+          label: `${row.code} · ${row.name}`
+        }))
       }
     },
     {
@@ -250,13 +297,22 @@
     }
   ])
   async function fetchRows(
-    query: WmsStockQuery & { applicationDateRange?: string[]; exportAll?: boolean }
+    query: WmsStockQuery & {
+      documentTypeCode?: string
+      applicationDateRange?: string[]
+      exportAll?: boolean
+    }
   ) {
     const exportAll = query.exportAll === true
     const fetchPage = (page: typeof query) =>
       fetchWmsTransferRequestPage({
         ...page,
         tenantId: effectiveTenantId.value || undefined,
+        documentTypeIds: page.documentTypeCode
+          ? documentTypes.value
+              .filter((row) => row.code === page.documentTypeCode)
+              .map((row) => row.id)
+          : undefined,
         applicationDateStart: page.applicationDateRange?.[0],
         applicationDateEnd: page.applicationDateRange?.[1]
       })
@@ -274,6 +330,7 @@
     const documents = groupDocumentLines(lines, (line) => line.documentId).map(
       ({ first, lines: group }) => ({
         ...first,
+        unpushedLineCount: group.filter((line) => !line.pushedDocumentId).length,
         lineNo: group.length,
         materialCode: '',
         materialDescription: `共 ${group.length} 项物料`,
@@ -281,12 +338,32 @@
         baseQuantity: group.reduce((sum, line) => sum + Number(line.baseQuantity || 0), 0)
       })
     )
+    const pageDocuments = exportAll
+      ? documents
+      : documents.slice((query.current - 1) * query.size, query.current * query.size)
+    const hasLineFilter = Boolean(
+      query.projectName?.trim() || query.materialDescription?.trim() || query.materialCode?.trim()
+    )
+    const unpushedCounts = new Map<string, number>()
+    if (!exportAll && hasLineFilter && pageDocuments.length) {
+      const remaining = await loadAllLinePages(
+        (page: Pick<WmsStockQuery, 'current' | 'size'>) =>
+          fetchWmsTransferRequestUnpushedPage(
+            pageDocuments.map((document) => document.documentId),
+            page
+          ),
+        { current: 1, size: 500 }
+      )
+      for (const line of remaining)
+        unpushedCounts.set(line.documentId, (unpushedCounts.get(line.documentId) || 0) + 1)
+    }
     return {
-      data: (exportAll
-        ? documents
-        : documents.slice((query.current - 1) * query.size, query.current * query.size)
-      ).map((row) => ({
+      data: pageDocuments.map((row) => ({
         ...row,
+        unpushedLineCount:
+          hasLineFilter && !exportAll
+            ? unpushedCounts.get(row.documentId) || 0
+            : row.unpushedLineCount,
         inventoryUnitName: formatUnitDisplayName(row.inventoryUnitName)
       })),
       total: documents.length
@@ -340,24 +417,70 @@
       workingId.value = undefined
     }
   }
-  async function openPush(row: WmsTransferRequestRow): Promise<void> {
+  async function openPush(rows: WmsTransferRequestRow[]): Promise<void> {
     if (pushingMode.value) return
+    if (!hasAnyAuth(['WmsDirectTransfer:Create', 'WmsStepTransfer:Create'])) {
+      ElMessage.warning('当前账号缺少直接或分步调拨单的新增权限')
+      return
+    }
+    const documents = new Set(rows.map((row) => row.documentId))
+    if (documents.size !== 1) {
+      ElMessage.warning('请选择同一张调拨申请单的明细后下推')
+      return
+    }
+    const row = rows[0]
+    if (!row || row.status !== 'approved') {
+      ElMessage.warning('请先审核调拨申请单')
+      return
+    }
+    if (
+      displayMode.value === 'line'
+        ? rows.some((item) => Boolean(item.pushedDocumentId))
+        : (row as RequestWorkspaceRow).unpushedLineCount === 0
+    ) {
+      ElMessage.warning('所选申请明细已下推，请选择未处理的明细')
+      return
+    }
     pushRow.value = row
+    pushLineIds.value = displayMode.value === 'line' ? rows.map((item) => item.lineId) : []
     await pushDialogRef.value?.handleOpen(undefined, { title: '下推调拨申请' })
   }
   async function push(mode: 'direct' | 'in_transit'): Promise<void> {
     if (!pushRow.value || pushingMode.value) return
+    if (!hasAuth(mode === 'direct' ? 'WmsDirectTransfer:Create' : 'WmsStepTransfer:Create')) {
+      ElMessage.warning('当前账号无权新增目标调拨单')
+      return
+    }
     const documentId = pushRow.value.documentId
     pushingMode.value = mode
     try {
-      await pushWmsTransferRequest(documentId, mode)
+      const kind = mode === 'direct' ? 'direct' : 'step'
+      const results = await createWmsTransferBusinessFromRequest(
+        documentId,
+        kind,
+        pushLineIds.value
+      )
       await pushDialogRef.value?.handleClose()
       await refresh()
-    } catch {
-      /* 接口层统一提示。 */
+      pushResultKind.value = kind
+      if (results.length === 1) {
+        await openPushResult(results[0].id)
+      } else {
+        pushResults.value = results
+        await pushResultDialogRef.value?.handleOpen(undefined, { title: '已生成调拨单' })
+      }
+    } catch (error) {
+      notifyFriendlyError(error, '下推调拨单失败，请检查申请明细后重试')
     } finally {
       pushingMode.value = undefined
     }
+  }
+  async function openPushResult(id: string): Promise<void> {
+    await pushResultDialogRef.value?.handleClose()
+    await router.push({
+      path: `/wms/transfer-business/${pushResultKind.value === 'direct' ? 'direct-transfer' : 'step-transfer'}`,
+      query: { openDocument: id }
+    })
   }
   const { bulkDeleteAction, bulkDeleting } = useDocumentBulkDelete({
     permission: 'WmsTransfer:Delete',
@@ -408,6 +531,29 @@
       ]
     }
   ])
+  const selectionActions = computed<ArtTableQueryHeaderAction[]>(() => [
+    {
+      key: 'push-selected',
+      label: displayMode.value === 'line' ? '下推所选明细' : '下推所选单据',
+      icon: 'ri:route-line',
+      permission: 'WmsTransfer:Push',
+      selectionRequired: true,
+      rowAction: false,
+      disabled: ({ selectedRows }) =>
+        selectedRows.some((row) => !isTransferRequestRow(row) || row.status !== 'approved'),
+      onClick: ({ selectedRows }) => void openPush(selectedRows.filter(isTransferRequestRow))
+    }
+  ])
+  function isTransferRequestRow(value: unknown): value is WmsTransferRequestRow {
+    return (
+      typeof value === 'object' &&
+      value !== null &&
+      'documentId' in value &&
+      typeof value.documentId === 'string' &&
+      'lineId' in value &&
+      typeof value.lineId === 'string'
+    )
+  }
   function moreActions(row: WmsTransferRequestRow): ButtonMoreItem[] {
     return [
       { key: 'copy', label: '复制单据', icon: 'ri:file-copy-line', auth: 'WmsTransfer:Copy' },
@@ -445,9 +591,26 @@
             }
           ]
         : []),
-      ...(row.status === 'approved' && !row.pushedAt
-        ? [{ key: 'push', label: '下推调拨', icon: 'ri:route-line', auth: 'WmsTransfer:Push' }]
-        : [])
+      {
+        key: 'push',
+        label:
+          row.status !== 'approved'
+            ? '下推（审核后可用）'
+            : (
+                  displayMode.value === 'line'
+                    ? Boolean(row.pushedDocumentId)
+                    : (row as RequestWorkspaceRow).unpushedLineCount === 0
+                )
+              ? '下推（明细已处理）'
+              : '下推调拨',
+        icon: 'ri:route-line',
+        auth: 'WmsTransfer:Push',
+        disabled:
+          row.status !== 'approved' ||
+          (displayMode.value === 'line'
+            ? Boolean(row.pushedDocumentId)
+            : (row as RequestWorkspaceRow).unpushedLineCount === 0)
+      }
     ]
   }
   function onMoreAction(item: ButtonMoreItem, row: WmsTransferRequestRow): void {
@@ -459,7 +622,7 @@
       item.key === 'delete'
     )
       void transition(row, item.key)
-    else if (item.key === 'push') void openPush(row)
+    else if (item.key === 'push') void openPush([row])
   }
   function columnsFactory(): ColumnOption<WmsTransferRequestRow>[] {
     const columns: ColumnOption<WmsTransferRequestRow>[] = [
@@ -537,7 +700,7 @@
         prop: 'stockType',
         label: '库存类型',
         width: 105,
-        formatter: (row) => stockTypeLabels[row.stockType] || row.stockType || '—'
+        formatter: (row) => WMS_STOCK_TYPE_LABELS[row.stockType] || row.stockType || '—'
       },
       {
         prop: 'stockStatus',
@@ -591,15 +754,22 @@
     ])
     return columns.filter((column) => !detailOnly.has(String(column.prop)))
   }
-  watch(
-    effectiveTenantId,
-    async (tenantId) => {
-      documentTypes.value = tenantId
-        ? (await fetchWmsInitialOptions('mdm_document_type', tenantId)).filter(
-            (row) => row.code === 'WMS_TRANSFER_REQUEST_STANDARD' || row.name.includes('调拨')
-          )
-        : []
-    },
-    { immediate: true }
-  )
+  async function loadDocumentTypes(): Promise<void> {
+    const loadVersion = ++optionsLoadVersion
+    optionError.value = false
+    documentTypes.value = []
+    try {
+      const rows = await fetchWmsInitialDocumentTypes(
+        effectiveTenantId.value || undefined,
+        'WmsTransfer'
+      )
+      if (loadVersion !== optionsLoadVersion) return
+      documentTypes.value = rows
+    } catch {
+      if (loadVersion !== optionsLoadVersion) return
+      optionError.value = true
+    }
+    await refresh()
+  }
+  watch(effectiveTenantId, () => void loadDocumentTypes(), { immediate: true })
 </script>

@@ -57,12 +57,6 @@
         focusable
         @selection-change="onSelectionChange"
       >
-        <template #search-displayMode>
-          <ElRadioGroup v-model="displayMode" aria-label="单据列表展示方式" @change="refresh">
-            <ElRadioButton label="document" value="document">按单据</ElRadioButton>
-            <ElRadioButton label="line" value="line">按明细</ElRadioButton>
-          </ElRadioGroup>
-        </template>
         <template #selection-action-request-push>
           <ArtButtonMore
             :list="[
@@ -98,6 +92,7 @@
 </template>
 
 <script setup lang="tsx">
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { formatDateTimeValue } from '@/utils/ui/format'
   import { issueRequestTypeLabels as requestTypeLabels } from '@wms/views/shared/issue-request-types'
   import { replaceReactiveModel } from '@/utils/form/model'
@@ -234,7 +229,6 @@
   const router = useRouter()
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const tableRef = ref<ArtTableQueryExpose>()
-  const displayMode = ref<'document' | 'line'>('document')
   type IssueListRow = WmsIssueRequest & {
     detailRowId?: string
     detailLine?: WmsIssueRequestLine
@@ -388,6 +382,7 @@
   const optionsLoading = ref(true)
   const workingId = ref<string>()
   const search = reactive({
+    displayMode: 'document' as 'document' | 'line',
     status: '',
     requestType: '',
     applicationDateRange: [] as string[],
@@ -396,6 +391,9 @@
     materialCode: '',
     applicantKeyword: ''
   })
+  const displayMode = toRef(search, 'displayMode')
+  watch(displayMode, () => void refresh())
+  const displayModeOptions = useDictionaryOptions('commonDocumentDisplayMode')
   const filterTenantId = computed(() => effectiveTenantId.value || undefined)
   const statusLabels: Record<WmsIssueRequestStatus, string> = {
     draft: '暂存',
@@ -460,7 +458,13 @@
     }
   ])
   const searchItems = computed<SearchFormItem[]>(() => [
-    { label: '展示方式', key: 'displayMode', type: 'text' },
+    {
+      label: '展示方式',
+      key: 'displayMode',
+      type: 'radioGroup',
+      options: displayModeOptions,
+      props: { optionType: 'button', 'aria-label': '单据列表展示方式' }
+    },
     {
       label: '单据状态',
       key: 'status',

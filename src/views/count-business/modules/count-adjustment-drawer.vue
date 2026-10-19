@@ -72,6 +72,7 @@
           <ArtExcelImport
             v-if="mode !== 'view'"
             v-auth="kind === 'gain' ? 'WmsCountGain:Import' : 'WmsCountLoss:Import'"
+            icon="ri:file-upload-line"
             :context-key="openData"
             :disabled="importing || parsing"
             :button-props="{ type: 'success', plain: true, loading: importing || parsing }"
@@ -459,6 +460,7 @@
   )
   import { formatWmsOwnerName } from '@/utils/wms/owner-display'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
+  import { WMS_STOCK_TYPE_LABELS } from '@/utils/wms/stock-type'
   import { isWmsBusinessTypeAvailable } from '@/utils/wms/business-type'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { useBreakpoints } from '@vueuse/core'
@@ -721,7 +723,12 @@
     return Number(value || 0).toFixed(2)
   }
   function stockTypeLabel(value: string): string {
-    return stockTypes.value.find((item) => item.value === value)?.label || value || '—'
+    return (
+      stockTypes.value.find((item) => item.value === value)?.label ||
+      WMS_STOCK_TYPE_LABELS[value] ||
+      value ||
+      '—'
+    )
   }
   function stockStatusLabel(value: string): string {
     return stockStatusLabels[value] || value || '—'

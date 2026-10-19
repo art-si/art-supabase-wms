@@ -38,12 +38,6 @@
         }"
         focusable
       >
-        <template #search-displayMode>
-          <ElRadioGroup v-model="displayMode" aria-label="单据列表展示方式" @change="refresh">
-            <ElRadioButton label="document" value="document">按单据</ElRadioButton>
-            <ElRadioButton label="line" value="line">按明细</ElRadioButton>
-          </ElRadioGroup>
-        </template>
       </ArtTableQuery>
       <AdjustmentDialog ref="dialogRef" @success="refresh" />
     </div>
@@ -89,7 +83,6 @@
   defineOptions({ name: 'WmsAdjustment' })
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const tableRef = ref<ArtTableQueryExpose>()
-  const displayMode = ref<'document' | 'line'>('document')
   const conditionOptions = useDictionaryOptions('wmsAdjustmentCondition')
   type AdjustmentListRow = WmsAdjustmentDocument & {
     detailRowId?: string
@@ -122,10 +115,25 @@
       onClick: () => openCreate()
     }
   ]
-  const search = reactive({ status: '', projectId: '', constructionNo: '', keyword: '' })
+  const search = reactive({
+    displayMode: 'document' as 'document' | 'line',
+    status: '',
+    projectId: '',
+    constructionNo: '',
+    keyword: ''
+  })
+  const displayMode = toRef(search, 'displayMode')
+  watch(displayMode, () => void refresh())
+  const displayModeOptions = useDictionaryOptions('commonDocumentDisplayMode')
   const filterTenantId = computed(() => effectiveTenantId.value || undefined)
   const searchItems = computed<SearchFormItem[]>(() => [
-    { label: '展示方式', key: 'displayMode', type: 'text' },
+    {
+      label: '展示方式',
+      key: 'displayMode',
+      type: 'radioGroup',
+      options: displayModeOptions,
+      props: { optionType: 'button', 'aria-label': '单据列表展示方式' }
+    },
     {
       label: '业务类型',
       key: 'status',

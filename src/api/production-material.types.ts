@@ -160,6 +160,10 @@ export interface WmsProductionMaterialListRow {
   availableInventoryQuantity: number
 }
 
+export interface WmsReturnableIssueLine extends WmsProductionMaterialListRow {
+  returnableQuantity: number
+}
+
 export interface WmsProductionProjectOption {
   id: string
   tenantId: string
@@ -190,8 +194,26 @@ export interface WmsProductionBomItem {
   key: string
   material: WmsMaterialOption
   requiredQuantity: number
+  selectedQuantity: number
+  issuedQuantity: number
+  goodReturnQuantity: number
+  incomingDefectReturnQuantity: number
+  remainingQuantity: number
+  unitName: string | null
+  basicQuantity: number | null
+  positionNo: string | null
+  operationName: string | null
+  sequenceNo: string
   workOrderNo: string
   sourceLineNo: string
+}
+
+export interface WmsWorkOrderBomIssueTotal {
+  sourceLineNo: string
+  selectedQuantity: number
+  issuedQuantity: number
+  goodReturnQuantity: number
+  incomingDefectReturnQuantity: number
 }
 
 export type WmsProductionStockOption = WmsStockBatch & {

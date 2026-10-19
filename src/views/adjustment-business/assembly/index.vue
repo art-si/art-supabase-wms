@@ -38,12 +38,6 @@
         }"
         focusable
       >
-        <template #search-displayMode>
-          <ElRadioGroup v-model="displayMode" aria-label="单据列表展示方式" @change="refresh">
-            <ElRadioButton label="document" value="document">按单据</ElRadioButton>
-            <ElRadioButton label="line" value="line">按明细</ElRadioButton>
-          </ElRadioGroup>
-        </template>
       </ArtTableQuery>
       <AssemblyDialog ref="dialogRef" @success="refresh" />
       <AssemblyDetailDrawer ref="detailRef" />
@@ -52,6 +46,7 @@
 </template>
 
 <script setup lang="tsx">
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { formatDateTimeValue } from '@/utils/ui/format'
   import { replaceReactiveModel } from '@/utils/form/model'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
@@ -93,7 +88,6 @@
   defineOptions({ name: 'WmsAssembly' })
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const tableRef = ref<ArtTableQueryExpose>()
-  const displayMode = ref<'document' | 'line'>('document')
   type AssemblyListRow = WmsAssemblyDocument & {
     detailRowId?: string
     detailLine?: WmsAssemblyComponent
@@ -124,7 +118,16 @@
   const projects = ref<WmsProject[]>([])
   const sections = ref<WmsProjectSection[]>([])
   const optionError = ref(false)
-  const search = reactive({ warehouseId: '', projectId: '', constructionNo: '', keyword: '' })
+  const search = reactive({
+    displayMode: 'document' as 'document' | 'line',
+    warehouseId: '',
+    projectId: '',
+    constructionNo: '',
+    keyword: ''
+  })
+  const displayMode = toRef(search, 'displayMode')
+  watch(displayMode, () => void refresh())
+  const displayModeOptions = useDictionaryOptions('commonDocumentDisplayMode')
   const filterTenantId = computed(() => effectiveTenantId.value || undefined)
   const headerActions: ArtTableQueryHeaderAction[] = [
     {
@@ -137,7 +140,13 @@
     }
   ]
   const searchItems = computed<SearchFormItem[]>(() => [
-    { label: '展示方式', key: 'displayMode', type: 'text' },
+    {
+      label: '展示方式',
+      key: 'displayMode',
+      type: 'radioGroup',
+      options: displayModeOptions,
+      props: { optionType: 'button', 'aria-label': '单据列表展示方式' }
+    },
     {
       label: '仓库',
       key: 'warehouseId',

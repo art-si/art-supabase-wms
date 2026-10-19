@@ -36,12 +36,6 @@
         }"
         focusable
       >
-        <template #search-displayMode>
-          <ElRadioGroup v-model="displayMode" aria-label="单据列表展示方式" @change="refresh">
-            <ElRadioButton label="document" value="document">按单据</ElRadioButton>
-            <ElRadioButton label="line" value="line">按明细</ElRadioButton>
-          </ElRadioGroup>
-        </template>
       </ArtTableQuery>
       <CountAdjustmentDrawer ref="drawerRef" :kind="kind" @success="refresh" />
       <MasterDataDeleteGuard ref="deleteGuardRef" />
@@ -50,8 +44,10 @@
 </template>
 
 <script setup lang="tsx">
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { replaceReactiveModel } from '@/utils/form/model'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
+  import { WMS_STOCK_TYPE_LABELS } from '@/utils/wms/stock-type'
   import { ElMessage, ElTag } from 'element-plus'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { useDocumentBulkDelete } from '@/hooks/business/useDocumentBulkDelete'
@@ -93,7 +89,6 @@
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const { defaultWriteTenantId } = useTenantScopeFormPolicy()
   const tableRef = ref<ArtTableQueryExpose>()
-  const displayMode = ref<'document' | 'line'>('document')
   const visibleRows = ref<WmsCountAdjustmentRow[]>([])
   const lineProperties = new Set([
     'materialCode',
@@ -166,16 +161,7 @@
   } as const
   const permission = computed(() => permissionByKind[props.kind])
   const statusLabels = { draft: '暂存', submitted: '已提交', approved: '已审核' } as const
-  const stockTypeLabels: Record<string, string> = {
-    normal: '普通',
-    gift: '赠品',
-    asset: '资产',
-    vmi: 'VMI',
-    consignment: '委托代销',
-    outsourced: '委托加工',
-    internal: '内协加工',
-    bonded: '保税'
-  }
+  const stockTypeLabels = WMS_STOCK_TYPE_LABELS
   const stockStatusLabels: Record<string, string> = {
     available: '可用',
     scrap: '报废',
@@ -183,14 +169,24 @@
     frozen: '冻结'
   }
   const search = reactive({
+    displayMode: 'document' as 'document' | 'line',
     status: '',
     projectName: '',
     materialDescription: '',
     materialCode: '',
     keyword: ''
   })
+  const displayMode = toRef(search, 'displayMode')
+  watch(displayMode, () => void refresh())
+  const displayModeOptions = useDictionaryOptions('commonDocumentDisplayMode')
   const searchItems: SearchFormItem[] = [
-    { label: '展示方式', key: 'displayMode', type: 'text' },
+    {
+      label: '展示方式',
+      key: 'displayMode',
+      type: 'radioGroup',
+      options: displayModeOptions,
+      props: { optionType: 'button', 'aria-label': '单据列表展示方式' }
+    },
     {
       label: '单据状态',
       key: 'status',

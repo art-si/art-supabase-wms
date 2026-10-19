@@ -165,6 +165,10 @@
       onConfirm: submit,
       onOpen: async (_data, api) => {
         if (!isSerial.value) return
+        if (!data.batchId) {
+          loadError.value = true
+          return
+        }
         api.setLoading(true)
         try {
           serials.value = await fetchWmsBatchSerials(data.batchId)

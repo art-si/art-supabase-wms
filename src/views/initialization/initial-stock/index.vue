@@ -36,12 +36,6 @@
         }"
         focusable
       >
-        <template #search-displayMode>
-          <ElRadioGroup v-model="displayMode" aria-label="单据列表展示方式" @change="refresh">
-            <ElRadioButton label="document" value="document">按单据</ElRadioButton>
-            <ElRadioButton label="line" value="line">按明细</ElRadioButton>
-          </ElRadioGroup>
-        </template>
       </ArtTableQuery>
       <InitialStockDrawer ref="drawerRef" @success="refresh" />
       <MasterDataDeleteGuard ref="deleteGuardRef" />
@@ -108,7 +102,6 @@
   void userStore.ensureDictLoaded('wmsInitialStockType')
   void userStore.ensureDictLoaded('wmsInitialStockCondition')
   const tableRef = ref<ArtTableQueryExpose>()
-  const displayMode = ref<'document' | 'line'>('document')
   const visibleRows = ref<StockListRow[]>([])
   const lineProperties = new Set([
     'materialCode',
@@ -141,7 +134,15 @@
   }
   const drawerRef = ref<InstanceType<typeof InitialStockDrawer>>()
   const workingId = ref<string>()
-  const search = reactive({ organizationId: '', status: '', keyword: '' })
+  const search = reactive({
+    displayMode: 'document' as 'document' | 'line',
+    organizationId: '',
+    status: '',
+    keyword: ''
+  })
+  const displayMode = toRef(search, 'displayMode')
+  watch(displayMode, () => void refresh())
+  const displayModeOptions = useDictionaryOptions('commonDocumentDisplayMode')
 
   useRouteDocumentDrawer({
     routeName: 'WmsInitialStock',
@@ -153,7 +154,13 @@
     onError: () => ElMessage.error('初始库存单加载失败，请刷新后重试')
   })
   const searchItems: SearchFormItem[] = [
-    { label: '展示方式', key: 'displayMode', type: 'text' },
+    {
+      label: '展示方式',
+      key: 'displayMode',
+      type: 'radioGroup',
+      options: displayModeOptions,
+      props: { optionType: 'button', 'aria-label': '单据列表展示方式' }
+    },
     {
       label: '单据状态',
       key: 'status',

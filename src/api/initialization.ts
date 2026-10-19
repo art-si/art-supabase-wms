@@ -192,7 +192,7 @@ export async function fetchWmsInitialMaterials(params: {
 export async function fetchWmsInitialOptions(
   table:
     'mdm_document_type' | 'mdm_business_type' | 'mdm_project' | 'mdm_supplier' | 'mdm_customer',
-  tenantId: string
+  tenantId?: string
 ): Promise<WmsInitializationOption[]> {
   const config = {
     mdm_document_type: {
@@ -222,10 +222,9 @@ export async function fetchWmsInitialOptions(
       name: 'customerName'
     }
   }[table]
-  const { data } = await responseHandle<Record<string, unknown>[]>(
-    () => supabase.from(table).select(config.fields).eq('tenant_id', tenantId).order('id'),
-    readOptions
-  )
+  let query = supabase.from(table).select(config.fields).order('id')
+  if (tenantId) query = query.eq('tenant_id', tenantId)
+  const { data } = await responseHandle<Record<string, unknown>[]>(() => query, readOptions)
   return (data ?? []).map((row) => {
     const code = row[config.code]
     const name = row[config.name]
@@ -249,7 +248,7 @@ export async function fetchWmsInitialOptions(
 }
 
 export async function fetchWmsInitialDocumentTypes(
-  tenantId: string,
+  tenantId: string | undefined,
   menuName: string
 ): Promise<WmsInitializationOption[]> {
   const { data: menu } = await responseHandle<{ id: string }>(

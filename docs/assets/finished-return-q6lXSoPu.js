@@ -1,1 +1,0 @@
-import{Hn as e,Xn as t,hr as n}from"./supabase-zaVzt3t2.js";import{t as r}from"./production-material-workspace-Cq0-4cVB.js";var i=t({name:`WmsFinishedReturn`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{kind:`finished_return`}))}});export{i as default};

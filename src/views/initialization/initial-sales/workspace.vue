@@ -39,12 +39,6 @@
         focusable
         @selection-change="onSelectionChange"
       >
-        <template #search-displayMode>
-          <ElRadioGroup v-model="displayMode" aria-label="单据列表展示方式" @change="refresh">
-            <ElRadioButton label="document" value="document">按单据</ElRadioButton>
-            <ElRadioButton label="line" value="line">按明细</ElRadioButton>
-          </ElRadioGroup>
-        </template>
         <template #sales-push>
           <ArtButtonMore :list="pushActions" trigger="click" @click="onSalesPush">
             <template #trigger
@@ -163,7 +157,6 @@
   void userStore.ensureDictLoaded('wmsInitialStockType')
   void userStore.ensureDictLoaded('wmsInitialStockCondition')
   const tableRef = ref<ArtTableQueryExpose>()
-  const displayMode = ref<'document' | 'line'>('document')
   const visibleRows = ref<WmsInitialSalesListRow[]>([])
   const lineProperties = new Set([
     'projectName',
@@ -523,14 +516,24 @@
   } as const
   const permission = computed(() => permissionCodes[props.kind])
   const search = reactive({
+    displayMode: 'document' as 'document' | 'line',
     status: '',
     customer: '',
     projectName: '',
     materialDescription: '',
     materialCode: ''
   })
+  const displayMode = toRef(search, 'displayMode')
+  watch(displayMode, () => void refresh())
+  const displayModeOptions = useDictionaryOptions('commonDocumentDisplayMode')
   const searchItems: SearchFormItem[] = [
-    { label: '展示方式', key: 'displayMode', type: 'text' },
+    {
+      label: '展示方式',
+      key: 'displayMode',
+      type: 'radioGroup',
+      options: displayModeOptions,
+      props: { optionType: 'button', 'aria-label': '单据列表展示方式' }
+    },
     {
       label: '单据状态',
       key: 'status',

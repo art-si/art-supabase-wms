@@ -86,6 +86,7 @@
   } from '@wms/api'
 
   const wmsInventoryEnableStatusOptions = useDictionaryOptions('wmsInventoryEnableStatus')
+  const booleanOptions = useDictionaryOptions('commonBoolean', (value) => value === 'true')
 
   defineOptions({ name: 'WmsInventoryEnable' })
   const { confirmAction } = useArtFeedback()
@@ -110,10 +111,10 @@
       type: 'segment',
       span: 24,
       props: {
-        options: [
-          { label: '否', value: false },
-          { label: '是', value: true, disabled: selectedCount.value > 1 }
-        ]
+        options: booleanOptions.map((option) => ({
+          ...option,
+          disabled: option.value && selectedCount.value > 1
+        }))
       },
       description:
         selectedCount.value > 1

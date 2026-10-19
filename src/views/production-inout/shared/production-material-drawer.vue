@@ -23,7 +23,9 @@
             ? '核对单据表头、物料明细与库存办理结果。'
             : isFinished
               ? '选择生产工单与成品明细，核对仓位和数量后暂存。审核后办理库存过账。'
-              : '先填写单据表头，再从库存批次、物料编码或生产工单 BOM 选择明细。保存时生成月度三位流水号。'
+              : props.kind === 'return'
+                ? '先填写单据表头，再从已出库领料明细或即时库存选择退料。保存时生成月度三位流水号。'
+                : '先填写单据表头，再从即时库存或生产工单 BOM 选择明细。保存时生成月度三位流水号。'
         "
       >
         <template #aside>
@@ -78,7 +80,15 @@
         :closable="false"
         show-icon
       >
-        可按工单、已确认排包单或物料带入。入库过账数量不能超过生产工单已报工未入库数量。
+        可按工单、已确认排包单或物料带入。已报工数量不足时，按工单类型的报工控制设置提示或限制入库。
+      </ElAlert>
+      <ElAlert
+        v-if="mode !== 'view' && reportControlWarning"
+        type="warning"
+        :closable="false"
+        show-icon
+      >
+        {{ reportControlWarning }}
       </ElAlert>
       <ElAlert v-if="importIntent && mode !== 'view'" type="success" :closable="false" show-icon>
         先选择仓库，再在“{{ config.detailLabel }}”中点击“导入明细”；必填列为物料编码、{{
@@ -174,7 +184,9 @@
               :model-value="form.applicantId || undefined"
               :selected-data="selectedApplicant"
               :tenant-id="form.tenantId || undefined"
-              title="选择领料申请人"
+              :title="
+                props.kind === 'issue' || props.kind === 'return' ? '选择领料人' : '选择领料申请人'
+              "
               :disabled="!form.tenantId"
               @change="onApplicantChange"
             />
@@ -235,44 +247,43 @@
             ? '可按生产工单、排包单或物料编码批量带入。'
             : props.kind === 'finished_return'
               ? '从已过账的完工入库明细批量选单。'
-              : '可从库存批次、物料编码或当前生产工单 BOM 批量带入。'
+              : props.kind === 'return'
+                ? '可从已出库领料明细或即时库存批量带入。'
+                : '可从即时库存或当前生产工单 BOM 批量带入。'
         "
       >
         <template #actions>
           <div v-if="mode !== 'view'" class="flex flex-wrap items-center justify-end gap-2">
-            <ArtTableMultipleSelect
-              v-if="!isFinished"
-              v-model="stockPickerIds"
-              v-model:selected-data="stockPickerRows"
-              class="w-auto! shrink-0"
-              title="库存列表"
-              subtitle="可按物料与批号检索并批量参选。"
-              search-placeholder="搜索批号或备注"
-              row-key="id"
-              label-key="batchLabel"
-              :columns="stockColumns"
-              :api-fn="stockApi"
-              :disabled="!form.tenantId"
-              @confirm="addStockRows"
+            <TransferStockPicker
+              v-if="props.kind === 'issue' || props.kind === 'return'"
+              :tenant-id="form.tenantId"
+              :projects="projects"
+              :units="units"
+              :model-value="stockPickerIds"
+              :selected-data="stockPickerRows"
+              :disabled="!form.warehouseId"
+              multiple
+              @update:selected-data="addProductionStockRows"
             >
               <template #trigger="{ open }">
                 <ElButton
                   v-auth="permission.Add"
                   type="primary"
-                  :disabled="!form.tenantId"
+                  :disabled="!form.warehouseId"
                   @click="open"
                 >
                   <ArtSvgIcon icon="ri:add-line" />新增
                 </ElButton>
               </template>
-            </ArtTableMultipleSelect>
+            </TransferStockPicker>
             <ArtTableMultipleSelect
-              v-if="!isFinished"
+              v-if="props.kind === 'issue'"
+              ref="bomSelectRef"
               v-model="bomPickerIds"
               v-model:selected-data="bomPickerSelected"
               class="w-auto! shrink-0"
-              title="参选生产工单 BOM"
-              subtitle="从已选择的生产工单 BOM 明细中批量带入物料。"
+              title="参选生产工单 BOM 未领料明细"
+              subtitle="仅显示仍有可领数量的 BOM 分录；支持分批领料。"
               row-key="key"
               label-key="materialName"
               :columns="bomColumns"
@@ -284,6 +295,27 @@
                 <ElButton v-auth="permission.Select" :disabled="!form.workOrderId" @click="open"
                   ><ArtSvgIcon icon="ri:file-list-3-line" />选单</ElButton
                 >
+              </template>
+            </ArtTableMultipleSelect>
+            <ArtTableMultipleSelect
+              v-if="props.kind === 'return'"
+              v-model="issuePickerIds"
+              v-model:selected-data="issuePickerRows"
+              class="w-auto! shrink-0"
+              title="参选已出库生产领料明细"
+              subtitle="从已出库且尚可退料的领料行批量带入。"
+              search-placeholder="搜索领料单号、工单号或物料编码"
+              row-key="lineId"
+              label-key="documentNo"
+              :columns="issueSourceColumns"
+              :api-fn="issueSourceApi"
+              :disabled="!form.tenantId"
+              @confirm="addIssueRows"
+            >
+              <template #trigger="{ open }">
+                <ElButton v-auth="permission.Select" :disabled="!form.tenantId" @click="open">
+                  <ArtSvgIcon icon="ri:file-list-3-line" />选单
+                </ElButton>
               </template>
             </ArtTableMultipleSelect>
             <ArtTableMultipleSelect
@@ -360,7 +392,7 @@
               </template>
             </ArtTableMultipleSelect>
             <ArtTableMultipleSelect
-              v-if="props.kind !== 'finished_return'"
+              v-if="props.kind === 'finished_inbound'"
               v-model="materialPickerIds"
               v-model:selected-data="materialPickerRows"
               class="w-auto! shrink-0"
@@ -732,30 +764,40 @@
         aria-label="当前明细序列号"
       />
     </template>
-    <ElSelect
-      v-else-if="isOutbound"
-      v-model="serialIdsDraft"
-      multiple
-      filterable
-      class="w-full"
-      aria-label="选择来源序列号"
-      placeholder="选择来源序列号"
-    >
-      <ElOption
-        v-for="item in serials.filter((entry) => entry.status === 'in_stock')"
-        :key="item.id"
-        :label="item.serialNo"
-        :value="item.id"
+    <div v-else class="space-y-3">
+      <ElSelect
+        v-if="isOutbound"
+        v-model="serialIdsDraft"
+        multiple
+        filterable
+        class="w-full"
+        aria-label="录入或选择来源序列号"
+        placeholder="录入或选择来源序列号"
+      >
+        <ElOption
+          v-for="item in serials.filter((entry) => entry.status === 'in_stock')"
+          :key="item.id"
+          :label="item.serialNo"
+          :value="item.id"
+        />
+      </ElSelect>
+      <ElInput
+        v-else
+        v-model="serialText"
+        type="textarea"
+        :rows="10"
+        placeholder="每行一个序列号"
+        aria-label="逐行录入序列号"
       />
-    </ElSelect>
-    <ElInput
-      v-else
-      v-model="serialText"
-      type="textarea"
-      :rows="10"
-      placeholder="每行一个序列号"
-      aria-label="逐行录入序列号"
-    />
+      <ArtExcelImport
+        accept=".xlsx,.xls,.csv"
+        icon="ri:file-upload-line"
+        :context-key="activeSerialLine"
+        @import-success="importSerialRows"
+        @import-error="onImportError"
+        >导入序列号</ArtExcelImport
+      >
+    </div>
   </ArtDialog>
 </template>
 
@@ -790,6 +832,7 @@
   import ArtTable from '@/components/core/tables/art-table/index.vue'
   import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
   import ArtTableMultipleSelect from '@/components/core/forms/art-data-select/table-multiple.vue'
+  import TransferStockPicker from '../../transfer-business/shared/transfer-stock-picker.vue'
   import ArtEmployeeSelect from '@/components/business/art-employee-select/index.vue'
   import ArtExcelImport from '@/components/core/forms/art-excel-import/index.vue'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
@@ -801,7 +844,8 @@
   import type {
     DataSelectColumn,
     DataSelectFetchParams,
-    DataSelectRecord
+    DataSelectRecord,
+    ArtDataSelectExpose
   } from '@/components/core/forms/art-data-select/types'
   import type { ColumnOption } from '@/types'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
@@ -821,6 +865,8 @@
     fetchWmsProductionBusinessTypes,
     fetchWmsProductionDocumentTypes,
     fetchWmsProductionMaterialDocument,
+    fetchWmsIssueReturnReservations,
+    fetchWmsReturnableIssueLines,
     fetchWmsProductionMaterialsByCodes,
     fetchWmsProductionMaterialsByIds,
     fetchWmsProductionProjects,
@@ -846,6 +892,8 @@
     type WmsProductionMaterialLine,
     type WmsProductionProjectOption,
     type WmsProductionStockOption,
+    type WmsReturnableIssueLine,
+    type WmsTransferStockOption,
     type WmsUnitOption,
     type WmsWarehouse,
     type WmsWorkOrderOption,
@@ -856,6 +904,8 @@
   interface OpenData {
     mode: 'create' | 'edit' | 'copy' | 'view'
     documentId?: string
+    sourceIssueDocumentId?: string
+    sourceIssueLineIds?: string[]
     importIntent?: boolean
     selectIntent?: boolean
   }
@@ -868,6 +918,7 @@
   const emit = defineEmits<{ success: [] }>()
   const drawerRef = ref<ArtDrawerExpose<OpenData>>()
   const serialDialogRef = ref<ArtDialogExpose>()
+  const bomSelectRef = ref<ArtDataSelectExpose>()
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const lineTableRef = ref<InstanceType<typeof ArtTable>>()
   const mode = ref<OpenData['mode']>('create')
@@ -906,9 +957,11 @@
   const selectedKeeper = ref<EmployeeIntegrationItem[]>([])
   const employees = ref<EmployeeIntegrationItem[]>([])
   const stockPickerIds = ref<string[]>([])
-  const stockPickerRows = ref<DataSelectRecord[]>([])
+  const stockPickerRows = ref<WmsTransferStockOption[]>([])
   const bomPickerIds = ref<string[]>([])
   const bomPickerSelected = ref<DataSelectRecord[]>([])
+  const issuePickerIds = ref<string[]>([])
+  const issuePickerRows = ref<DataSelectRecord[]>([])
   const materialPickerIds = ref<string[]>([])
   const materialPickerRows = ref<DataSelectRecord[]>([])
   const workOrderPickerIds = ref<string[]>([])
@@ -941,7 +994,7 @@
     workOrderId: '',
     projectId: '',
     customerId: '',
-    demandDate: '',
+    demandDate: dayjs().format('YYYY-MM-DD'),
     applicantId: '',
     departmentId: '',
     keeperId: '',
@@ -952,6 +1005,24 @@
   const documentStatusLabel = computed(
     () => ({ draft: '暂存', submitted: '已提交', approved: '已审核' })[form.value.status]
   )
+  const reportControlWarning = computed(() => {
+    if (props.kind !== 'finished_inbound') return ''
+    const affected = workOrders.value.filter((order) => {
+      if (order.productionReportControl !== 'warning') return false
+      const selectedQuantity = lines.value.reduce(
+        (total, line) =>
+          total + (line.workOrderId === order.id ? Math.abs(Number(line.actualQuantity)) : 0),
+        0
+      )
+      return (
+        selectedQuantity >
+        Math.max(0, Number(order.completedQuantity) - Number(order.warehousedQuantity))
+      )
+    })
+    return affected.length
+      ? `${affected.map((order) => order.workOrderNo).join('、')} 的入库数量超过已报工未入库数量，请核对后再办理。`
+      : ''
+  })
   const materialStatusLabel = computed(
     () =>
       ({
@@ -1048,7 +1119,11 @@
     { key: 'customer', label: '客户', field: 'customer' },
     ...(!isFinished.value
       ? [
-          { key: 'applicant', label: '申请人', field: 'applicant' },
+          {
+            key: 'applicant',
+            label: props.kind === 'issue' || props.kind === 'return' ? '领料人' : '申请人',
+            field: 'applicant'
+          },
           { key: 'department', label: '申请部门', field: 'department' }
         ]
       : []),
@@ -1126,9 +1201,29 @@
   ]
   const bomColumns: DataSelectColumn[] = [
     { prop: 'workOrderNo', label: '生产工单', minWidth: 150 },
+    { prop: 'sequenceNo', label: '组件序号', minWidth: 90 },
+    { prop: 'positionNo', label: '位号', minWidth: 110 },
     { prop: 'materialCode', label: '物料编码', minWidth: 150 },
     { prop: 'materialName', label: '物料描述', minWidth: 230 },
-    { prop: 'requiredQuantity', label: '需求数量', width: 110, align: 'right' }
+    { prop: 'specificationModel', label: '规格型号', minWidth: 140 },
+    { prop: 'basicQuantity', label: '基本数量', width: 105, align: 'right' },
+    { prop: 'requiredQuantity', label: '需求数量', width: 110, align: 'right' },
+    { prop: 'unitName', label: '单位', width: 90 },
+    { prop: 'selectedQuantity', label: '已选单数量', width: 110, align: 'right' },
+    { prop: 'issuedQuantity', label: '实发数量', width: 110, align: 'right' },
+    { prop: 'remainingQuantity', label: '未发数量', width: 110, align: 'right' },
+    { prop: 'operationName', label: '工序', minWidth: 130 }
+  ]
+  const issueSourceColumns: DataSelectColumn[] = [
+    { prop: 'documentNo', label: '领料单号', minWidth: 165 },
+    { prop: 'workOrderNo', label: '生产工单', minWidth: 155 },
+    { prop: 'materialCode', label: '物料编码', minWidth: 145 },
+    { prop: 'materialDescription', label: '物料描述', minWidth: 210 },
+    { prop: 'specificationModel', label: '规格型号', minWidth: 145 },
+    { prop: 'batchNo', label: '批次号', minWidth: 130 },
+    { prop: 'fulfilledQuantity', label: '已出库数量', width: 110, align: 'right' },
+    { prop: 'returnableQuantity', label: '可退数量', width: 110, align: 'right' },
+    { prop: 'warehouseName', label: '仓库', minWidth: 145 }
   ]
   const workOrderColumns: DataSelectColumn[] = [
     { prop: 'workOrderNo', label: '生产工单', minWidth: 170 },
@@ -1157,11 +1252,19 @@
     { prop: 'availableQuantity', label: '可用数量', width: 105, align: 'right' }
   ]
   const bomPickerData = computed(() =>
-    bomItems.value.map((item) => ({
-      ...item,
-      materialCode: item.material.materialCode,
-      materialName: item.material.description || item.material.materialName
-    }))
+    bomItems.value
+      .filter(
+        (item) =>
+          (props.kind !== 'issue' || item.remainingQuantity > 0) &&
+          (props.kind !== 'issue' ||
+            !lines.value.some((line) => line.sourceLineNo === item.sourceLineNo))
+      )
+      .map((item) => ({
+        ...item,
+        materialCode: item.material.materialCode,
+        materialName: item.material.description || item.material.materialName,
+        specificationModel: item.material.specificationModel
+      }))
   )
   const lineColumns = computed<ColumnOption<DraftLine>[]>(() => [
     ...(mode.value === 'view'
@@ -1447,7 +1550,12 @@
       hidden: props.kind === 'finished_return',
       props: { valueFormat: 'YYYY-MM-DD', class: 'w-full!', disabled: mode.value === 'view' }
     },
-    { key: 'applicantId', label: '申请人', type: 'input', hidden: isFinished.value },
+    {
+      key: 'applicantId',
+      label: props.kind === 'issue' || props.kind === 'return' ? '领料人' : '申请人',
+      type: 'input',
+      hidden: isFinished.value
+    },
     {
       key: 'departmentId',
       label: '申请部门',
@@ -1672,6 +1780,40 @@
       serialText: ''
     }
   }
+  function makeReturnLineFromIssue(
+    source: WmsProductionMaterialLine,
+    document: WmsProductionMaterialDocument,
+    remaining: number
+  ): DraftLine {
+    const ratio = Number(source.actualQuantity) ? remaining / Number(source.actualQuantity) : 0
+    return {
+      ...cloneDeep(source),
+      id: undefined,
+      key: crypto.randomUUID(),
+      workOrderId: document.workOrderId,
+      requestedQuantity: -remaining,
+      actualQuantity: -remaining,
+      baseQuantity:
+        source.baseQuantity == null ? null : -round(Math.abs(Number(source.baseQuantity)) * ratio),
+      auxiliaryQuantity:
+        source.auxiliaryQuantity == null
+          ? null
+          : -round(Math.abs(Number(source.auxiliaryQuantity)) * ratio),
+      auxiliaryQuantity2:
+        source.auxiliaryQuantity2 == null
+          ? null
+          : -round(Math.abs(Number(source.auxiliaryQuantity2)) * ratio),
+      sourceBatchId: null,
+      sourceLineId: source.id || null,
+      sourceDocument: document.documentNo,
+      sourceLineNo: String(source.lineNo),
+      returnType: 'good',
+      serialIds: [],
+      serialNos: [],
+      movementId: null,
+      fulfilledQuantity: 0
+    }
+  }
   function quantityCellClass({ column }: { column: { property?: string } }): string {
     return isReturn.value &&
       (column.property === 'requestedQuantity' ||
@@ -1735,15 +1877,6 @@
       getMaterialCategoryIds(materialCategories.value, String(params.filters.categoryId || ''))
     )
   }
-  function stockApi(params: DataSelectFetchParams) {
-    return fetchWmsProductionStockPage({
-      tenantId: form.value.tenantId,
-      warehouseId: form.value.warehouseId || undefined,
-      keyword: params.keyword,
-      current: params.page,
-      size: params.pageSize
-    })
-  }
   function inboundSourceApi(params: DataSelectFetchParams) {
     return fetchWmsFinishedInboundSourcePage({
       tenantId: form.value.tenantId,
@@ -1787,9 +1920,21 @@
     const materials = await fetchWmsProductionMaterialsByIds(form.value.tenantId, uniq(materialIds))
     const byId = new Map(materials.map((item) => [item.id, item]))
     let added = 0
+    let reportWarnings = 0
     for (const order of orders) {
       const material = order.materialId ? byId.get(order.materialId) : undefined
-      const remaining = Number(order.completedQuantity) - Number(order.warehousedQuantity)
+      const orderRemaining = Math.max(
+        0,
+        Number(order.orderQuantity) - Number(order.warehousedQuantity)
+      )
+      const reportedRemaining = Math.max(
+        0,
+        Number(order.completedQuantity) - Number(order.warehousedQuantity)
+      )
+      const remaining =
+        order.productionReportControl === 'strict'
+          ? Math.min(orderRemaining, reportedRemaining)
+          : orderRemaining
       if (!material || remaining <= 0) continue
       const line = makeLine(material, Math.min(remaining, 1))
       line.workOrderId = order.id
@@ -1799,6 +1944,8 @@
       line.sourceDocument = order.workOrderNo
       lines.value.push(line)
       added++
+      if (order.productionReportControl === 'warning' && reportedRemaining < line.actualQuantity)
+        reportWarnings++
     }
     if (orders.length === 1) {
       form.value.workOrderId = orders[0].id
@@ -1815,9 +1962,13 @@
     renumber()
     workOrderPickerIds.value = []
     workOrderPickerRows.value = []
-    if (!added) ElMessage.warning('所选工单暂无已报工未入库的成品数量')
+    if (!added) ElMessage.warning('所选工单暂无可入库的成品数量，请核对工单数量和报工控制设置')
     else if (added < orders.length)
       ElMessage.warning(`已带入 ${added} 行；无可入库数量的工单已跳过`)
+    else if (reportWarnings)
+      ElMessage.warning(
+        `已带入 ${added} 行；${reportWarnings} 行超过已报工未入库数量，请核对后再办理`
+      )
   }
   async function addPackRows(_ids: unknown, rows: DataSelectRecord[]): Promise<void> {
     const order = workOrders.value.find((item) => item.id === form.value.workOrderId)
@@ -1906,7 +2057,16 @@
   function addBomRows(_ids: unknown, rows: DataSelectRecord[]): void {
     for (const row of rows) {
       const item = row as WmsProductionBomItem
-      const line = makeLine(item.material, item.requiredQuantity)
+      if (
+        props.kind === 'issue' &&
+        (item.remainingQuantity <= 0 ||
+          lines.value.some((line) => line.sourceLineNo === item.sourceLineNo))
+      )
+        continue
+      const line = makeLine(
+        item.material,
+        props.kind === 'issue' ? item.remainingQuantity : item.requiredQuantity
+      )
       line.sourceDocument = item.workOrderNo
       line.sourceLineNo = item.sourceLineNo
       lines.value.push(line)
@@ -1915,10 +2075,15 @@
     bomPickerIds.value = []
     bomPickerSelected.value = []
   }
-  function addStockRows(_ids: unknown, rows: DataSelectRecord[]): void {
-    for (const row of rows) {
-      const stock = row as WmsProductionStockOption
-      if (!stock.material) continue
+  function addProductionStockRows(rows: WmsTransferStockOption[]): void {
+    const existing = new Set(lines.value.map((line) => line.sourceBatchId).filter(Boolean))
+    let added = 0
+    for (const stock of rows) {
+      if (!stock.material || existing.has(stock.id) || stock.availableQuantity <= 0) continue
+      if (stock.organizationId !== form.value.organizationId) {
+        ElMessage.warning('所选库存与单据表头的库存组织不一致，请选择同一组织的批次')
+        continue
+      }
       const material = { ...stock.material, id: stock.materialId } as WmsMaterialOption
       const line = makeLine(material, Math.min(stock.availableQuantity, 1))
       line.sourceBatchId = isReturn.value ? null : stock.id
@@ -1926,14 +2091,92 @@
       line.warehouseId = stock.warehouseId
       line.binId = stock.binId
       line.projectId = stock.projectId || form.value.projectId || null
+      line.constructionNo = stock.constructionNo
       line.availableInventoryQuantity = stock.availableQuantity
+      line.stockType = stock.stockType || 'normal'
       line.ownerType = stock.ownerType as DraftLine['ownerType']
       line.ownerId = stock.ownerId
+      line.keeperId = stock.warehouse?.responsibleEmployeeId || form.value.keeperId || null
+      line.productionDate = stock.productionDate
+      line.expiryDate = stock.expiryDate
+      line.trackingNo = stock.trackingNo
       lines.value.push(line)
+      existing.add(stock.id)
+      added++
     }
     renumber()
     stockPickerIds.value = []
     stockPickerRows.value = []
+    if (!added && rows.length) ElMessage.warning('所选批次已添加、无可用库存或不属于当前库存组织')
+  }
+  function issueSourceApi(params: DataSelectFetchParams) {
+    return fetchWmsReturnableIssueLines({
+      tenantId: form.value.tenantId,
+      workOrderId: form.value.workOrderId || undefined,
+      keyword: params.keyword,
+      page: params.page,
+      pageSize: params.pageSize,
+      excludeDocumentId: currentDocument.value?.id
+    })
+  }
+  async function addIssueRows(_ids: unknown, rows: DataSelectRecord[]): Promise<void> {
+    const selected = rows as WmsReturnableIssueLine[]
+    const documentIds = uniq(selected.map((row) => row.documentId))
+    if (documentIds.length !== 1) {
+      ElMessage.warning('一张退料单请选择同一张生产领料单的明细')
+      return
+    }
+    try {
+      const issue = await fetchWmsProductionMaterialDocument(documentIds[0])
+      if (issue.kind !== 'issue' || issue.tenantId !== form.value.tenantId)
+        throw new Error('来源领料单不属于当前租户')
+      if (
+        lines.value.length &&
+        (form.value.organizationId !== issue.organizationId ||
+          form.value.workOrderId !== (issue.workOrderId || ''))
+      ) {
+        ElMessage.warning('已有明细与所选领料单的库存组织或工单不一致，请另建退料单')
+        return
+      }
+      const reservations = await fetchWmsIssueReturnReservations(
+        issue.tenantId,
+        selected.map((row) => row.lineId),
+        currentDocument.value?.id
+      )
+      const selectedIds = new Set(selected.map((row) => row.lineId))
+      let added = 0
+      for (const sourceLine of issue.lines) {
+        if (
+          !sourceLine.id ||
+          !selectedIds.has(sourceLine.id) ||
+          lines.value.some((line) => line.sourceLineId === sourceLine.id)
+        )
+          continue
+        const remaining =
+          Number(sourceLine.fulfilledQuantity) - (reservations.get(sourceLine.id) ?? 0)
+        if (!sourceLine.movementId || remaining <= 0) continue
+        lines.value.push(makeReturnLineFromIssue(sourceLine, issue, remaining))
+        added++
+      }
+      if (added && lines.value.length === added) {
+        form.value.organizationId = issue.organizationId
+        form.value.warehouseId = issue.warehouseId
+        form.value.workOrderId = issue.workOrderId || ''
+        form.value.projectId = issue.projectId || ''
+        form.value.customerId = issue.customerId || ''
+        form.value.applicantId = issue.applicantId || ''
+        form.value.departmentId = issue.departmentId || ''
+        form.value.keeperId = issue.keeperId || ''
+        await loadOptions()
+      }
+      renumber()
+      if (!added) ElMessage.warning('所选领料明细已退完或已添加，请刷新选单')
+    } catch (error) {
+      notifyFriendlyError(error, '领料明细带入失败，请刷新后重试')
+    } finally {
+      issuePickerIds.value = []
+      issuePickerRows.value = []
+    }
   }
   function onProjectSelected(rows: DataSelectRecord[]): void {
     const project = rows[0] as WmsProductionProjectOption | undefined
@@ -2067,6 +2310,33 @@
     })
     await loadInlineSerialOptions()
   }
+  function importSerialRows(rows: Array<Record<string, unknown>>): void {
+    if (!activeSerialLine.value || !rows.length) {
+      ElMessage.warning('请选择包含序列号的文件')
+      return
+    }
+    const numbers = rows.map((row) => String(row['序列号'] ?? row.serialNo ?? '').trim())
+    if (numbers.some((value) => !value) || new Set(numbers).size !== numbers.length) {
+      ElMessage.warning('序列号不能为空或重复，请核对文件')
+      return
+    }
+    if (isOutbound.value) {
+      const available = new Map(
+        serials.value
+          .filter((item) => item.status === 'in_stock')
+          .map((item) => [item.serialNo, item.id])
+      )
+      const missing = numbers.find((value) => !available.has(value))
+      if (missing) {
+        ElMessage.warning(`序列号 ${missing} 不在当前来源批次的可用库存中`)
+        return
+      }
+      serialIdsDraft.value = numbers.flatMap((value) =>
+        available.get(value) ? [available.get(value)!] : []
+      )
+    } else serialText.value = numbers.join('\n')
+    ElMessage.success(`已导入 ${numbers.length} 个序列号，请核对后保存`)
+  }
   async function loadInlineSerialOptions(): Promise<void> {
     const line = activeSerialLine.value
     if (!line) return
@@ -2193,7 +2463,11 @@
         packs.value = rows
       }
       if (!isFinished.value && form.value.workOrderId && form.value.tenantId) {
-        const rows = await fetchWmsProductionBomItems(form.value.workOrderId, form.value.tenantId)
+        const rows = await fetchWmsProductionBomItems(
+          form.value.workOrderId,
+          form.value.tenantId,
+          currentDocument.value?.id
+        )
         if (request !== documentRequest) return
         bomItems.value = rows
       }
@@ -2279,6 +2553,11 @@
     if (form.value.workOrderId !== workOrderId || form.value.tenantId !== tenantId) return
     packs.value = packRows
     bomItems.value = bomRows
+    if (selectIntent.value && props.kind === 'issue' && workOrderId) {
+      selectIntent.value = false
+      await nextTick()
+      await bomSelectRef.value?.open()
+    }
   }
   function onImportError(): void {
     ElMessage.error('导入失败，请检查 Excel 文件格式')
@@ -2558,37 +2837,68 @@
       const source = data.documentId
         ? await fetchWmsProductionMaterialDocument(data.documentId)
         : undefined
+      const issueSource =
+        data.sourceIssueDocumentId && props.kind === 'return'
+          ? await fetchWmsProductionMaterialDocument(data.sourceIssueDocumentId)
+          : undefined
       if (currentRequest !== documentRequest) return
       if (source && source.kind !== props.kind) throw new Error('单据类型不匹配')
+      if (issueSource && issueSource.kind !== 'issue') throw new Error('来源不是生产领料单')
+      const returnReservations = issueSource
+        ? await fetchWmsIssueReturnReservations(
+            issueSource.tenantId,
+            issueSource.lines.flatMap((line) => (line.id ? [line.id] : []))
+          )
+        : new Map<string, number>()
+      if (currentRequest !== documentRequest) return
       currentDocument.value = source ?? null
       Object.assign(form.value, {
         id: data.mode === 'edit' ? source?.id || '' : '',
-        tenantId: source?.tenantId || effectiveTenantId.value || '',
+        tenantId: source?.tenantId || issueSource?.tenantId || effectiveTenantId.value || '',
         documentNo: data.mode === 'copy' ? '' : source?.documentNo || '',
         documentTypeId: source?.documentTypeId || '',
         businessTypeId: source?.businessTypeId || '',
-        organizationId: source?.organizationId || '',
+        organizationId: source?.organizationId || issueSource?.organizationId || '',
         businessDate: source?.businessDate || dayjs().format('YYYY-MM-DD'),
-        warehouseId: source?.warehouseId || '',
-        workOrderId: source?.workOrderId || '',
-        projectId: source?.projectId || '',
-        customerId: source?.customerId || '',
-        demandDate: source?.demandDate || '',
-        applicantId: source?.applicantId || '',
-        departmentId: source?.departmentId || '',
-        keeperId: source?.keeperId || '',
+        warehouseId: source?.warehouseId || issueSource?.warehouseId || '',
+        workOrderId: source?.workOrderId || issueSource?.workOrderId || '',
+        projectId: source?.projectId || issueSource?.projectId || '',
+        customerId: source?.customerId || issueSource?.customerId || '',
+        demandDate: source?.demandDate || dayjs().format('YYYY-MM-DD'),
+        applicantId: source?.applicantId || issueSource?.applicantId || '',
+        departmentId: source?.departmentId || issueSource?.departmentId || '',
+        keeperId: source?.keeperId || issueSource?.keeperId || '',
         status: data.mode === 'copy' ? 'draft' : source?.status || 'draft',
         materialStatus: data.mode === 'copy' ? 'pending' : source?.materialStatus || 'pending',
         remark: source?.remark || ''
       })
-      lines.value =
-        source?.lines.map((line) => ({
-          ...cloneDeep(line),
-          id: data.mode === 'copy' ? undefined : line.id,
-          key: crypto.randomUUID(),
-          movementId: data.mode === 'copy' ? null : line.movementId,
-          fulfilledQuantity: data.mode === 'copy' ? 0 : line.fulfilledQuantity
-        })) || []
+      lines.value = issueSource
+        ? issueSource.lines
+            .filter(
+              (line) =>
+                Boolean(
+                  line.id &&
+                  line.movementId &&
+                  Number(line.fulfilledQuantity) > (returnReservations.get(line.id) ?? 0)
+                ) &&
+                (!data.sourceIssueLineIds?.length ||
+                  data.sourceIssueLineIds.includes(line.id || ''))
+            )
+            .map((line) =>
+              makeReturnLineFromIssue(
+                line,
+                issueSource,
+                Number(line.fulfilledQuantity) - (returnReservations.get(line.id || '') ?? 0)
+              )
+            )
+        : source?.lines.map((line) => ({
+            ...cloneDeep(line),
+            id: data.mode === 'copy' ? undefined : line.id,
+            key: crypto.randomUUID(),
+            movementId: data.mode === 'copy' ? null : line.movementId,
+            fulfilledQuantity: data.mode === 'copy' ? 0 : line.fulfilledQuantity
+          })) || []
+      if (issueSource && !lines.value.length) throw new Error('所选领料明细暂无可退数量')
       selectedApplicant.value = []
       selectedKeeper.value = []
       await loadOptions()

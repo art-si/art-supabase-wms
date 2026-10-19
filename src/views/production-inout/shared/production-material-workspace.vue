@@ -19,6 +19,7 @@
         :columns-factory="columnsFactory"
         :columns-context-key="displayMode"
         :header-actions="headerActions"
+        :selection-actions="[{ key: 'batch-inline', slot: 'batch-inline', rowAction: false }]"
         header-actions-placement="workspace"
         :search-bar-props="{ span: 6, labelWidth: 104 }"
         :table-props="{
@@ -32,14 +33,92 @@
         focusable
         @selection-change="onSelectionChange"
       >
-        <template #search-displayMode>
-          <ElRadioGroup v-model="displayMode" aria-label="单据列表展示方式" @change="refresh">
-            <ElRadioButton label="document" value="document">按单据</ElRadioButton>
-            <ElRadioButton label="line" value="line">按明细</ElRadioButton>
-          </ElRadioGroup>
+        <template #batch-inline="context">
+          <div class="production-batch-actions">
+            <ElButton
+              v-if="hasAuth(permissions.Delete)"
+              type="danger"
+              plain
+              :disabled="
+                !canBatchDelete(context.selectedRows) || Boolean(workingId) || bulkDeleting
+              "
+              @click="handleBatchCommand('delete', context)"
+            >
+              <span class="art-icon-label"><ArtSvgIcon icon="ri:delete-bin-line" />批量删除</span>
+            </ElButton>
+            <ElButton
+              v-if="hasAuth(permissions.Approve)"
+              plain
+              :disabled="
+                !canBatchApprove(context.selectedRows) || Boolean(workingId) || bulkDeleting
+              "
+              @click="handleBatchCommand('approve', context)"
+            >
+              <span class="art-icon-label"
+                ><ArtSvgIcon icon="ri:checkbox-circle-line" />批量审核</span
+              >
+            </ElButton>
+            <ElButton
+              v-if="hasAuth(permissions.Close)"
+              plain
+              :disabled="!canBatchClose(context.selectedRows) || Boolean(workingId) || bulkDeleting"
+              @click="handleBatchCommand('close', context)"
+            >
+              <span class="art-icon-label"><ArtSvgIcon icon="ri:close-circle-line" />批量关闭</span>
+            </ElButton>
+            <ElButton
+              v-if="kind === 'return' && hasAuth(permissions.Withdraw)"
+              plain
+              :disabled="!canBatchWithdraw(context.selectedRows) || Boolean(workingId)"
+              @click="withdrawSelected(context)"
+            >
+              <span class="art-icon-label"><ArtSvgIcon icon="ri:arrow-go-back-line" />撤回</span>
+            </ElButton>
+            <ElButton
+              v-if="kind === 'issue' && hasAuth('WmsProductionReturn:Add')"
+              plain
+              :disabled="!canReturnSelection(context.selectedRows) || Boolean(workingId)"
+              @click="openReturnFromSelection(context)"
+            >
+              <span class="art-icon-label"
+                ><ArtSvgIcon icon="ri:arrow-go-back-line" />生成生产退料单</span
+              >
+            </ElButton>
+            <ElButton
+              v-if="hasAuth(permissions.Push)"
+              type="primary"
+              plain
+              :disabled="!canBatchPost(context.selectedRows) || Boolean(workingId) || bulkDeleting"
+              @click="pushSelected(context)"
+            >
+              <span class="art-icon-label"
+                ><ArtSvgIcon
+                  :icon="
+                    kind === 'issue' || kind === 'finished_return'
+                      ? 'ri:logout-box-line'
+                      : 'ri:login-box-line'
+                  "
+                />{{
+                  kind === 'issue'
+                    ? '批量出库'
+                    : kind === 'return'
+                      ? '批量退库'
+                      : kind === 'finished_inbound'
+                        ? '批量入库'
+                        : '批量退库'
+                }}</span
+              >
+            </ElButton>
+          </div>
         </template>
       </ArtTableQuery>
       <ProductionMaterialDrawer ref="drawerRef" :kind="kind" @success="refresh" />
+      <ProductionMaterialDrawer
+        v-if="kind === 'issue'"
+        ref="returnDrawerRef"
+        kind="return"
+        @success="refresh"
+      />
       <MasterDataDeleteGuard ref="deleteGuardRef" />
     </div>
   </ArtPermissionGuard>
@@ -53,6 +132,7 @@
   import { ElMessage, ElTag } from 'element-plus'
   import { uniq } from 'lodash-es'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { useAuth } from '@/hooks/core/useAuth'
   import { useDocumentBulkDelete } from '@/hooks/business/useDocumentBulkDelete'
   import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
   import MasterDataDeleteGuard from '@/components/business/master-data-delete-guard/index.vue'
@@ -63,6 +143,7 @@
     type ArtTableQueryHeaderActionContext
   } from '@/components/core/tables/art-table-query/index.vue'
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
+  import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
   import ArtButtonMore, {
     type ButtonMoreItem
   } from '@/components/core/forms/art-button-more/index.vue'
@@ -89,16 +170,17 @@
   import { productionDocumentConfig } from './production-document-config'
 
   const commonDocumentReviewStatusOptions = useDictionaryOptions('commonDocumentReviewStatus')
+  const displayModeOptions = useDictionaryOptions('commonDocumentDisplayMode')
 
   const props = defineProps<{ kind: WmsProductionMaterialKind }>()
   const { confirmAction } = useArtFeedback()
+  const { hasAuth } = useAuth()
   const { deleteGuardRef, inspectDeleteReferences } = useRecordDeleteGuard(
     'wms_production_material_document',
     productionDocumentConfig[props.kind].title
   )
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const tableRef = ref<ArtTableQueryExpose>()
-  const displayMode = ref<'document' | 'line'>('document')
   const visibleRows = ref<WmsProductionMaterialListRow[]>([])
   const lineProperties = new Set([
     'materialStatus',
@@ -124,6 +206,7 @@
       : ([1, 1] as [number, number])
   }
   const drawerRef = ref<InstanceType<typeof ProductionMaterialDrawer>>()
+  const returnDrawerRef = ref<InstanceType<typeof ProductionMaterialDrawer>>()
   const workingId = ref<string>()
   const selectedDocumentIds = ref<string[]>([])
   const config = computed(() => productionDocumentConfig[props.kind])
@@ -131,7 +214,7 @@
   const description = computed(
     () =>
       ({
-        issue: '按生产工单 BOM 或库存批次登记领料；审核后下推并核销库存。',
+        issue: '按生产工单 BOM 或即时库存登记领料；审核后分批出库。',
         return: '按生产工单和项目登记退料；审核后下推入库。',
         finished_inbound: '从生产工单、已确认排包单或成品物料建立明细，审核后办理完工入库。',
         finished_return: '从已过账的完工入库明细选单，审核后办理退库。'
@@ -139,6 +222,7 @@
   )
   const permissions = computed(() => config.value.permissions)
   const search = reactive({
+    displayMode: 'document' as 'document' | 'line',
     status: '',
     documentNo: '',
     workOrderNo: '',
@@ -147,8 +231,16 @@
     materialCode: '',
     applicantName: ''
   })
+  const displayMode = toRef(search, 'displayMode')
+  watch(displayMode, () => void refresh())
   const searchItems = computed<SearchFormItem[]>(() => [
-    { label: '展示方式', key: 'displayMode', type: 'text' },
+    {
+      label: '展示方式',
+      key: 'displayMode',
+      type: 'radioGroup',
+      options: displayModeOptions,
+      props: { optionType: 'button', 'aria-label': '单据列表展示方式' }
+    },
     {
       label: '单据状态',
       key: 'status',
@@ -172,7 +264,7 @@
     ...(!config.value.finished
       ? [
           {
-            label: '领料申请人',
+            label: props.kind === 'issue' || props.kind === 'return' ? '领料人' : '领料申请人',
             key: 'applicantName',
             type: 'input' as const,
             props: { clearable: true }
@@ -306,10 +398,14 @@
   async function push(documentId: string, lineId?: string): Promise<void> {
     if (workingId.value || bulkDeleting.value) return
     try {
+      const actionLabel =
+        props.kind === 'issue' ? '出库' : props.kind === 'return' ? '退库' : '过账'
       await confirmAction(
-        lineId ? '确定下推这一行并更新库存？' : '确定下推未处理的全部明细并更新库存？',
-        `下推${title.value}`,
-        { type: 'warning', confirmButtonText: '确定下推' }
+        lineId
+          ? `确定将这一行${actionLabel}并更新即时库存？`
+          : `确定将未办理的全部明细${actionLabel}并更新即时库存？`,
+        `${title.value}${actionLabel}`,
+        { type: 'warning', confirmButtonText: `确定${actionLabel}` }
       )
       workingId.value = documentId
       await pushWmsProductionMaterial(documentId, lineId)
@@ -321,12 +417,183 @@
     }
   }
   async function pushSelected({ selectedRows }: ArtTableQueryHeaderActionContext): Promise<void> {
-    const ids = uniq(selectedRows.map((row) => String(row.documentId)))
-    if (!ids.length) {
-      ElMessage.warning('请先勾选已审核单据')
+    if (workingId.value || bulkDeleting.value) return
+    const targets =
+      displayMode.value === 'line'
+        ? selectedRows
+            .filter((row) => Number(row.fulfilledQuantity || 0) === 0)
+            .map((row) => ({ documentId: String(row.documentId), lineId: String(row.lineId) }))
+        : uniq(
+            selectedRows
+              .filter((row) => row.materialStatus !== 'fulfilled')
+              .map((row) => String(row.documentId))
+          ).map((documentId) => ({
+            documentId,
+            lineId: undefined
+          }))
+    if (!targets.length) {
+      ElMessage.warning('所选明细均已办理，请选择尚未办理的明细')
       return
     }
-    for (const id of ids) await push(id)
+    let processed = 0
+    try {
+      const actionLabel =
+        props.kind === 'issue' ? '出库' : config.value.negative ? '退库过账' : '入库过账'
+      await confirmAction(
+        `确定将选中的 ${targets.length} ${displayMode.value === 'line' ? '行明细' : '张单据'}批量${actionLabel}并更新即时库存？`,
+        `批量${actionLabel}`,
+        { type: 'warning', confirmButtonText: `确定${actionLabel}` }
+      )
+      workingId.value = targets[0].documentId
+      for (const target of targets) {
+        await pushWmsProductionMaterial(target.documentId, target.lineId)
+        processed++
+      }
+    } catch {
+      // 取消确认时没有业务写入，保留当前筛选和勾选状态。
+    } finally {
+      workingId.value = undefined
+      if (processed) await refresh()
+    }
+  }
+  function openReturn(documentId: string, lineIds?: string[]): void {
+    void returnDrawerRef.value?.handleOpen({
+      mode: 'create',
+      sourceIssueDocumentId: documentId,
+      sourceIssueLineIds: lineIds
+    })
+  }
+  function canReturnSelection(rows: Record<string, unknown>[]): boolean {
+    return rows.some(
+      (row) => row.materialStatus === 'fulfilled' || Number(row.fulfilledQuantity || 0) > 0
+    )
+  }
+  function canBatchDelete(rows: Record<string, unknown>[]): boolean {
+    return (
+      rows.length > 0 &&
+      rows.every((row) => row.status === 'draft' && row.materialStatus === 'pending')
+    )
+  }
+  function canBatchApprove(rows: Record<string, unknown>[]): boolean {
+    return (
+      rows.length > 0 &&
+      rows.every((row) => row.status === 'submitted' && row.materialStatus === 'pending')
+    )
+  }
+  function canBatchClose(rows: Record<string, unknown>[]): boolean {
+    return (
+      rows.length > 0 &&
+      rows.every(
+        (row) =>
+          row.status === 'approved' && ['pending', 'partial'].includes(String(row.materialStatus))
+      )
+    )
+  }
+  function canBatchWithdraw(rows: Record<string, unknown>[]): boolean {
+    return (
+      rows.length > 0 &&
+      rows.every((row) => row.status === 'submitted' && row.materialStatus === 'pending')
+    )
+  }
+  function canBatchPost(rows: Record<string, unknown>[]): boolean {
+    return (
+      rows.length > 0 &&
+      rows.every(
+        (row) =>
+          row.status === 'approved' &&
+          ['pending', 'partial'].includes(String(row.materialStatus)) &&
+          (displayMode.value !== 'line' || Number(row.fulfilledQuantity || 0) === 0)
+      )
+    )
+  }
+  function openReturnFromSelection({ selectedRows }: ArtTableQueryHeaderActionContext): void {
+    const rows = selectedRows as WmsProductionMaterialListRow[]
+    const documentIds = uniq(rows.map((row) => row.documentId))
+    if (documentIds.length !== 1) {
+      ElMessage.warning('请一次选择同一张领料单的明细；可分批生成退料单')
+      return
+    }
+    openReturn(
+      documentIds[0],
+      displayMode.value === 'line' ? rows.map((row) => row.lineId) : undefined
+    )
+  }
+  async function handleBatchCommand(
+    command: string,
+    context: ArtTableQueryHeaderActionContext
+  ): Promise<void> {
+    if (workingId.value || bulkDeleting.value) return
+    if (command === 'delete') {
+      const action = bulkDeleteAction()
+      await action.onClick?.({ ...context, action })
+      return
+    }
+    if (command !== 'approve' && command !== 'close') return
+    const rows = context.selectedRows as WmsProductionMaterialListRow[]
+    const valid =
+      command === 'approve'
+        ? rows.every((row) => row.status === 'submitted' && row.materialStatus === 'pending')
+        : rows.every(
+            (row) =>
+              row.status === 'approved' && ['pending', 'partial'].includes(row.materialStatus)
+          )
+    if (!rows.length || !valid) {
+      ElMessage.warning(
+        command === 'approve'
+          ? '仅可批量审核已提交且未办理的单据'
+          : '仅可批量关闭已审核且未完成的单据'
+      )
+      return
+    }
+    const ids = uniq(rows.map((row) => row.documentId))
+    let processed = 0
+    try {
+      await confirmAction(
+        `确定${command === 'approve' ? '审核' : '关闭'}选中的 ${ids.length} 张单据？`,
+        `批量${command === 'approve' ? '审核' : '关闭'}`,
+        { confirmButtonText: '确定' }
+      )
+      workingId.value = ids[0]
+      for (const id of ids) {
+        await changeWmsProductionMaterialStatus(id, command)
+        processed++
+      }
+    } catch {
+      // 取消确认时不刷新列表。
+    } finally {
+      workingId.value = undefined
+      if (processed) await refresh()
+    }
+  }
+  async function withdrawSelected({
+    selectedRows
+  }: ArtTableQueryHeaderActionContext): Promise<void> {
+    if (workingId.value || bulkDeleting.value) return
+    const rows = selectedRows as WmsProductionMaterialListRow[]
+    if (
+      !rows.length ||
+      rows.some((row) => row.status !== 'submitted' || row.materialStatus !== 'pending')
+    ) {
+      ElMessage.warning('仅可撤回已提交且未退库的单据')
+      return
+    }
+    const ids = uniq(rows.map((row) => row.documentId))
+    let processed = 0
+    try {
+      await confirmAction(`确定撤回选中的 ${ids.length} 张生产退料单？`, '撤回生产退料单', {
+        confirmButtonText: '确定撤回'
+      })
+      workingId.value = ids[0]
+      for (const id of ids) {
+        await changeWmsProductionMaterialStatus(id, 'withdraw')
+        processed++
+      }
+    } catch {
+      // 取消确认时不刷新列表。
+    } finally {
+      workingId.value = undefined
+      if (processed) await refresh()
+    }
   }
   const { bulkDeleteAction, bulkDeleting } = useDocumentBulkDelete({
     permission: () => permissions.value.Delete,
@@ -340,7 +607,6 @@
     canDelete: (row) => row.materialStatus === 'pending'
   })
   const headerActions = computed<ArtTableQueryHeaderAction[]>(() => [
-    bulkDeleteAction(),
     {
       type: 'add',
       label: `新增${title.value}`,
@@ -348,14 +614,18 @@
       buttonProps: { plain: false },
       onClick: () => drawerRef.value?.handleOpen({ mode: 'create' })
     },
-    {
-      key: 'select',
-      label: '选单',
-      icon: 'ri:link-m',
-      permission: permissions.value.Select,
-      buttonProps: { type: 'primary', plain: true },
-      onClick: () => drawerRef.value?.handleOpen({ mode: 'create', selectIntent: true })
-    },
+    ...(props.kind !== 'return'
+      ? [
+          {
+            key: 'select',
+            label: '选单',
+            icon: 'ri:file-list-3-line',
+            permission: permissions.value.Select,
+            buttonProps: { type: 'primary' as const, plain: true },
+            onClick: () => drawerRef.value?.handleOpen({ mode: 'create', selectIntent: true })
+          }
+        ]
+      : []),
     ...(props.kind !== 'finished_return'
       ? [
           {
@@ -378,7 +648,9 @@
         (await fetchRows({ ...search, current: 1, size: 500, exportAll: true })).data.map(
           (row) => ({
             ...row,
-            status: documentStatusLabels[row.status] || row.status,
+            status:
+              commonDocumentReviewStatusOptions.find((option) => option.value === row.status)
+                ?.label || row.status,
             materialStatus: materialStatusLabels.value[row.materialStatus] || row.materialStatus
           })
         ),
@@ -397,22 +669,33 @@
           ? [{ title: '工单数量', key: 'workOrderQuantity' }]
           : [{ title: '申请数量', key: 'requestedQuantity' }]),
         { title: config.value.quantityLabel, key: 'actualQuantity' },
-        ...(!config.value.finished ? [{ title: '领料申请人', key: 'applicantName' }] : [])
+        ...(!config.value.finished
+          ? [
+              {
+                title: props.kind === 'issue' || props.kind === 'return' ? '领料人' : '领料申请人',
+                key: 'applicantName'
+              }
+            ]
+          : [])
       ]
-    },
-    {
-      key: 'push',
-      label: config.value.finished ? (config.value.negative ? '退库过账' : '入库过账') : '下推',
-      icon: 'ri:file-transfer-line',
-      permission: permissions.value.Push,
-      buttonProps: { type: 'info', plain: true },
-      selectionRequired: true,
-      onClick: pushSelected
     }
   ])
   function moreActions(row: WmsProductionMaterialListRow): ButtonMoreItem[] {
     return [
       { key: 'copy', label: '复制', icon: 'ri:file-copy-line', auth: permissions.value.Copy },
+      ...(props.kind === 'issue' &&
+      (displayMode.value === 'document'
+        ? row.materialStatus === 'partial' || row.materialStatus === 'fulfilled'
+        : Number(row.fulfilledQuantity) > 0)
+        ? [
+            {
+              key: 'return',
+              label: '生成生产退料单',
+              icon: 'ri:arrow-go-back-line',
+              auth: 'WmsProductionReturn:Add'
+            }
+          ]
+        : []),
       ...(row.status === 'draft' && row.materialStatus === 'pending'
         ? [
             { key: 'edit', label: '编辑', icon: 'ri:edit-line', auth: permissions.value.Edit },
@@ -435,7 +718,7 @@
         ? [
             {
               key: 'withdraw',
-              label: '撤回提交',
+              label: props.kind === 'return' ? '撤回' : '撤回提交',
               icon: 'ri:arrow-go-back-line',
               auth: permissions.value.Withdraw
             },
@@ -447,7 +730,9 @@
             }
           ]
         : []),
-      ...(row.status === 'approved' && ['pending', 'partial'].includes(row.materialStatus)
+      ...(row.status === 'approved' &&
+      ['pending', 'partial'].includes(row.materialStatus) &&
+      (displayMode.value !== 'line' || !row.fulfilledQuantity)
         ? [
             {
               key: 'push',
@@ -455,10 +740,17 @@
                 ? config.value.negative
                   ? '退库过账'
                   : '入库过账'
-                : displayMode.value === 'line'
-                  ? '下推此行'
-                  : '下推此单',
-              icon: 'ri:file-transfer-line',
+                : props.kind === 'issue'
+                  ? '出库'
+                  : props.kind === 'return'
+                    ? '退库'
+                    : displayMode.value === 'line'
+                      ? '下推此行'
+                      : '下推此单',
+              icon:
+                props.kind === 'issue' || props.kind === 'finished_return'
+                  ? 'ri:logout-box-line'
+                  : 'ri:login-box-line',
               auth: permissions.value.Push
             },
             {
@@ -479,6 +771,8 @@
       void openDocument(item.key, row.documentId)
     } else if (item.key === 'push') {
       void push(row.documentId, displayMode.value === 'line' ? row.lineId : undefined)
+    } else if (item.key === 'return') {
+      openReturn(row.documentId, displayMode.value === 'line' ? [row.lineId] : undefined)
     } else if (
       item.key === 'submit' ||
       item.key === 'approve' ||
@@ -489,11 +783,6 @@
     ) {
       void transition(row, item.key)
     }
-  }
-  const documentStatusLabels = {
-    draft: '暂存',
-    submitted: '已提交',
-    approved: '已审核'
   }
   const materialStatusLabels = computed(() => ({
     pending: config.value.pendingLabel,
@@ -530,18 +819,7 @@
         label: '单据状态',
         width: 104,
         formatter: (row) => (
-          <ElTag
-            size="small"
-            type={
-              row.status === 'approved'
-                ? 'success'
-                : row.status === 'submitted'
-                  ? 'warning'
-                  : 'info'
-            }
-          >
-            {documentStatusLabels[row.status]}
-          </ElTag>
+          <ArtDictDisplay dictCode="commonDocumentReviewStatus" value={row.status} display="tag" />
         )
       },
       {
@@ -621,7 +899,13 @@
         formatter: (row) => formatUnitDisplayName(row.inventoryUnitName)
       },
       ...(!config.value.finished
-        ? [{ prop: 'applicantName', label: '申请人', minWidth: 110 }]
+        ? [
+            {
+              prop: 'applicantName',
+              label: props.kind === 'issue' || props.kind === 'return' ? '领料人' : '申请人',
+              minWidth: 110
+            }
+          ]
         : []),
       { prop: 'warehouseName', label: '仓库', minWidth: 145, showOverflowTooltip: true },
       { prop: 'batchNo', label: '批号', minWidth: 130, showOverflowTooltip: true },
@@ -663,6 +947,28 @@
 </script>
 
 <style scoped>
+  .production-material-workspace :deep(.art-table-query__selection-bar),
+  .production-material-workspace :deep(.art-table-query__selection-actions) {
+    flex-wrap: nowrap;
+  }
+
+  .production-material-workspace :deep(.art-table-query__selection-bar) {
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+
+  .production-batch-actions {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 8px;
+    white-space: nowrap;
+  }
+
+  .production-batch-actions :deep(.el-button + .el-button) {
+    margin-left: 0;
+  }
+
   .production-material-workspace :deep(td.wms-production-negative-cell) {
     font-weight: 700;
     color: var(--el-color-danger);

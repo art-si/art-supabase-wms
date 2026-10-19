@@ -1,7 +1,7 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
 import { uniq } from 'lodash-es'
 import { buildOrIlikeFilter } from '@/utils/supabase/search'
-import { buildSupabasePageRange } from '@/utils/supabase/pagination'
+import { buildSupabasePageRange, fetchAllRangePages } from '@/utils/supabase/pagination'
 import type { WmsMaterialOption } from './warehouse.types'
 import type {
   WmsProductionBomItem,
@@ -13,7 +13,9 @@ import type {
   WmsProductionMaterialKind,
   WmsProductionMaterialListRow,
   WmsProductionProjectOption,
-  WmsProductionStockOption
+  WmsProductionStockOption,
+  WmsReturnableIssueLine,
+  WmsWorkOrderBomIssueTotal
 } from './production-material.types'
 
 export * from './production-material.types'
@@ -93,6 +95,95 @@ export async function fetchWmsProductionMaterialDocument(
   if (!data) throw new Error('生产单据不存在或无权查看')
   data.lines.sort((left, right) => left.lineNo - right.lineNo)
   return data
+}
+
+export async function fetchWmsIssueReturnReservations(
+  tenantId: string,
+  issueLineIds: string[],
+  excludeDocumentId?: string
+): Promise<Map<string, number>> {
+  if (!issueLineIds.length) return new Map()
+  const { data: documents, error } = await fetchAllRangePages<{
+    id: string
+    materialStatus: string
+    lines: Array<{ sourceLineId: string | null; actualQuantity: number; fulfilledQuantity: number }>
+  }>(({ from, to }) =>
+    responseHandle(
+      () =>
+        supabase
+          .from('wms_production_material_document')
+          .select(
+            'id,material_status,lines:wms_production_material_line(source_line_id,actual_quantity,fulfilled_quantity)'
+          )
+          .eq('tenant_id', tenantId)
+          .eq('kind', 'return')
+          .order('id')
+          .range(from, to),
+      readOptions
+    )
+  )
+  if (error) throw error
+  const ids = new Set(issueLineIds)
+  const reserved = new Map<string, number>()
+  for (const document of documents ?? []) {
+    if (document.materialStatus === 'void' || document.id === excludeDocumentId) continue
+    for (const line of document.lines) {
+      if (!line.sourceLineId || !ids.has(line.sourceLineId)) continue
+      const quantity =
+        document.materialStatus === 'closed'
+          ? Math.abs(Number(line.fulfilledQuantity || 0))
+          : Math.abs(Number(line.actualQuantity || 0))
+      reserved.set(line.sourceLineId, (reserved.get(line.sourceLineId) ?? 0) + quantity)
+    }
+  }
+  return reserved
+}
+
+export async function fetchWmsReturnableIssueLines(query: {
+  tenantId: string
+  workOrderId?: string
+  keyword?: string
+  page: number
+  pageSize: number
+  excludeDocumentId?: string
+}): Promise<{ data: WmsReturnableIssueLine[]; total: number }> {
+  const { data: lines, error } = await fetchAllRangePages<WmsProductionMaterialListRow>(
+    ({ from, to }) =>
+      responseHandle(() => {
+        let request = supabase
+          .from('wms_production_material_list')
+          .select('*')
+          .eq('tenant_id', query.tenantId)
+          .eq('kind', 'issue')
+          .eq('status', 'approved')
+          .gt('fulfilled_quantity', 0)
+          .order('created_at', { ascending: false })
+          .order('line_id')
+        if (query.workOrderId) request = request.eq('work_order_id', query.workOrderId)
+        return request.range(from, to)
+      }, readOptions)
+  )
+  if (error) throw error
+  const reservations = await fetchWmsIssueReturnReservations(
+    query.tenantId,
+    (lines ?? []).map((line) => line.lineId),
+    query.excludeDocumentId
+  )
+  const keyword = query.keyword?.trim().toLocaleLowerCase('zh-CN') || ''
+  const available = (lines ?? []).flatMap((line) => {
+    const returnableQuantity = Number(line.fulfilledQuantity) - (reservations.get(line.lineId) ?? 0)
+    if (
+      returnableQuantity <= 0 ||
+      (keyword &&
+        ![line.documentNo, line.materialCode, line.materialDescription, line.workOrderNo].some(
+          (value) => value?.toLocaleLowerCase('zh-CN').includes(keyword)
+        ))
+    )
+      return []
+    return [{ ...line, returnableQuantity }]
+  })
+  const from = (query.page - 1) * query.pageSize
+  return { data: available.slice(from, from + query.pageSize), total: available.length }
 }
 
 export async function saveWmsProductionMaterial(
@@ -283,14 +374,20 @@ export async function fetchWmsFinishedInboundSourcePage(params: {
 }
 
 interface BomSnapshotItem {
+  id?: unknown
   component_material_id?: unknown
   required_quantity?: unknown
   sequence_no?: unknown
+  unit_name?: unknown
+  basic_quantity?: unknown
+  position_no?: unknown
+  operation_name?: unknown
 }
 
 export async function fetchWmsProductionBomItems(
   workOrderId: string,
-  tenantId: string
+  tenantId: string,
+  excludeDocumentId?: string
 ): Promise<WmsProductionBomItem[]> {
   const { data: order } = await responseHandle<{
     workOrderNo: string
@@ -306,7 +403,13 @@ export async function fetchWmsProductionBomItems(
     readOptions
   )
   if (!order || !Array.isArray(order.bomSnapshot)) return []
-  const entries: Array<{ id: string; quantity: number; sequence: string }> = []
+  const entries: Array<{
+    id: string
+    quantity: number
+    sequence: string
+    sourceKey: string
+    snapshot: BomSnapshotItem
+  }> = []
   for (const bom of order.bomSnapshot) {
     if (!bom || typeof bom !== 'object' || !('items' in bom) || !Array.isArray(bom.items)) continue
     for (const item of bom.items as BomSnapshotItem[]) {
@@ -316,7 +419,9 @@ export async function fetchWmsProductionBomItems(
       entries.push({
         id: item.component_material_id,
         quantity,
-        sequence: String(item.sequence_no ?? entries.length + 1)
+        sequence: String(item.sequence_no ?? entries.length + 1),
+        sourceKey: String(item.id ?? item.sequence_no ?? entries.length + 1),
+        snapshot: item
       })
     }
   }
@@ -337,16 +442,54 @@ export async function fetchWmsProductionBomItems(
     readOptions
   )
   const byId = new Map((materials ?? []).map((item) => [item.id, item]))
+  const { data: totals } = await responseHandle<WmsWorkOrderBomIssueTotal[]>(
+    () => supabase.rpc('wms_work_order_bom_issue_totals_secure', { p_work_order_id: workOrderId }),
+    readOptions
+  )
+  const bySource = new Map((totals ?? []).map((item) => [item.sourceLineNo, item]))
+  const excluded = excludeDocumentId
+    ? await fetchWmsProductionMaterialDocument(excludeDocumentId)
+    : null
   return entries.flatMap((entry, index) => {
     const material = byId.get(entry.id)
+    const total = bySource.get(entry.sourceKey)
+    const excludedQuantity =
+      excluded?.lines
+        .filter((line) => line.sourceLineNo === entry.sourceKey)
+        .reduce((sum, line) => sum + Number(line.actualQuantity), 0) ?? 0
+    const selectedQuantity = Math.max(0, Number(total?.selectedQuantity ?? 0) - excludedQuantity)
+    const issuedQuantity = Number(total?.issuedQuantity ?? 0)
+    const goodReturnQuantity = Number(total?.goodReturnQuantity ?? 0)
+    const incomingDefectReturnQuantity = Number(total?.incomingDefectReturnQuantity ?? 0)
+    const remainingQuantity = Math.max(
+      0,
+      entry.quantity - selectedQuantity + goodReturnQuantity + incomingDefectReturnQuantity
+    )
     return material
       ? [
           {
             key: `${workOrderId}:${index}`,
             material,
             requiredQuantity: entry.quantity,
+            selectedQuantity,
+            issuedQuantity,
+            goodReturnQuantity,
+            incomingDefectReturnQuantity,
+            remainingQuantity,
+            unitName:
+              typeof entry.snapshot.unit_name === 'string' ? entry.snapshot.unit_name : null,
+            basicQuantity: Number.isFinite(Number(entry.snapshot.basic_quantity))
+              ? Number(entry.snapshot.basic_quantity)
+              : null,
+            positionNo:
+              entry.snapshot.position_no == null ? null : String(entry.snapshot.position_no),
+            operationName:
+              typeof entry.snapshot.operation_name === 'string'
+                ? entry.snapshot.operation_name
+                : null,
+            sequenceNo: entry.sequence,
             workOrderNo: order.workOrderNo,
-            sourceLineNo: entry.sequence
+            sourceLineNo: entry.sourceKey
           }
         ]
       : []

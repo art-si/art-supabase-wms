@@ -28,10 +28,15 @@
           <strong class="mt-1 block text-xl tabular-nums">{{ varianceCount }}</strong>
         </div>
       </div>
-      <ElAlert v-if="plan.status === 'counting'" type="info" :closable="false" show-icon>
+      <ElAlert
+        v-if="plan.status === 'counting' && isLegacyPlan"
+        type="info"
+        :closable="false"
+        show-icon
+      >
         全部批次录入实盘后才能确认。确认时再次比对期初库存，库存已变化则整单拒绝记账。
       </ElAlert>
-      <div v-if="plan.status === 'counting'" class="flex justify-end">
+      <div v-if="plan.status === 'counting' && isLegacyPlan" class="flex justify-end">
         <ElButton
           v-auth="'WmsCount:Post'"
           type="primary"
@@ -139,10 +144,24 @@
             table-layout="fixed"
           >
             <template #material="{ row }">
-              <strong class="block truncate">{{ row.material?.materialName || '物料' }}</strong>
-              <small class="text-[var(--el-text-color-secondary)]">{{
-                row.material?.materialCode || '—'
-              }}</small>
+              <strong
+                class="block truncate"
+                :title="row.material?.description || row.material?.materialName || ''"
+                >{{ row.material?.description || row.material?.materialName || '物料' }}</strong
+              >
+              <small
+                class="block truncate text-[var(--el-text-color-secondary)]"
+                :title="
+                  [row.material?.materialCode, row.material?.specificationModel]
+                    .filter(Boolean)
+                    .join(' · ')
+                "
+                >{{
+                  [row.material?.materialCode, row.material?.specificationModel]
+                    .filter(Boolean)
+                    .join(' · ') || '—'
+                }}</small
+              >
             </template>
             <template #batch="{ row }">{{ row.batch?.batchNo || '批次资料不可用' }}</template>
             <template #project="{ row }"
@@ -151,7 +170,12 @@
             >
             <template #countedQuantity="{ row }">
               <ElInputNumber
-                v-if="plan.status === 'counting' && hasAuth('WmsCount:Count') && !isSerialLine(row)"
+                v-if="
+                  plan.status === 'counting' &&
+                  isLegacyPlan &&
+                  hasAuth('WmsCount:Count') &&
+                  !isSerialLine(row)
+                "
                 v-model="row.countedQuantity"
                 :min="0"
                 :precision="3"
@@ -162,7 +186,12 @@
             </template>
             <template #countedSerialIds="{ row }">
               <ElSelect
-                v-if="plan.status === 'counting' && hasAuth('WmsCount:Count') && isSerialLine(row)"
+                v-if="
+                  plan.status === 'counting' &&
+                  isLegacyPlan &&
+                  hasAuth('WmsCount:Count') &&
+                  isSerialLine(row)
+                "
                 v-model="row.countedSerialIds"
                 multiple
                 filterable
@@ -184,21 +213,40 @@
             </template>
             <template #newSerialNos="{ row }">
               <ElInput
-                v-if="plan.status === 'counting' && hasAuth('WmsCount:Count') && isSerialLine(row)"
+                v-if="
+                  plan.status === 'counting' &&
+                  isLegacyPlan &&
+                  hasAuth('WmsCount:Count') &&
+                  isSerialLine(row)
+                "
                 :model-value="serialDraft[row.id] || ''"
                 placeholder="新增 SN，逗号分隔"
                 @update:model-value="onNewSerialsChange(row, $event)"
               />
               <span v-else>{{ row.newSerialNos.join('、') || '—' }}</span>
             </template>
-            <template #variance="{ row }"
-              ><ElTag size="small" :type="hasVariance(row) ? 'warning' : 'info'">{{
-                hasVariance(row) ? '有差异' : '相符'
-              }}</ElTag></template
-            >
+            <template #variance="{ row }">
+              <ElTag size="small" :type="hasVariance(row) ? 'warning' : 'info'">
+                {{ hasVariance(row) ? '有差异' : '相符' }}
+              </ElTag>
+            </template>
+            <template #gain="{ row }">
+              <span
+                class="tabular-nums"
+                :class="countLineVariance(row)?.gain ? 'text-[var(--el-color-success)]' : ''"
+                >{{ countLineVariance(row)?.gain ?? '—' }}</span
+              >
+            </template>
+            <template #loss="{ row }">
+              <span
+                class="tabular-nums"
+                :class="countLineVariance(row)?.loss ? 'text-[var(--el-color-warning)]' : ''"
+                >{{ countLineVariance(row)?.loss ?? '—' }}</span
+              >
+            </template>
             <template #operation="{ row }"
               ><ElButton
-                v-if="plan.status === 'counting'"
+                v-if="plan.status === 'counting' && isLegacyPlan"
                 v-auth="'WmsCount:Count'"
                 link
                 type="primary"
@@ -225,6 +273,7 @@
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import ArtTable from '@/components/core/tables/art-table/index.vue'
   import type { ColumnOption } from '@/types'
+  import { countLineVariance } from '../count-variance'
   import {
     fetchWmsBatchSerials,
     fetchWmsCountLines,
@@ -249,6 +298,7 @@
   const { confirmAction } = useArtFeedback()
   const drawerRef = ref<ArtDrawerExpose<Context>>()
   const plan = shallowRef<WmsCountPlan>()
+  const isLegacyPlan = computed(() => !plan.value?.organizationId)
   let openVersion = 0
   const projects = ref<WmsProject[]>([])
   const lines = ref<WmsCountLine[]>([])
@@ -257,20 +307,22 @@
   const savingLineId = ref<string | null>(null)
   const lineColumns = computed<ColumnOption<WmsCountLine>[]>(() => {
     const columns: ColumnOption<WmsCountLine>[] = [
-      { prop: 'material', label: '物料', minWidth: 195, useSlot: true },
+      { prop: 'material', label: '物料描述 / 编码', minWidth: 230, useSlot: true },
       { prop: 'batch', label: '库存批次', minWidth: 145, useSlot: true },
       { prop: 'project', label: '项目 / 施工号', minWidth: 175, useSlot: true },
       { prop: 'expectedQuantity', label: '账面数量', width: 110, align: 'right' },
       { prop: 'countedQuantity', label: '实盘数量', width: 145, useSlot: true },
       { prop: 'countedSerialIds', label: '实盘原 SN', minWidth: 195, useSlot: true },
       { prop: 'newSerialNos', label: '新增 SN', minWidth: 195, useSlot: true },
+      { prop: 'gain', label: '盘盈数量', width: 105, align: 'right', useSlot: true },
+      { prop: 'loss', label: '盘亏数量', width: 105, align: 'right', useSlot: true },
       { prop: 'variance', label: '差异', width: 95, useSlot: true },
       { prop: 'operation', label: '操作', width: 110, fixed: 'right', useSlot: true }
     ]
     return columns.filter(
       (column) =>
         column.prop !== 'operation' ||
-        (plan.value?.status === 'counting' && hasAuth('WmsCount:Count'))
+        (plan.value?.status === 'counting' && isLegacyPlan.value && hasAuth('WmsCount:Count'))
     )
   })
   const documents = ref<WmsCountVarianceDocument[]>([])
@@ -301,6 +353,10 @@
   }
   async function loadSerialOptions(row: WmsCountLine): Promise<boolean> {
     const version = openVersion
+    if (!row.batchId) {
+      ElMessage.warning('账外物料请在盘点表中录入 SN')
+      return false
+    }
     if (serialOptions[row.batchId]) return true
     try {
       const options = await fetchWmsBatchSerials(row.batchId)
@@ -319,6 +375,7 @@
   }
   async function saveLine(row: WmsCountLine): Promise<void> {
     const version = openVersion
+    if (!isLegacyPlan.value) return
     if (savingLineId.value) return
     if (isSerialLine(row) && !(await loadSerialOptions(row))) return
     if (!isSerialLine(row) && row.countedQuantity === null) {
@@ -355,10 +412,8 @@
   }
   function hasVariance(row: WmsCountLine): boolean {
     if (plan.value?.status === 'posted') return Boolean(row.lossMovementId || row.gainMovementId)
-    if (row.countedQuantity === null) return false
-    if (row.countedQuantity !== row.expectedQuantity || row.newSerialNos.length > 0) return true
-    const countedIds = new Set(row.countedSerialIds)
-    return row.expectedSerialIds.some((id) => !countedIds.has(id))
+    const variance = countLineVariance(row)
+    return Boolean(variance && (variance.gain || variance.loss))
   }
   function documentLines(kind: WmsCountVarianceDocument['kind']): WmsCountLine[] {
     return lines.value.filter((row) =>
@@ -435,7 +490,7 @@
     }
   }
   async function post(): Promise<void> {
-    if (!plan.value || posting.value) return
+    if (!plan.value || !isLegacyPlan.value || posting.value) return
     const version = openVersion
     const targetPlan = plan.value
     try {

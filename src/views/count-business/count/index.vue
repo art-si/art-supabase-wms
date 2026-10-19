@@ -4,7 +4,7 @@
       <BusinessWorkspaceHeader
         eyebrow="INVENTORY COUNT"
         title="库存盘点"
-        description="从即时库存生成盘点方案，逐批录入实盘数量与 SN，复核后自动生成盘盈盘亏单和库存流水。"
+        description="按库存组织生成分仓盘点表，审核方案后录入实盘与复盘，全部盘点表审核完成后结清差异。"
         icon="ri:survey-line"
         density="compact"
         :tags="[
@@ -40,16 +40,10 @@
           spanMethod: mergeDocumentCells,
           tableLayout: 'fixed',
           emptyText: '当前范围暂无盘点方案',
-          emptyDescription: '选择仓库并生成盘点方案，系统会以当前批次库存创建盘点表。'
+          emptyDescription: '生成盘点方案后，系统会按库存组织和仓库范围创建盘点表。'
         }"
         focusable
       >
-        <template #search-displayMode>
-          <ElRadioGroup v-model="displayMode" aria-label="单据列表展示方式" @change="refresh">
-            <ElRadioButton label="document" value="document">按单据</ElRadioButton>
-            <ElRadioButton label="line" value="line">按明细</ElRadioButton>
-          </ElRadioGroup>
-        </template>
       </ArtTableQuery>
       <CountCreateDialog ref="createRef" @success="refresh" />
       <CountDetailDrawer ref="detailRef" @success="refresh" />
@@ -83,15 +77,19 @@
     paginateDetailRows
   } from '@/utils/business/document-detail-list'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
+  import { useRouter } from 'vue-router'
   import {
+    approveWmsCountPlan,
     cancelWmsCountPlan,
     fetchWmsCountPlanPage,
     fetchWmsCountLinesForPlans,
+    fetchWmsInventoryOrganizations,
     fetchWmsProjectSections,
     fetchWmsProjects,
     fetchWmsWarehouses,
     type WmsCountPlan,
     type WmsCountLine,
+    type WmsInventoryOrganization,
     type WmsProject,
     type WmsProjectSection,
     type WmsStockQuery,
@@ -99,14 +97,15 @@
   } from '@wms/api'
   import CountCreateDialog from './modules/count-create-dialog.vue'
   import CountDetailDrawer from './modules/count-detail-drawer.vue'
+  import { countLineVariance } from './count-variance'
 
   const wmsCountStatusOptions = useDictionaryOptions('wmsCountStatus')
 
   defineOptions({ name: 'WmsCount' })
+  const router = useRouter()
   const { confirmAction } = useArtFeedback()
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const tableRef = ref<ArtTableQueryExpose>()
-  const displayMode = ref<'document' | 'line'>('document')
   type CountPlanListRow = WmsCountPlan & {
     detailRowId?: string
     detailLine?: WmsCountLine
@@ -119,7 +118,8 @@
     'detailBatchNo',
     'detailExpectedQuantity',
     'detailCountedQuantity',
-    'detailVariance'
+    'detailGain',
+    'detailLoss'
   ])
   function mergeDocumentCells({
     rowIndex,
@@ -135,6 +135,7 @@
   const createRef = ref<InstanceType<typeof CountCreateDialog>>()
   const detailRef = ref<InstanceType<typeof CountDetailDrawer>>()
   const warehouses = ref<WmsWarehouse[]>([])
+  const organizations = ref<WmsInventoryOrganization[]>([])
   const projects = ref<WmsProject[]>([])
   const sections = ref<WmsProjectSection[]>([])
   const optionError = ref(false)
@@ -151,15 +152,43 @@
   ]
   const workingId = ref<string>()
   const search = reactive({
+    displayMode: 'document' as 'document' | 'line',
+    organizationId: '',
     warehouseId: '',
     status: '',
     projectId: '',
     constructionNo: '',
     keyword: ''
   })
+  const displayMode = toRef(search, 'displayMode')
+  watch(displayMode, () => void refresh())
+  const displayModeOptions = useDictionaryOptions('commonDocumentDisplayMode')
   const filterTenantId = computed(() => effectiveTenantId.value || undefined)
   const searchItems = computed<SearchFormItem[]>(() => [
-    { label: '展示方式', key: 'displayMode', type: 'text' },
+    {
+      label: '展示方式',
+      key: 'displayMode',
+      type: 'radioGroup',
+      options: displayModeOptions,
+      props: { optionType: 'button', 'aria-label': '单据列表展示方式' }
+    },
+    {
+      label: '库存组织',
+      key: 'organizationId',
+      type: 'select',
+      props: {
+        clearable: true,
+        filterable: true,
+        placeholder: '全部库存组织',
+        options: organizations.value
+          .filter((row) => !filterTenantId.value || row.tenantId === filterTenantId.value)
+          .map((row) => ({
+            label: `${row.organizationName} · ${row.organizationCode}`,
+            value: row.id
+          })),
+        onChange: () => (search.warehouseId = '')
+      }
+    },
     {
       label: '仓库',
       key: 'warehouseId',
@@ -169,7 +198,11 @@
         filterable: true,
         placeholder: '全部仓库',
         options: warehouses.value
-          .filter((row) => !filterTenantId.value || row.tenantId === filterTenantId.value)
+          .filter(
+            (row) =>
+              (!filterTenantId.value || row.tenantId === filterTenantId.value) &&
+              (!search.organizationId || row.organizationId === search.organizationId)
+          )
           .map((row) => ({ label: `${row.warehouseName} · ${row.warehouseCode}`, value: row.id }))
       }
     },
@@ -222,6 +255,7 @@
     }
   ])
   const statusLabels: Record<WmsCountPlan['status'], string> = {
+    draft: '待审核',
     counting: '盘点中',
     posted: '已记账',
     cancelled: '已取消'
@@ -230,8 +264,14 @@
     return id ? projects.value.find((row) => row.id === id)?.projectName || '历史项目' : '全仓范围'
   }
   async function fetchRows(query: WmsStockQuery) {
-    const fetchPage = (page: WmsStockQuery) =>
-      fetchWmsCountPlanPage({ ...page, tenantId: filterTenantId.value })
+    const fetchPage = (page: WmsStockQuery) => {
+      const selectedWarehouse = warehouses.value.find((row) => row.id === page.warehouseId)
+      return fetchWmsCountPlanPage({
+        ...page,
+        organizationId: page.organizationId || selectedWarehouse?.organizationId,
+        tenantId: filterTenantId.value
+      })
+    }
     if (displayMode.value === 'document') {
       visibleRows.value = []
       return fetchPage(query)
@@ -261,12 +301,17 @@
     if (optionsLoading.value || optionError.value) return
     void createRef.value?.handleOpen({
       tenantId: filterTenantId.value,
+      organizations: organizations.value,
       warehouses: warehouses.value,
       projects: projects.value,
       sections: sections.value
     })
   }
   function openDetail(row: WmsCountPlan): void {
+    if (row.organizationId) {
+      void router.push({ path: '/wms/count-business/count-sheet', query: { planId: row.id } })
+      return
+    }
     void detailRef.value?.handleOpen({ plan: row, projects: projects.value })
   }
   async function refresh(): Promise<void> {
@@ -276,11 +321,17 @@
     optionsLoading.value = true
     optionError.value = false
     try {
-      const [warehouseRows, projectRows, sectionRows] = await Promise.all([
+      const [organizationPage, warehouseRows, projectRows, sectionRows] = await Promise.all([
+        fetchWmsInventoryOrganizations({
+          current: 1,
+          size: 2000,
+          tenantId: filterTenantId.value
+        }),
         fetchWmsWarehouses(),
         fetchWmsProjects(),
         fetchWmsProjectSections()
       ])
+      organizations.value = organizationPage.data
       warehouses.value = warehouseRows
       projects.value = projectRows
       sections.value = sectionRows
@@ -307,6 +358,23 @@
       await refresh()
     } catch {
       // 取消确认与 API 错误由对应组件处理。
+    } finally {
+      workingId.value = undefined
+    }
+  }
+  async function approve(row: WmsCountPlan): Promise<void> {
+    if (workingId.value) return
+    try {
+      await confirmAction(
+        `审核方案 ${row.documentNo}？审核后即可录入盘点表${row.freezeMovements ? '，范围内的库存出入库将冻结' : ''}。`,
+        '审核盘点方案',
+        { type: 'warning', confirmButtonText: '审核通过', cancelButtonText: '返回' }
+      )
+      workingId.value = row.id
+      await approveWmsCountPlan(row.id)
+      await refresh()
+    } catch {
+      // 确认取消与 API 失败分别由共享反馈层处理。
     } finally {
       workingId.value = undefined
     }
@@ -342,15 +410,50 @@
         )
       },
       {
+        prop: 'organization',
+        label: '库存组织',
+        minWidth: 180,
+        formatter: (row) =>
+          row.organization?.organizationName ||
+          organizations.value.find((item) => item.id === row.organizationId)?.organizationName ||
+          '历史方案'
+      },
+      {
         prop: 'warehouse',
-        label: '盘点仓库',
+        label: '仓库范围',
         minWidth: 190,
         formatter: (row) => (
           <BusinessTableIdentityCell
-            primary={row.warehouse?.warehouseName || '仓库'}
-            secondary={row.warehouse?.warehouseCode || ''}
+            primary={
+              row.organizationId
+                ? row.warehouseIds?.length
+                  ? row.warehouseIds.length === 1
+                    ? row.warehouse?.warehouseName || '1 个仓库'
+                    : `${row.warehouseIds.length} 个仓库`
+                  : '全部仓库'
+                : row.warehouse?.warehouseName || '仓库'
+            }
+            secondary={row.warehouse?.warehouseCode || '当前库存组织'}
           />
         )
+      },
+      {
+        prop: 'backupCondition',
+        label: '账存来源',
+        minWidth: 140,
+        dict: { code: 'wmsCountBackupCondition', display: 'text' }
+      },
+      {
+        prop: 'cutoffDate',
+        label: '截止日期',
+        minWidth: 120,
+        formatter: (row) => row.cutoffDate || '—'
+      },
+      {
+        prop: 'completionStatus',
+        label: '盘点完成状态',
+        minWidth: 135,
+        dict: { code: 'wmsCountCompletionStatus', display: 'auto' }
       },
       {
         prop: 'scopeProjectId',
@@ -398,14 +501,20 @@
               formatter: (row: CountPlanListRow) => row.detailLine?.countedQuantity ?? '待盘点'
             },
             {
-              prop: 'detailVariance',
-              label: '差异数量',
-              width: 120,
+              prop: 'detailGain',
+              label: '盘盈数量',
+              width: 110,
               align: 'right' as const,
               formatter: (row: CountPlanListRow) =>
-                row.detailLine?.countedQuantity == null
-                  ? '—'
-                  : row.detailLine.countedQuantity - row.detailLine.expectedQuantity
+                row.detailLine ? (countLineVariance(row.detailLine)?.gain ?? '—') : '—'
+            },
+            {
+              prop: 'detailLoss',
+              label: '盘亏数量',
+              width: 110,
+              align: 'right' as const,
+              formatter: (row: CountPlanListRow) =>
+                row.detailLine ? (countLineVariance(row.detailLine)?.loss ?? '—') : '—'
             }
           ]
         : []),
@@ -419,7 +528,7 @@
       {
         prop: 'operation',
         label: '操作',
-        width: 165,
+        width: 185,
         fixed: 'right',
         formatter: (row) => (
           <BusinessTableRowActions>
@@ -427,10 +536,20 @@
               type="edit"
               icon="ri:file-search-line"
               label="盘点表"
-              permission="WmsCount:View"
+              permission={row.organizationId ? 'WmsCountSheet:View' : 'WmsCount:View'}
               onClick={() => openDetail(row)}
             />
-            {row.status === 'counting' ? (
+            {row.status === 'draft' ? (
+              <ArtButtonTable
+                type="edit"
+                icon="ri:check-double-line"
+                label="审核方案"
+                permission="WmsCount:Approve"
+                disabled={Boolean(workingId.value)}
+                onClick={() => approve(row)}
+              />
+            ) : null}
+            {row.status === 'counting' || row.status === 'draft' ? (
               <ArtButtonTable
                 type="delete"
                 label="取消盘点"
