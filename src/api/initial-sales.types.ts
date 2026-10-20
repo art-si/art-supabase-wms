@@ -43,6 +43,7 @@ export interface WmsSalesChoice {
   availableQuantity: number
   allocatedQuantity: number
   batchNo: string | null
+  packNo: string | null
   serialNos: string[]
   unitPrice: number
   taxRate: number
@@ -71,6 +72,8 @@ export interface WmsInitialSalesLine {
   allocatedQuantity?: number
   issuedQuantity?: number
   stockBatchId?: string | null
+  packNo?: string | null
+  stockBatch?: { pack?: { packNo: string } | null } | null
   sourceDocumentId?: string | null
   sourceLineId?: string | null
   id?: string

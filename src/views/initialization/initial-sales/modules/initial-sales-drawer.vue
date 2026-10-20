@@ -955,6 +955,7 @@
         taxRate: row.taxRate,
         serialNos: props.kind === 'return' ? [...row.serialNos] : [],
         sourceDocument: row.documentNo,
+        packNo: row.packNo,
         sourceLineNo: row.lineNo == null ? null : String(row.lineNo),
         sourceDocumentId: row.sourceDocumentId,
         sourceLineId: row.sourceLineId
@@ -1096,6 +1097,12 @@
     { prop: 'totalAmount', label: '价税合计', width: 124, align: 'right', useSlot: true },
     { prop: 'gift', label: '赠品', width: 68, align: 'center', useSlot: true },
     { prop: 'batchNo', label: '批号', width: 145, useSlot: true },
+    {
+      prop: 'packNo',
+      label: '包号',
+      width: 145,
+      formatter: (row: WmsInitialSalesLine) => row.packNo || row.stockBatch?.pack?.packNo || '—'
+    },
     { prop: 'warehouseId', label: '仓库', width: 180, useSlot: true },
     { prop: 'binId', label: '仓位', width: 155, useSlot: true },
     {

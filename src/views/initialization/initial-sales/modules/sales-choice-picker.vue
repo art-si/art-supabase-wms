@@ -113,6 +113,7 @@
     { prop: 'availableQuantity', label: '可用库存量', minWidth: 140, align: 'right' },
     { prop: 'allocatedQuantity', label: '已分配量', minWidth: 120, align: 'right' },
     { prop: 'batchNo', label: '批次号', minWidth: 150 },
+    { prop: 'packNo', label: '包号', minWidth: 140, formatter: (row) => row.packNo || '—' },
     {
       prop: 'serialNos',
       label: '序列号',

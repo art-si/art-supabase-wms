@@ -35,6 +35,7 @@ import type {
   WmsMovement,
   WmsMaterialControl,
   WmsPackOption,
+  WmsPackPickerOption,
   WmsProject,
   WmsProjectPack,
   WmsProjectMaterial,
@@ -213,7 +214,10 @@ export async function fetchWmsPackOptions(workOrderId: string): Promise<WmsPackO
         () =>
           supabase
             .from('mes_work_order_pack')
-            .select('id,pack_no,items:mes_work_order_pack_item(pieces)', { count: 'exact' })
+            .select(
+              'id,work_order_id,pack_no,area,axis,items:mes_work_order_pack_item(board_id,pieces)',
+              { count: 'exact' }
+            )
             .eq('work_order_id', workOrderId)
             .eq('confirmed', true)
             .order('pack_no')
@@ -223,6 +227,70 @@ export async function fetchWmsPackOptions(workOrderId: string): Promise<WmsPackO
       ),
     {}
   )
+}
+
+export async function fetchWmsPackPickerOptions(
+  workOrderId: string
+): Promise<WmsPackPickerOption[]> {
+  const { data: order } = await responseHandle<{
+    workOrderNo: string
+    packingPublishedAt: string | null
+  }>(
+    () =>
+      supabase
+        .from('mes_work_order')
+        .select('work_order_no,packing_published_at')
+        .eq('id', workOrderId)
+        .is('deleted_at', null)
+        .maybeSingle(),
+    readOptions
+  )
+  if (!order?.packingPublishedAt) return []
+
+  interface PackBoard {
+    id: string
+    area: string
+    number: string
+    lengthMm: number
+    areaSqm: number
+  }
+  const [packs, boards] = await Promise.all([
+    fetchWmsPackOptions(workOrderId),
+    loadAllDocumentPages<PackBoard, { from?: number; to?: number }>(
+      ({ from = 0, to = 499 }) =>
+        responseHandle<PackBoard[]>(
+          () =>
+            supabase
+              .from('mes_work_order_detail')
+              .select('id,area,number,length_mm,area_sqm', { count: 'exact' })
+              .eq('work_order_id', workOrderId)
+              .order('id')
+              .range(from, to),
+          readOptions
+        ),
+      {}
+    )
+  ])
+  const boardById = new Map(boards.map((board) => [board.id, board]))
+  return packs.map((pack) => {
+    const details = pack.items.map((item) => ({ ...item, board: boardById.get(item.boardId) }))
+    return {
+      ...pack,
+      workOrderNo: order.workOrderNo,
+      boardNumbers: details.map(({ board }) => board?.number || '—').join(' / '),
+      boardLengths: details.map(({ board }) => String(board?.lengthMm || '—')).join(' / '),
+      area: pack.area || uniq(details.map(({ board }) => board?.area).filter(Boolean)).join(' / '),
+      quantity: details.reduce((total, item) => total + Number(item.pieces), 0),
+      linearMeters: details.reduce(
+        (total, item) => total + ((Number(item.board?.lengthMm) || 0) * Number(item.pieces)) / 1000,
+        0
+      ),
+      areaSqm: details.reduce(
+        (total, item) => total + (Number(item.board?.areaSqm) || 0) * Number(item.pieces),
+        0
+      )
+    }
+  })
 }
 
 export async function fetchWmsWorkbenchStats(tenantId?: string): Promise<WmsWorkbenchStats> {

@@ -93,6 +93,7 @@
   } from '@/utils/ui/format'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { useAuth } from '@/hooks/core/useAuth'
+  import { WMS_FINISHED_INBOUND_PATH } from '@/router/business-paths'
   import { RouterLink } from 'vue-router'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import {
@@ -103,6 +104,7 @@
     type WmsInventoryReportKind,
     type WmsInventoryReportQuery,
     type WmsInventoryReportRow,
+    type WmsInventorySourceKind,
     type WmsInventorySummaryValue
   } from '@wms/api'
   import ProjectTransferDialog from '../stock/modules/project-transfer-dialog.vue'
@@ -307,9 +309,9 @@
     }
   }
 
-  function salesDocumentSource(row: WmsInventoryReportRow): { path: string } | null {
+  function businessDocumentSource(row: WmsInventoryReportRow): { path: string } | null {
     if (!row.sourceDocumentId) return null
-    const sources = {
+    const sources: Record<WmsInventorySourceKind, { path: string; permission: string }> = {
       outbound: {
         path: '/wms/outbound-business/sales-outbound',
         permission: 'WmsSalesOutbound:View'
@@ -325,6 +327,46 @@
       other_return: {
         path: '/wms/outbound-business/other-outbound',
         permission: 'WmsOtherOutbound:View'
+      },
+      production_issue: {
+        path: '/wms/production-inout/production-issue',
+        permission: 'WmsProductionIssue:View'
+      },
+      production_return: {
+        path: '/wms/production-inout/production-return',
+        permission: 'WmsProductionReturn:View'
+      },
+      finished_inbound: {
+        path: WMS_FINISHED_INBOUND_PATH,
+        permission: 'WmsFinishedInbound:View'
+      },
+      finished_return: {
+        path: '/wms/production-inout/finished-return',
+        permission: 'WmsFinishedReturn:View'
+      },
+      inbound_purchase_inbound: {
+        path: '/wms/inbound-business/purchase-inbound',
+        permission: 'WmsPurchaseInbound:View'
+      },
+      inbound_purchase_return: {
+        path: '/wms/inbound-business/purchase-return',
+        permission: 'WmsPurchaseReturn:View'
+      },
+      inbound_other_inbound: {
+        path: '/wms/inbound-business/other-inbound',
+        permission: 'WmsOtherInbound:View'
+      },
+      inbound_other_return: {
+        path: '/wms/inbound-business/other-inbound',
+        permission: 'WmsOtherInbound:View'
+      },
+      inbound_entrusted_processing_inbound: {
+        path: '/wms/inbound-business/entrusted-processing-inbound',
+        permission: 'WmsEntrustedProcessingInbound:View'
+      },
+      inbound_entrusted_processing_return: {
+        path: '/wms/inbound-business/entrusted-processing-return',
+        permission: 'WmsEntrustedProcessingReturn:View'
       }
     }
     const kind = row.sourceDocumentKind
@@ -404,7 +446,7 @@
           label: props.kind === 'ledger' ? '最近单据编号' : '单据编号',
           minWidth: 170,
           formatter: (row) => {
-            const source = salesDocumentSource(row)
+            const source = businessDocumentSource(row)
             return source ? (
               <RouterLink
                 to={{ path: source.path, query: { documentId: row.sourceDocumentId } }}

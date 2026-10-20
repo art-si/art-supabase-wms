@@ -1,4 +1,5 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
+import { omit } from 'lodash-es'
 import { buildSupabasePageRange } from '@/utils/supabase/pagination'
 import type {
   WmsInitialSalesDocument,
@@ -31,6 +32,7 @@ const documentSelect = `*,
  organization:mdm_organization!wms_sales_document_organization_id_fkey(organization_name,organization_code),
  customer:mdm_customer!wms_sales_document_customer_id_fkey(customer_name),
  lines:wms_sales_document_line!wms_sales_document_line_document_id_fkey(*,
+ stockBatch:wms_inventory_batch!wms_sales_document_line_stock_batch_id_fkey(pack:mes_work_order_pack(pack_no)),
  bin:mdm_warehouse_bin!wms_sales_document_line_bin_id_fkey(bin_name,bin_code),
  material:mdm_material!wms_sales_document_line_material_id_fkey(id,tenant_id,code:material_code,name:material_name,description,specification_model,drawing_no,brand,material_source,inventory_unit_id,base_unit_id,auxiliary_unit_id,auxiliary_unit_2_id,unit_conversions,serial_management_enabled,batch_management_enabled),
  project:mdm_project!wms_sales_document_line_project_id_fkey(id,tenant_id,code:project_code,name:project_name))`
@@ -115,8 +117,13 @@ export async function fetchWmsSalesChoices(query: {
 export async function saveWmsInitialSalesDocument(
   payload: WmsInitialSalesPayload
 ): Promise<string> {
+  const writePayload = {
+    ...payload,
+    lines: payload.lines.map((line) => omit(line, ['packNo', 'stockBatch']))
+  }
   const { data } = await responseHandle<string>(
-    () => supabase.rpc('wms_save_sales_document_secure', { p_payload: keysToSnakeDeep(payload) }),
+    () =>
+      supabase.rpc('wms_save_sales_document_secure', { p_payload: keysToSnakeDeep(writePayload) }),
     { ...writeOptions, message: '销售单据已暂存' }
   )
   if (!data) throw new Error('销售单据保存失败')

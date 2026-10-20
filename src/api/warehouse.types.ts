@@ -41,6 +41,15 @@ export interface WmsMaterialOption {
   unitConversions?: Array<{ sourceUnitId: string; sourceFactor: number; baseFactor: number }>
 }
 
+export interface WmsFullIssueGap {
+  sourceLineNo: string
+  materialCode: string | null
+  materialName: string | null
+  requiredQuantity: number
+  issuedQuantity: number
+  remainingQuantity: number
+}
+
 export interface WmsWorkOrderOption {
   projectName?: string | null
   customerId?: string | null
@@ -48,6 +57,11 @@ export interface WmsWorkOrderOption {
   materialDescription?: string | null
   specificationModel?: string | null
   drawingNo?: string | null
+  workOrderTypeName: string | null
+  documentDate: string | null
+  documentStatus: string
+  plannerName: string | null
+  inboundWarehouseName: string | null
   id: string
   tenantId: string
   organizationId: string
@@ -59,14 +73,34 @@ export interface WmsWorkOrderOption {
   completedQuantity: number
   warehousedQuantity: number
   orderQuantity: number
+  pendingInboundQuantity: number
+  returnedQuantity: number
+  qualifiedInboundQuantity: number
+  defectiveInboundQuantity: number
+  scrappedInboundQuantity: number
   productionReportControl: 'none' | 'warning' | 'strict'
+  productionFullIssueControl: 'none' | 'warning' | 'strict'
+  productionFullIssueScope: 'all' | 'non_backflush' | 'key'
+  productionFullIssueGaps: WmsFullIssueGap[]
   allowedIssueWarehouseTypes: string[]
 }
 
 export interface WmsPackOption {
   id: string
+  workOrderId: string
   packNo: string
-  items: { pieces: number }[]
+  area: string
+  axis: string
+  items: { boardId: string; pieces: number }[]
+}
+
+export interface WmsPackPickerOption extends WmsPackOption {
+  workOrderNo: string
+  boardNumbers: string
+  boardLengths: string
+  quantity: number
+  linearMeters: number
+  areaSqm: number
 }
 
 export interface WmsProject {

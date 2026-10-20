@@ -90,6 +90,14 @@
       >
         {{ reportControlWarning }}
       </ElAlert>
+      <ElAlert
+        v-if="mode !== 'view' && fullIssueWarning"
+        type="warning"
+        :closable="false"
+        show-icon
+      >
+        {{ fullIssueWarning }}
+      </ElAlert>
       <ElAlert v-if="importIntent && mode !== 'view'" type="success" :closable="false" show-icon>
         先选择仓库，再在“{{ config.detailLabel }}”中点击“导入明细”；必填列为物料编码、{{
           isFinished ? '入库数量' : '申请数量、实发数量'
@@ -350,16 +358,18 @@
               v-model:selected-data="packPickerRows"
               class="w-auto! shrink-0"
               title="参选已确认排包单"
-              subtitle="整包数量自动带入，过账时校验排包单。"
+              subtitle="左侧选择生产工单，右侧选择已确认发布的包号；整包数量自动带入。"
+              search-placeholder="搜索包号、板材编号或区域"
               row-key="id"
               label-key="packNo"
               :columns="packColumns"
-              :data="packPickerData"
-              :disabled="!form.workOrderId"
+              :navigation="packOrderNavigation"
+              :api-fn="packPickerApi"
+              :disabled="!form.warehouseId"
               @confirm="addPackRows"
             >
               <template #trigger="{ open }">
-                <ElButton v-auth="permission.Select" :disabled="!form.workOrderId" @click="open">
+                <ElButton v-auth="permission.Select" :disabled="!form.warehouseId" @click="open">
                   <ArtSvgIcon icon="ri:archive-stack-line" />选排包单
                 </ElButton>
               </template>
@@ -665,13 +675,19 @@
             <template #stockStatus="{ row }"
               ><ElSelect v-if="mode !== 'view'" v-model="row.stockStatus"
                 ><ElOption
-                  v-for="option in stockStatusOptions"
+                  v-for="option in props.kind === 'finished_inbound'
+                    ? finishedQualityStatusOptions
+                    : stockStatusOptions"
                   :key="option.value"
                   :label="option.label"
                   :value="option.value" /></ElSelect
               ><ArtDictDisplay
                 v-else
-                dict-code="wmsInitialStockCondition"
+                :dict-code="
+                  props.kind === 'finished_inbound'
+                    ? 'wmsFinishedQualityStatus'
+                    : 'wmsInitialStockCondition'
+                "
                 :value="row.stockStatus"
                 display="text"
             /></template>
@@ -872,7 +888,7 @@
     fetchWmsProductionProjects,
     fetchWmsFinishedInboundSourcePage,
     fetchWmsProductionStockPage,
-    fetchWmsPackOptions,
+    fetchWmsPackPickerOptions,
     fetchWmsUnitOptions,
     fetchWmsWarehouses,
     fetchWmsWorkOrderOptions,
@@ -897,13 +913,14 @@
     type WmsUnitOption,
     type WmsWarehouse,
     type WmsWorkOrderOption,
-    type WmsPackOption
+    type WmsPackPickerOption
   } from '@wms/api'
   import { productionDocumentConfig } from './production-document-config'
 
   interface OpenData {
     mode: 'create' | 'edit' | 'copy' | 'view'
     documentId?: string
+    document?: WmsProductionMaterialDocument
     sourceIssueDocumentId?: string
     sourceIssueLineIds?: string[]
     importIntent?: boolean
@@ -943,7 +960,6 @@
   const suppliers = ref<WmsInitializationOption[]>([])
   const customers = ref<WmsInitializationOption[]>([])
   const bomItems = ref<WmsProductionBomItem[]>([])
-  const packs = ref<WmsPackOption[]>([])
   const serials = ref<WmsBatchSerial[]>([])
   const lines = ref<DraftLine[]>([])
   const editLine = ref<DraftLine | null>(null)
@@ -967,12 +983,13 @@
   const workOrderPickerIds = ref<string[]>([])
   const workOrderPickerRows = ref<DataSelectRecord[]>([])
   const packPickerIds = ref<string[]>([])
-  const packPickerRows = ref<DataSelectRecord[]>([])
+  const packPickerRows = ref<WmsPackPickerOption[]>([])
   const inboundSourceIds = ref<string[]>([])
   const inboundSourceRows = ref<DataSelectRecord[]>([])
   const returnTypeOptions = useDictionaryOptions('wmsProductionReturnType')
   const ownerTypeOptions = useDictionaryOptions('mdmBusinessOwnerType')
   const stockStatusOptions = useDictionaryOptions('wmsInitialStockCondition')
+  const finishedQualityStatusOptions = useDictionaryOptions('wmsFinishedQualityStatus')
   const stockTypeOptions = useDictionaryOptions('wmsInitialStockType')
   const isMobile = useBreakpoints({ sm: 640 }).smaller('sm')
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
@@ -1022,6 +1039,30 @@
     return affected.length
       ? `${affected.map((order) => order.workOrderNo).join('、')} 的入库数量超过已报工未入库数量，请核对后再办理。`
       : ''
+  })
+  const fullIssueWarning = computed(() => {
+    if (props.kind !== 'finished_inbound') return ''
+    const selectedIds = new Set(lines.value.map((line) => line.workOrderId).filter(Boolean))
+    const affected = workOrders.value.filter(
+      (order) =>
+        selectedIds.has(order.id) &&
+        order.productionFullIssueControl !== 'none' &&
+        (order.productionFullIssueGaps?.length ?? 0) > 0
+    )
+    if (!affected.length) return ''
+    const details = affected.slice(0, 2).map((order) => {
+      const gap = order.productionFullIssueGaps[0]
+      const example = gap
+        ? `，如 ${gap.materialCode || gap.materialName || '组件'} 尚缺 ${gap.remainingQuantity}`
+        : ''
+      const outcome =
+        order.productionFullIssueControl === 'strict'
+          ? '审核和入库过账将被拦截'
+          : '当前为警告模式，仍可办理'
+      return `${order.workOrderNo} 有 ${order.productionFullIssueGaps.length} 项 BOM 组件未完全领料${example}；${outcome}`
+    })
+    if (affected.length > 2) details.push(`另有 ${affected.length - 2} 张工单存在领料缺口`)
+    return `${details.join('。')}。请核对后办理。`
   })
   const materialStatusLabel = computed(
     () =>
@@ -1227,29 +1268,118 @@
   ]
   const workOrderColumns: DataSelectColumn[] = [
     { prop: 'workOrderNo', label: '生产工单', minWidth: 170 },
-    { prop: 'materialName', label: '成品物料', minWidth: 220 },
+    {
+      prop: 'workOrderTypeName',
+      label: '工单类型',
+      minWidth: 145,
+      formatter: (row) => row.workOrderTypeName || '—'
+    },
+    {
+      prop: 'documentDate',
+      label: '单据日期',
+      minWidth: 115,
+      formatter: (row) => row.documentDate || '—'
+    },
+    {
+      prop: 'documentStatus',
+      label: '单据状态',
+      minWidth: 105,
+      formatter: (row) =>
+        row.documentStatus === 'confirmed' ? '已下达' : row.documentStatus || '—'
+    },
+    { prop: 'materialCode', label: '物料编码', minWidth: 140 },
+    { prop: 'materialName', label: '物料描述', minWidth: 210 },
+    {
+      prop: 'specificationModel',
+      label: '规格型号',
+      minWidth: 145,
+      formatter: (row) => row.specificationModel || '—'
+    },
+    { prop: 'drawingNo', label: '图号', minWidth: 130, formatter: (row) => row.drawingNo || '—' },
+    {
+      prop: 'projectName',
+      label: '项目名称',
+      minWidth: 175,
+      formatter: (row) => row.projectName || '—'
+    },
+    {
+      prop: 'constructionNo',
+      label: '施工号',
+      minWidth: 130,
+      formatter: (row) => row.constructionNo || '—'
+    },
+    {
+      prop: 'plannerName',
+      label: '计划员',
+      minWidth: 115,
+      formatter: (row) => row.plannerName || '—'
+    },
+    {
+      prop: 'inboundWarehouseName',
+      label: '入库仓库',
+      minWidth: 150,
+      formatter: (row) => row.inboundWarehouseName || '—'
+    },
     { prop: 'orderQuantity', label: '工单数量', width: 105, align: 'right' },
+    { prop: 'pendingInboundQuantity', label: '待入库数量', width: 115, align: 'right' },
+    { prop: 'returnedQuantity', label: '退库数量', width: 105, align: 'right' },
+    { prop: 'qualifiedInboundQuantity', label: '合格品入库', width: 110, align: 'right' },
+    { prop: 'defectiveInboundQuantity', label: '不合格品入库', width: 120, align: 'right' },
+    { prop: 'scrappedInboundQuantity', label: '报废品入库', width: 110, align: 'right' },
     { prop: 'completedQuantity', label: '已报工', width: 95, align: 'right' },
     { prop: 'warehousedQuantity', label: '已入库', width: 95, align: 'right' }
   ]
-  const packColumns: DataSelectColumn[] = [
-    { prop: 'packNo', label: '排包单号', minWidth: 190 },
-    { prop: 'quantity', label: '整包数量', width: 120, align: 'right' }
+  const packOrderNavigation = computed(() => ({
+    data: workOrders.value.map((order) => ({
+      id: order.id,
+      workOrderNo: order.workOrderNo,
+      summary: `${order.materialCode || order.materialName} · 待入库 ${order.pendingInboundQuantity}`
+    })),
+    title: '生产工单',
+    rowKey: 'id',
+    labelKey: 'workOrderNo',
+    descriptionKey: 'summary',
+    filterKey: 'workOrderId',
+    allLabel: '选择工单',
+    allDescription: '查看该工单已发布的包号',
+    searchPlaceholder: '搜索工单或成品'
+  }))
+  const packColumns: DataSelectColumn<WmsPackPickerOption>[] = [
+    { prop: 'packNo', label: '包号', minWidth: 140 },
+    { prop: 'area', label: '区域', minWidth: 100 },
+    { prop: 'axis', label: '轴线', minWidth: 100 },
+    { prop: 'boardNumbers', label: '板材编号', minWidth: 150 },
+    { prop: 'boardLengths', label: '长度 mm', minWidth: 120 },
+    { prop: 'quantity', label: '块数', width: 90, align: 'right' },
+    {
+      prop: 'linearMeters',
+      label: '延米 m',
+      width: 100,
+      align: 'right',
+      formatter: (row) => row.linearMeters.toFixed(2)
+    },
+    {
+      prop: 'areaSqm',
+      label: '面积 ㎡',
+      width: 100,
+      align: 'right',
+      formatter: (row) => row.areaSqm.toFixed(2)
+    }
   ]
-  const packPickerData = computed(() =>
-    packs.value.map((item) => ({
-      ...item,
-      quantity: item.items.reduce((total, entry) => total + Number(entry.pieces), 0)
-    }))
-  )
   const inboundSourceColumns: DataSelectColumn[] = [
     { prop: 'documentNo', label: '完工入库单号', minWidth: 180 },
     { prop: 'workOrderNo', label: '生产工单', minWidth: 170 },
     { prop: 'materialCode', label: '物料编码', minWidth: 140 },
     { prop: 'materialDescription', label: '物料描述', minWidth: 210 },
+    {
+      prop: 'stockStatus',
+      label: '质量状态',
+      minWidth: 115,
+      dict: { code: 'wmsFinishedQualityStatus', display: 'text' }
+    },
     { prop: 'batchNo', label: '批号', minWidth: 130 },
     { prop: 'inboundQuantity', label: '入库数量', width: 105, align: 'right' },
-    { prop: 'availableQuantity', label: '可用数量', width: 105, align: 'right' }
+    { prop: 'availableQuantity', label: '可退数量', width: 105, align: 'right' }
   ]
   const bomPickerData = computed(() =>
     bomItems.value
@@ -1397,7 +1527,7 @@
     },
     {
       prop: 'stockStatus',
-      label: '库存状态',
+      label: props.kind === 'finished_inbound' ? '质量状态' : '库存状态',
       minWidth: 155,
       useSlot: true
     },
@@ -1877,6 +2007,21 @@
       getMaterialCategoryIds(materialCategories.value, String(params.filters.categoryId || ''))
     )
   }
+  async function packPickerApi(params: DataSelectFetchParams) {
+    const workOrderId = String(params.filters.workOrderId || '')
+    if (!workOrders.value.some((order) => order.id === workOrderId)) return { data: [], total: 0 }
+    const keyword = params.keyword.trim().toLowerCase()
+    const rows = await fetchWmsPackPickerOptions(workOrderId)
+    const matches = keyword
+      ? rows.filter((row) =>
+          [row.workOrderNo, row.packNo, row.area, row.axis, row.boardNumbers].some((value) =>
+            value.toLowerCase().includes(keyword)
+          )
+        )
+      : rows
+    const start = (params.page - 1) * params.pageSize
+    return { data: matches.slice(start, start + params.pageSize), total: matches.length }
+  }
   function inboundSourceApi(params: DataSelectFetchParams) {
     return fetchWmsFinishedInboundSourcePage({
       tenantId: form.value.tenantId,
@@ -1916,6 +2061,9 @@
   }
   async function addWorkOrderRows(_ids: unknown, rows: DataSelectRecord[]): Promise<void> {
     const orders = rows as WmsWorkOrderOption[]
+    workOrders.value = Array.from(
+      new Map([...workOrders.value, ...orders].map((order) => [order.id, order])).values()
+    )
     const materialIds = orders.flatMap((item) => (item.materialId ? [item.materialId] : []))
     const materials = await fetchWmsProductionMaterialsByIds(form.value.tenantId, uniq(materialIds))
     const byId = new Map(materials.map((item) => [item.id, item]))
@@ -1952,12 +2100,10 @@
       form.value.projectId = orders[0].projectId || ''
       form.value.customerId =
         projects.value.find((item) => item.id === orders[0].projectId)?.customerId || ''
-      packs.value = await fetchWmsPackOptions(orders[0].id)
     } else if (orders.length > 1) {
       form.value.workOrderId = ''
       form.value.projectId = ''
       form.value.customerId = ''
-      packs.value = []
     }
     renumber()
     workOrderPickerIds.value = []
@@ -1970,15 +2116,19 @@
         `已带入 ${added} 行；${reportWarnings} 行超过已报工未入库数量，请核对后再办理`
       )
   }
-  async function addPackRows(_ids: unknown, rows: DataSelectRecord[]): Promise<void> {
-    const order = workOrders.value.find((item) => item.id === form.value.workOrderId)
-    if (!order?.materialId) return
-    const material = (
-      await fetchWmsProductionMaterialsByIds(form.value.tenantId, [order.materialId])
-    )[0]
-    if (!material) return
-    for (const row of rows) {
-      const pack = row as WmsPackOption & { quantity: number }
+  async function addPackRows(_ids: unknown, selected: WmsPackPickerOption[]): Promise<void> {
+    const sourceOrders = workOrders.value.filter(
+      (order) => order.materialId && selected.some((pack) => pack.workOrderId === order.id)
+    )
+    const materials = await fetchWmsProductionMaterialsByIds(
+      form.value.tenantId,
+      uniq(sourceOrders.map((order) => order.materialId).filter((id): id is string => Boolean(id)))
+    )
+    let added = 0
+    for (const pack of selected) {
+      const order = sourceOrders.find((item) => item.id === pack.workOrderId)
+      const material = materials.find((item) => item.id === order?.materialId)
+      if (!order || !material || pack.quantity <= 0) continue
       if (lines.value.some((item) => item.packId === pack.id)) continue
       const line = makeLine(material, Number(pack.quantity))
       line.workOrderId = order.id
@@ -1988,10 +2138,22 @@
       line.packId = pack.id
       line.sourceDocument = pack.packNo
       lines.value.push(line)
+      added++
     }
+    const selectedOrderIds = uniq(lines.value.map((line) => line.workOrderId).filter(Boolean))
+    const onlyOrder =
+      selectedOrderIds.length === 1
+        ? workOrders.value.find((order) => order.id === selectedOrderIds[0])
+        : undefined
+    form.value.workOrderId = onlyOrder?.id || ''
+    form.value.projectId = onlyOrder?.projectId || ''
+    form.value.customerId =
+      projects.value.find((project) => project.id === onlyOrder?.projectId)?.customerId || ''
     renumber()
     packPickerIds.value = []
     packPickerRows.value = []
+    if (added < selected.length)
+      ElMessage.warning(`已带入 ${added} 个包号；重复或无效的包号已跳过，请核对工单与物料`)
   }
   async function addInboundSourceRows(_ids: unknown, rows: DataSelectRecord[]): Promise<void> {
     const sources = rows as WmsFinishedInboundSourceOption[]
@@ -2457,11 +2619,6 @@
         if (request !== documentRequest) return
         workOrders.value = rows
       }
-      if (isFinished.value && form.value.workOrderId) {
-        const rows = await fetchWmsPackOptions(form.value.workOrderId)
-        if (request !== documentRequest) return
-        packs.value = rows
-      }
       if (!isFinished.value && form.value.workOrderId && form.value.tenantId) {
         const rows = await fetchWmsProductionBomItems(
           form.value.workOrderId,
@@ -2503,7 +2660,6 @@
     form.value.workOrderId = ''
     lines.value = []
     bomItems.value = []
-    packs.value = []
     workOrders.value = []
     if (tenantChanged && org) {
       form.value.tenantId = org.tenantId
@@ -2527,7 +2683,6 @@
     formRef.value?.clearValidate('warehouseId')
     form.value.workOrderId = ''
     bomItems.value = []
-    packs.value = []
     const warehouseWorkOrders = warehouseId ? await fetchWmsWorkOrderOptions(warehouseId) : []
     if (form.value.warehouseId !== warehouseId) return
     workOrders.value = warehouseWorkOrders
@@ -2545,13 +2700,11 @@
     form.value.projectId = order?.projectId || ''
     form.value.customerId =
       projects.value.find((item) => item.id === order?.projectId)?.customerId || ''
-    const packRows = isFinished.value && order ? await fetchWmsPackOptions(order.id) : []
     const bomRows =
       !isFinished.value && workOrderId && tenantId
         ? await fetchWmsProductionBomItems(workOrderId, tenantId)
         : []
     if (form.value.workOrderId !== workOrderId || form.value.tenantId !== tenantId) return
-    packs.value = packRows
     bomItems.value = bomRows
     if (selectIntent.value && props.kind === 'issue' && workOrderId) {
       selectIntent.value = false
@@ -2834,9 +2987,10 @@
     drawerRef.value?.setLoading(true)
     drawerRef.value?.setOptions({ confirmDisabled: true })
     try {
-      const source = data.documentId
-        ? await fetchWmsProductionMaterialDocument(data.documentId)
-        : undefined
+      const source =
+        data.document ??
+        (data.documentId ? await fetchWmsProductionMaterialDocument(data.documentId) : undefined)
+      if (data.document) openData.value = { ...data, document: undefined }
       const issueSource =
         data.sourceIssueDocumentId && props.kind === 'return'
           ? await fetchWmsProductionMaterialDocument(data.sourceIssueDocumentId)

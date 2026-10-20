@@ -4,6 +4,25 @@ import { normalizeNullableText } from '@/utils/form/normalize'
 
 export type WmsInventoryReportKind = 'stock' | 'movement' | 'ledger' | 'receipt-issue'
 
+const INVENTORY_SOURCE_KINDS = [
+  'outbound',
+  'return',
+  'other_outbound',
+  'other_return',
+  'production_issue',
+  'production_return',
+  'finished_inbound',
+  'finished_return',
+  'inbound_purchase_inbound',
+  'inbound_purchase_return',
+  'inbound_other_inbound',
+  'inbound_other_return',
+  'inbound_entrusted_processing_inbound',
+  'inbound_entrusted_processing_return'
+] as const
+
+export type WmsInventorySourceKind = (typeof INVENTORY_SOURCE_KINDS)[number]
+
 export type WmsInventorySummaryValue =
   'inventoryQuantity' | 'basicQuantity' | 'auxiliaryQuantity' | 'auxiliaryQuantity2'
 
@@ -32,7 +51,7 @@ export interface WmsInventoryReportRow {
   documentNo: string | null
   documentStatus: string | null
   sourceDocumentId?: string | null
-  sourceDocumentKind?: 'outbound' | 'return' | 'other_outbound' | 'other_return' | null
+  sourceDocumentKind?: WmsInventorySourceKind | null
   sourceLineNo?: number | null
   direction: 'in' | 'out' | null
   materialCode: string
@@ -132,9 +151,7 @@ function isReportPage(value: unknown): value is WmsInventoryReportPage {
         (row.sourceDocumentKind === undefined ||
           row.sourceDocumentKind === null ||
           (typeof row.sourceDocumentKind === 'string' &&
-            ['outbound', 'return', 'other_outbound', 'other_return'].includes(
-              row.sourceDocumentKind
-            ))) &&
+            INVENTORY_SOURCE_KINDS.includes(row.sourceDocumentKind as WmsInventorySourceKind))) &&
         (row.sourceLineNo === undefined ||
           row.sourceLineNo === null ||
           (typeof row.sourceLineNo === 'number' &&

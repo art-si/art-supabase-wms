@@ -135,6 +135,7 @@
   import { useAuth } from '@/hooks/core/useAuth'
   import { useDocumentBulkDelete } from '@/hooks/business/useDocumentBulkDelete'
   import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
+  import { useRouteDocumentDrawer } from '@/hooks/core/useRouteDocumentDrawer'
   import MasterDataDeleteGuard from '@/components/business/master-data-delete-guard/index.vue'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import ArtTableQuery, {
@@ -161,6 +162,7 @@
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import {
     changeWmsProductionMaterialStatus,
+    fetchWmsProductionMaterialDocument,
     fetchWmsProductionMaterialPage,
     pushWmsProductionMaterial,
     type WmsProductionMaterialKind,
@@ -216,7 +218,8 @@
       ({
         issue: '按生产工单 BOM 或即时库存登记领料；审核后分批出库。',
         return: '按生产工单和项目登记退料；审核后下推入库。',
-        finished_inbound: '从生产工单、已确认排包单或成品物料建立明细，审核后办理完工入库。',
+        finished_inbound:
+          '从生产工单、已确认排包单或成品物料建立明细，按合格品、不合格品或报废品办理完工入库。',
         finished_return: '从已过账的完工入库明细选单，审核后办理退库。'
       })[props.kind]
   )
@@ -359,6 +362,19 @@
       ElMessage.error('单据加载失败，请重试')
     }
   }
+  useRouteDocumentDrawer({
+    routeName: () => permissions.value.View.split(':')[0],
+    canOpen: () => hasAuth(permissions.value.View),
+    fetchDocument: async (id) => {
+      const document = await fetchWmsProductionMaterialDocument(id)
+      if (document.kind !== props.kind) throw new Error('单据类型不匹配')
+      return document
+    },
+    openDocument: async (document) => {
+      await drawerRef.value?.handleOpen({ mode: 'view', documentId: document.id, document })
+    },
+    onError: () => ElMessage.error(`${title.value}加载失败，请刷新后重试`)
+  })
   async function transition(
     row: WmsProductionMaterialListRow,
     action: 'submit' | 'approve' | 'withdraw' | 'delete' | 'close' | 'void'
