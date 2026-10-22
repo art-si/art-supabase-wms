@@ -4,13 +4,13 @@
   <p>An inventory-identity and task-centered roadmap for appointments, receiving, putaway, picking, verification, shipping, and traceability.</p>
 
   <p>
-    <a href="https://gitee.com/wangyanghub/art-supabase-wms">Gitee</a>
+    <a href="https://gitee.com/art-si/art-supabase-wms">Gitee</a>
     ·
-    <a href="https://github.com/869123771/art-supabase-wms">GitHub</a>
+    <a href="https://github.com/art-si/art-supabase-wms">GitHub</a>
     ·
-    <a href="https://gitee.com/wangyanghub/art-supabase-pro">Platform</a>
+    <a href="https://gitee.com/art-si/art-supabase-pro">Platform</a>
     ·
-    <a href="https://869123771.github.io/art-supabase-doc/modules/wms">Documentation</a>
+    <a href="https://art-si.github.io/art-supabase-doc/modules/wms">Documentation</a>
     ·
     <a href="./README.md">简体中文</a>
   </p>
@@ -20,7 +20,7 @@
 
 Yiqi Workshop WMS is the warehouse-management application for Yiqi Workshop. Its target is a traceable execution loop across warehouse, zone, location, material, lot/serial identity, inventory state, inbound, internal movement, outbound, and cycle-count adjustment.
 
-Authentication, tenancy, navigation, authorization, layout, shared components, stores, and the common Supabase client remain owned by [`art-supabase-pro`](https://gitee.com/wangyanghub/art-supabase-pro). MDM and its authoritative sources provide warehouse, location, and material identities.
+Authentication, tenancy, navigation, authorization, layout, shared components, stores, and the common Supabase client remain owned by [`art-supabase-pro`](https://gitee.com/art-si/art-supabase-pro). MDM and its authoritative sources provide warehouse, location, and material identities.
 
 ## Current Status
 

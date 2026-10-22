@@ -12,7 +12,12 @@
           { label: '板材 + 装配', type: 'success' }
         ]"
       />
-      <ArtSectionCard title="查询范围" subtitle="先选择项目，可再缩小到一个施工号。" class="mb-4">
+      <ArtSectionCard
+        title="查询范围"
+        subtitle="先选择项目，可再缩小到一个施工号。"
+        class="mb-4"
+        :show-scrollbar="false"
+      >
         <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           <label class="grid min-w-0 gap-1 text-sm">
             <span>项目名称</span>
@@ -62,6 +67,7 @@
       <ArtSectionCard
         title="施工号库存台账"
         subtitle="由实时库存、工单、预留、序列号和库存流水汇总。"
+        :show-scrollbar="false"
         :loading="summaryLoading"
         :error="summaryError ? '汇总加载失败，请重试' : null"
         :empty="!selectedProjectId"
@@ -84,13 +90,14 @@
       <ArtSectionCard
         v-if="selectedProjectId"
         title="项目完工复盘明细"
-        subtitle="六类明细使用同一项目和施工号范围；垛包履历保留跨项目调拨与已出库记录。"
+        subtitle="七类明细使用同一项目和施工号范围；在制材料按已过账净领料和完工入库审核记录计算。"
         class="mt-4"
         preserve-content-structure
       >
         <ElTabs v-model="activeTab" class="min-w-0">
           <ElTabPane name="stock" label="库存与垛包" />
           <ElTabPane name="materials" label="物料占用" />
+          <ElTabPane name="materialWip" label="在制材料" />
           <ElTabPane name="packs" label="垛包履历" />
           <ElTabPane name="orders" label="生产工单" />
           <ElTabPane name="movements" label="收发存记录" />
@@ -120,6 +127,21 @@
             rowKey: 'id',
             tableLayout: 'fixed',
             emptyText: '该范围暂无物料占用或流转记录'
+          }"
+        />
+        <ArtTableQuery
+          v-if="activeTab === 'materialWip'"
+          :key="`material-wip-${selectedProjectId}-${selectedConstructionNo}`"
+          :model-value="materialWipSearch"
+          @update:model-value="replaceReactiveModel(materialWipSearch, $event)"
+          :api-fn="fetchMaterialWipRows"
+          :search-items="materialWipSearchItems"
+          :columns-factory="materialWipColumns"
+          :search-bar-props="{ span: 8, labelWidth: 82, showExpand: false }"
+          :table-props="{
+            rowKey: 'id',
+            tableLayout: 'fixed',
+            emptyText: '该范围暂无已过账的生产领料'
           }"
         />
         <ArtTableQuery
@@ -167,11 +189,13 @@
           :table-props="{ rowKey: 'id', tableLayout: 'fixed', emptyText: '该范围暂无序列号' }"
         />
       </ArtSectionCard>
+      <MaterialWipHistoryDrawer ref="materialWipHistoryDrawerRef" />
     </div>
   </ArtPermissionGuard>
 </template>
 
 <script setup lang="tsx">
+  import { ElButton } from 'element-plus'
   import { formatWmsMovementType } from '@/utils/wms/movement-display'
   import { formatWmsSerialParent } from '@/utils/wms/serial-display'
   import { replaceReactiveModel } from '@/utils/form/model'
@@ -181,6 +205,7 @@
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import BusinessTableIdentityCell from '@/components/business/business-table-identity-cell/index.vue'
   import ArtTableQuery from '@/components/core/tables/art-table-query/index.vue'
+  import MaterialWipHistoryDrawer from './modules/material-wip-history-drawer.vue'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type { ColumnOption } from '@/types'
   import { formatDateTimeValue, formatNumberValue } from '@/utils/ui/format'
@@ -188,6 +213,7 @@
   import {
     fetchWmsProjectMovementPage,
     fetchWmsProjectMaterialPage,
+    fetchWmsProjectMaterialWipPage,
     fetchWmsProjectPackPage,
     fetchWmsProjectSections,
     fetchWmsProjectSummary,
@@ -198,6 +224,7 @@
     type WmsMovement,
     type WmsProject,
     type WmsProjectMaterial,
+    type WmsProjectMaterialWip,
     type WmsProjectPack,
     type WmsProjectSection,
     type WmsProjectSummary,
@@ -208,7 +235,8 @@
   } from '@wms/api'
 
   defineOptions({ name: 'WmsProjectReport' })
-  type ReportTab = 'stock' | 'materials' | 'packs' | 'orders' | 'movements' | 'serials'
+  type ReportTab =
+    'stock' | 'materials' | 'materialWip' | 'packs' | 'orders' | 'movements' | 'serials'
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const projects = ref<WmsProject[]>([])
   const sections = ref<WmsProjectSection[]>([])
@@ -222,6 +250,8 @@
   let summaryRequestId = 0
   const stockSearch = reactive({ keyword: '', positiveOnly: true })
   const materialSearch = reactive({ keyword: '' })
+  const materialWipSearch = reactive({ keyword: '' })
+  const materialWipHistoryDrawerRef = ref<{ open: (row: WmsProjectMaterialWip) => void }>()
   const packSearch = reactive({ keyword: '' })
   const orderSearch = reactive({ keyword: '' })
   const movementSearch = reactive({ keyword: '' })
@@ -298,6 +328,16 @@
       props: { clearable: true, placeholder: '编码 / 名称' }
     }
   ]
+  const quantity = (value: number, unit: string | null) =>
+    `${formatNumberValue(value)} ${formatUnitDisplayName(unit)}`
+  const materialWipSearchItems: SearchFormItem[] = [
+    {
+      label: '物料 / 工单',
+      key: 'keyword',
+      type: 'input',
+      props: { clearable: true, placeholder: '物料编码、名称或工单号' }
+    }
+  ]
   const orderSearchItems: SearchFormItem[] = [
     { label: '工单编号', key: 'keyword', type: 'input', props: { clearable: true } }
   ]
@@ -327,6 +367,9 @@
   }
   function fetchMaterialRows(query: WmsStockQuery) {
     return fetchWmsProjectMaterialPage(scopedQuery(query))
+  }
+  function fetchMaterialWipRows(query: WmsStockQuery) {
+    return fetchWmsProjectMaterialWipPage(scopedQuery(query))
   }
   function fetchMovementRows(query: WmsStockQuery) {
     return fetchWmsProjectMovementPage(scopedQuery(query))
@@ -420,8 +463,6 @@
     ]
   }
   function materialColumns(): ColumnOption<WmsProjectMaterial>[] {
-    const quantity = (value: number, unit: string) =>
-      `${formatNumberValue(value)} ${formatUnitDisplayName(unit)}`
     return [
       {
         prop: 'materialName',
@@ -489,6 +530,87 @@
         minWidth: 105,
         align: 'right',
         formatter: (row) => (row.serialCount > 0 ? formatNumberValue(row.serialCount) : '—')
+      }
+    ]
+  }
+  function materialWipColumns(): ColumnOption<WmsProjectMaterialWip>[] {
+    return [
+      {
+        prop: 'materialName',
+        label: '领料物料',
+        minWidth: 240,
+        fixed: 'left',
+        formatter: (row) => (
+          <BusinessTableIdentityCell
+            primary={row.materialName}
+            secondary={`${row.materialCode} · 在制 ${quantity(row.wipQuantity, row.quantityUnitName)}`}
+            tertiary={`${row.workOrderNo} · ${row.issueDocumentNo}`}
+            icon="ri:stack-line"
+          />
+        )
+      },
+      {
+        prop: 'issuedQuantity',
+        label: '已发数量',
+        minWidth: 115,
+        align: 'right',
+        formatter: (row) => quantity(row.issuedQuantity, row.quantityUnitName)
+      },
+      {
+        prop: 'returnedQuantity',
+        label: '已退数量',
+        minWidth: 115,
+        align: 'right',
+        formatter: (row) => quantity(row.returnedQuantity, row.quantityUnitName)
+      },
+      {
+        prop: 'netIssuedQuantity',
+        label: '实际净领料',
+        minWidth: 125,
+        align: 'right',
+        formatter: (row) => quantity(row.netIssuedQuantity, row.quantityUnitName)
+      },
+      {
+        prop: 'consumedQuantity',
+        label: '累计扣减',
+        minWidth: 125,
+        align: 'right',
+        formatter: (row) => quantity(row.consumedQuantity, row.quantityUnitName)
+      },
+      {
+        prop: 'wipQuantity',
+        label: '当前材料在制',
+        minWidth: 135,
+        align: 'right',
+        formatter: (row) => quantity(row.wipQuantity, row.quantityUnitName)
+      },
+      {
+        prop: 'lastAdjustedAt',
+        label: '最近扣减调整',
+        minWidth: 155,
+        formatter: (row) =>
+          row.lastAdjustedAt ? (
+            <time datetime={row.lastAdjustedAt} title={formatDateTimeValue(row.lastAdjustedAt)}>
+              {formatDateTimeValue(row.lastAdjustedAt)}
+            </time>
+          ) : (
+            '尚未扣减'
+          )
+      },
+      {
+        prop: 'operation',
+        label: '操作',
+        width: 100,
+        fixed: 'right',
+        formatter: (row) => (
+          <ElButton
+            link
+            type="primary"
+            onClick={() => materialWipHistoryDrawerRef.value?.open(row)}
+          >
+            扣减记录
+          </ElButton>
+        )
       }
     ]
   }

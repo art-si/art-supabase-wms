@@ -4,13 +4,13 @@
   <p>以库存身份和作业单据为主线，衔接采购收料、生产领料、完工入库、销售出库与库存追溯。</p>
 
   <p>
-    <a href="https://gitee.com/wangyanghub/art-supabase-wms">Gitee</a>
+    <a href="https://gitee.com/art-si/art-supabase-wms">Gitee</a>
     ·
-    <a href="https://github.com/869123771/art-supabase-wms">GitHub</a>
+    <a href="https://github.com/art-si/art-supabase-wms">GitHub</a>
     ·
-    <a href="https://gitee.com/wangyanghub/art-supabase-pro">主平台</a>
+    <a href="https://gitee.com/art-si/art-supabase-pro">主平台</a>
     ·
-    <a href="https://869123771.github.io/art-supabase-doc/modules/wms">使用文档</a>
+    <a href="https://art-si.github.io/art-supabase-doc/modules/wms">使用文档</a>
     ·
     <a href="./README.en.md">English</a>
   </p>
@@ -20,7 +20,7 @@
 
 亿企工场 WMS 是亿企工场的仓储管理业务应用，目标是围绕仓库、库区、库位、物料、批次/序列号和库存状态，连接入库、库内、出库与盘点调整，形成账实一致、任务可追踪的仓储作业闭环。
 
-本仓只维护 WMS 页面、业务 API、领域类型与仓储执行规则。认证、租户、菜单、权限、布局、路由、公共组件、Store 和 Supabase 公共客户端由 [`art-supabase-pro`](https://gitee.com/wangyanghub/art-supabase-pro) 统一提供；仓库、库位和物料的统一身份由 MDM 及其权威来源提供。
+本仓只维护 WMS 页面、业务 API、领域类型与仓储执行规则。认证、租户、菜单、权限、布局、路由、公共组件、Store 和 Supabase 公共客户端由 [`art-supabase-pro`](https://gitee.com/art-si/art-supabase-pro) 统一提供；仓库、库位和物料的统一身份由 MDM 及其权威来源提供。
 
 ## 当前状态
 

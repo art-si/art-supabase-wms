@@ -94,6 +94,9 @@
 </template>
 
 <script setup lang="tsx">
+  import { useRouter } from 'vue-router'
+  import { createEstimatedReceivableFromSource } from '@/api/receivables'
+  import { financePaths } from '@/router/business-paths'
   import WmsAssetCapitalizationDialog from '@/components/business/wms-asset-capitalization-dialog/index.vue'
   import { wmsDocumentClassificationColumns } from '@/utils/business/wms-document-columns'
   import { useWmsInitialObligationPush } from '@/hooks/business/useWmsInitialObligationPush'
@@ -150,6 +153,7 @@
   const commonDocumentReviewStatusOptions = useDictionaryOptions('commonDocumentReviewStatus')
 
   const props = defineProps<{ kind: WmsInitialSalesKind }>()
+  const receivableRouter = useRouter()
   const { confirmAction } = useArtFeedback()
   const { hasAuth } = useAuth()
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
@@ -207,6 +211,16 @@
   const pushingSales = ref(false)
   const isDailySales = computed(() => ['outbound', 'return', 'other_outbound'].includes(props.kind))
   const pushActions = computed<ButtonMoreItem[]>(() => [
+    ...(props.kind === 'outbound' && hasAuth('FinanceEstimatedReceivable:Add')
+      ? [
+          {
+            key: 'estimated-receivable',
+            label: '暂估应收单',
+            icon: 'ri:bill-line',
+            auth: 'WmsSalesOutbound:Push'
+          }
+        ]
+      : []),
     ...(props.kind === 'other_outbound'
       ? [
           {
@@ -270,6 +284,19 @@
     if (pushingSales.value || !rows.length || !hasAuth(permission.value.Push)) return
     pushingSales.value = true
     try {
+      if (item.key === 'estimated-receivable') {
+        const ids = uniq(rows.map((row) => row.documentId))
+        if (ids.length !== 1) {
+          ElMessage.warning('请每次选择一张销售出库单生成暂估')
+          return
+        }
+        const id = await createEstimatedReceivableFromSource('wms_sales_outbound', ids[0])
+        await receivableRouter.push({
+          path: financePaths.estimatedReceivable,
+          query: { recordId: id }
+        })
+        return
+      }
       if (item.key === 'asset') {
         const ids = uniq(rows.map((row) => row.documentId))
         const documents = await Promise.all(ids.map(fetchWmsInitialSalesDocument))

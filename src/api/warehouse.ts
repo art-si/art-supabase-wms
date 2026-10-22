@@ -39,9 +39,11 @@ import type {
   WmsProject,
   WmsProjectPack,
   WmsProjectMaterial,
+  WmsProjectMaterialWip,
   WmsProjectSection,
   WmsProjectSummary,
   WmsProjectWorkOrder,
+  WmsProductionWipHistoryEntry,
   WmsProjectTransferInput,
   WmsSectionInput,
   WmsSectionQuery,
@@ -1728,6 +1730,33 @@ export async function fetchWmsProjectMaterialPage(params: WmsStockQuery) {
     readOptions
   )
   return { data: data?.data ?? [], total: data?.total ?? 0 }
+}
+
+export async function fetchWmsProjectMaterialWipPage(params: WmsStockQuery) {
+  const pageRange = buildSupabasePageRange(params)
+  if (!params.projectId) return { data: [] as WmsProjectMaterialWip[], total: 0 }
+  const { data } = await responseHandle<{ data: WmsProjectMaterialWip[]; total: number }>(
+    () =>
+      supabase.rpc('wms_project_material_wip_page_secure', {
+        p_project_id: params.projectId,
+        p_construction_no: params.constructionNo || null,
+        p_keyword: normalizeNullableText(params.keyword),
+        p_offset: pageRange.from,
+        p_limit: params.size
+      }),
+    { ...readOptions, errorMessage: '在制材料加载失败，请重试' }
+  )
+  return { data: data?.data ?? [], total: data?.total ?? 0 }
+}
+
+export async function fetchWmsProductionWipHistory(
+  issueLineId: string
+): Promise<WmsProductionWipHistoryEntry[]> {
+  const { data } = await responseHandle<WmsProductionWipHistoryEntry[]>(
+    () => supabase.rpc('wms_production_wip_history_secure', { p_issue_line_id: issueLineId }),
+    { ...readOptions, errorMessage: '在制消耗记录加载失败，请重试' }
+  )
+  return data ?? []
 }
 
 export async function fetchWmsProjectMovementPage(params: WmsStockQuery) {

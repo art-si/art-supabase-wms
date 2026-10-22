@@ -1202,6 +1202,45 @@ export interface WmsProjectMaterial {
   serialCount: number
 }
 
+export interface WmsProjectMaterialWip {
+  id: string
+  issueLineId: string
+  sourceLineNo: string | null
+  issueDocumentNo: string
+  workOrderNo: string
+  constructionNo: string | null
+  materialCode: string
+  materialName: string
+  quantityUnitName: string | null
+  issuedQuantity: number
+  returnedQuantity: number
+  netIssuedQuantity: number
+  consumedQuantity: number
+  wipQuantity: number
+  lastAdjustedAt: string | null
+}
+
+export interface WmsProductionWipHistoryEntry {
+  id: string
+  eventKind:
+    | 'inbound_approved'
+    | 'inbound_void'
+    | 'inbound_closed'
+    | 'issue_posted'
+    | 'material_return_posted'
+    | 'finished_return_posted'
+    | 'order_quantity_changed'
+  quantityDelta: number
+  netIssuedQuantity: number
+  approvedNetInboundQuantity: number
+  orderQuantity: number
+  consumedTargetQuantity: number
+  eventDocumentNo: string | null
+  eventLineNo: number | null
+  createdAt: string
+  createBy: string | null
+}
+
 export interface WmsProjectPack {
   id: string
   packNo: string
