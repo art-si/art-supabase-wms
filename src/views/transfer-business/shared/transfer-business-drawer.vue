@@ -296,6 +296,10 @@
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { normalizeNullableText } from '@/utils/form/normalize'
   import { loadAllLinePages } from '@/utils/business/document-detail-list'
+  import {
+    createTransferStockCandidateLoader,
+    readTransferStockImportRows
+  } from './transfer-stock-import'
   import { replaceReactiveModel } from '@/utils/form/model'
   import { convertWmsMaterialQuantity } from '@/utils/wms/material-quantity'
   import { WMS_STOCK_TYPE_LABELS } from '@/utils/wms/stock-type'
@@ -550,21 +554,22 @@
     importing.value = true
     drawerRef.value?.setOptions({ confirmDisabled: true })
     try {
+      const preparedRows = readTransferStockImportRows(rows)
       const imported: DraftLine[] = []
       const usedBatchIds = new Set(lines.value.map((line) => line.sourceBatchId))
-      for (const [index, record] of rows.entries()) {
-        const code = String(record['物料编码'] ?? record.materialCode ?? '').trim()
-        const batch = String(record['批次号'] ?? record.batchNo ?? '').trim()
-        const quantity = Number(record['数量'] ?? record.quantity)
-        if (!code || !batch || !Number.isFinite(quantity) || quantity <= 0)
-          throw new Error(`第 ${index + 1} 行须填写物料编码、批次号和正数数量`)
-        const candidates = await loadAllLinePages(fetchWmsTransferStockPage, {
-          tenantId,
-          keyword: code,
-          batchNo: batch,
-          current: 1,
-          size: 500
-        })
+      const loadCandidates = createTransferStockCandidateLoader(
+        (materialCode: string, batchNo: string) =>
+          loadAllLinePages(fetchWmsTransferStockPage, {
+            tenantId,
+            keyword: materialCode,
+            batchNo,
+            current: 1,
+            size: 500
+          })
+      )
+      for (const row of preparedRows) {
+        if (generation !== loadGeneration) return
+        const candidates = await loadCandidates(row.materialCode, row.batchNo)
         if (generation !== loadGeneration) return
         const matched = candidates.filter((stock) => {
           const material = stock.material
@@ -572,13 +577,13 @@
           const inventoryUnitId = material?.inventoryUnitId || baseUnitId
           const requestedBaseQuantity = convertWmsMaterialQuantity(
             { baseUnitId, unitConversions: material?.unitConversions || [] },
-            quantity,
+            row.quantity,
             inventoryUnitId,
             baseUnitId
           )
           return (
-            material?.materialCode === code &&
-            stock.batchNo === batch &&
+            material?.materialCode === row.materialCode &&
+            stock.batchNo === row.batchNo &&
             (!form.value.sourceOrganizationId ||
               stock.organizationId === form.value.sourceOrganizationId) &&
             (!form.value.projectId || stock.projectId === form.value.projectId) &&
@@ -588,18 +593,18 @@
         })
         if (matched.length !== 1)
           throw new Error(
-            `第 ${index + 1} 行匹配到 ${matched.length} 个可用批次，请用“添加物料”指定来源库存`
+            `第 ${row.fileRow} 行匹配到 ${matched.length} 个可用批次，请用“添加物料”指定来源库存`
           )
         const stock = matched[0]
         if (usedBatchIds.has(stock.id))
-          throw new Error(`第 ${index + 1} 行与表单已有明细使用同一库存批次，请合并数量`)
+          throw new Error(`第 ${row.fileRow} 行与表单已有明细使用同一库存批次，请合并数量`)
         usedBatchIds.add(stock.id)
         const line = newLine(stock)
-        line.quantity = quantity
+        line.quantity = row.quantity
         line.baseQuantity =
           convertWmsMaterialQuantity(
             { baseUnitId: line.materialBaseUnitId, unitConversions: line.unitConversions },
-            quantity,
+            row.quantity,
             line.inventoryUnitId,
             line.baseUnitId || line.materialBaseUnitId
           ) ?? 0

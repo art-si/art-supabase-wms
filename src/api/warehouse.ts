@@ -136,6 +136,32 @@ export async function fetchWmsUnitOptions(tenantId: string): Promise<WmsUnitOpti
   return data ?? []
 }
 
+function materialOptionQuery(tenantId: string, count?: 'exact') {
+  return supabase
+    .from('mdm_material')
+    .select(
+      'id,material_code,material_name,specification_model,description,serial_management_enabled,inventory_unit_id,production_unit_id,base_unit_id,auxiliary_unit_id,auxiliary_unit_2_id,unit_conversions',
+      { count }
+    )
+    .eq('tenant_id', tenantId)
+    .eq('status', 'enabled')
+    .order('material_code')
+}
+
+/** Exact imports must not depend on the first page of fuzzy selector results. */
+export async function fetchWmsMaterialImportReference(
+  tenantId: string,
+  materialCode: string
+): Promise<{ data: WmsMaterialOption[] }> {
+  if (!materialCode.trim()) return { data: [] }
+  const { data } = await responseHandle<WmsMaterialOption[]>(
+    () =>
+      materialOptionQuery(tenantId).eq('material_code', materialCode.trim()).order('id').limit(2),
+    readOptions
+  )
+  return { data: data ?? [] }
+}
+
 export async function fetchWmsMaterialOptions(
   tenantId: string,
   keyword: string,
@@ -143,17 +169,9 @@ export async function fetchWmsMaterialOptions(
   size: number,
   nonSerialOnly = false,
   categoryIds?: string[]
-) {
+): Promise<{ data: WmsMaterialOption[]; total: number }> {
   const pageRange = buildSupabasePageRange({ current, size })
-  let query = supabase
-    .from('mdm_material')
-    .select(
-      'id,material_code,material_name,specification_model,description,serial_management_enabled,inventory_unit_id,production_unit_id,base_unit_id,auxiliary_unit_id,auxiliary_unit_2_id,unit_conversions',
-      { count: 'exact' }
-    )
-    .eq('tenant_id', tenantId)
-    .eq('status', 'enabled')
-    .order('material_code')
+  let query = materialOptionQuery(tenantId, 'exact')
   if (nonSerialOnly) query = query.eq('serial_management_enabled', false)
   if (categoryIds?.length) query = query.in('category_id', categoryIds)
   if (keyword.trim())

@@ -502,7 +502,7 @@
     fetchWmsInitialMenuId,
     fetchWmsInitialOptions,
     fetchWmsInventoryOrganizations,
-    fetchWmsMaterialOptions,
+    fetchWmsMaterialImportReference,
     fetchWmsProjects,
     fetchWmsTransferRequest,
     fetchWmsUnitOptions,
@@ -992,7 +992,7 @@
     try {
       const prepared = await prepareWmsMaterialImport(
         rows,
-        (code) => fetchWmsMaterialOptions(tenantId, code, 1, 500),
+        (code) => fetchWmsMaterialImportReference(tenantId, code),
         () => request === loadRequest
       )
       if (!prepared) return

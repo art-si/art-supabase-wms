@@ -328,15 +328,20 @@
             </ArtTableMultipleSelect>
             <ArtTableMultipleSelect
               v-if="props.kind === 'finished_inbound'"
+              :key="`work-order-${form.warehouseId}-${form.workOrderId}`"
               v-model="workOrderPickerIds"
               v-model:selected-data="workOrderPickerRows"
               class="w-auto! shrink-0"
               title="参选生产工单"
-              subtitle="可批量选择已下达工单，生成对应成品明细。"
+              :subtitle="
+                form.workOrderId
+                  ? '仅显示表头已选生产工单，带入该工单的成品明细。'
+                  : '可批量选择已下达工单，生成对应成品明细。'
+              "
               row-key="id"
               label-key="workOrderNo"
               :columns="workOrderColumns"
-              :data="workOrders"
+              :data="finishedWorkOrderOptions"
               :disabled="!form.warehouseId"
               @confirm="addWorkOrderRows"
             >
@@ -354,11 +359,16 @@
             </ArtTableMultipleSelect>
             <ArtTableMultipleSelect
               v-if="props.kind === 'finished_inbound'"
+              :key="`pack-${form.warehouseId}-${form.workOrderId}`"
               v-model="packPickerIds"
               v-model:selected-data="packPickerRows"
               class="w-auto! shrink-0"
               title="参选已确认排包单"
-              subtitle="左侧选择生产工单，右侧选择已确认发布的包号；整包数量自动带入。"
+              :subtitle="
+                form.workOrderId
+                  ? '仅显示表头已选生产工单的已确认发布包号；整包数量自动带入。'
+                  : '左侧选择生产工单，右侧选择已确认发布的包号；整包数量自动带入。'
+              "
               search-placeholder="搜索包号、板材编号或区域"
               row-key="id"
               label-key="packNo"
@@ -1329,8 +1339,22 @@
     { prop: 'completedQuantity', label: '已报工', width: 95, align: 'right' },
     { prop: 'warehousedQuantity', label: '已入库', width: 95, align: 'right' }
   ]
+  const finishedWorkOrderOptions = computed(() =>
+    form.value.workOrderId
+      ? workOrders.value.filter((order) => order.id === form.value.workOrderId)
+      : workOrders.value
+  )
+  watch(
+    () => [form.value.tenantId, form.value.warehouseId, form.value.workOrderId],
+    () => {
+      workOrderPickerIds.value = []
+      workOrderPickerRows.value = []
+      packPickerIds.value = []
+      packPickerRows.value = []
+    }
+  )
   const packOrderNavigation = computed(() => ({
-    data: workOrders.value.map((order) => ({
+    data: finishedWorkOrderOptions.value.map((order) => ({
       id: order.id,
       workOrderNo: order.workOrderNo,
       summary: `${order.materialCode || order.materialName} · 待入库 ${order.pendingInboundQuantity}`
@@ -1340,8 +1364,8 @@
     labelKey: 'workOrderNo',
     descriptionKey: 'summary',
     filterKey: 'workOrderId',
-    allLabel: '选择工单',
-    allDescription: '查看该工单已发布的包号',
+    allLabel: form.value.workOrderId ? '当前工单' : '选择工单',
+    allDescription: form.value.workOrderId ? '查看表头工单已发布的包号' : '查看该工单已发布的包号',
     searchPlaceholder: '搜索工单或成品'
   }))
   const packColumns: DataSelectColumn<WmsPackPickerOption>[] = [
@@ -2008,8 +2032,9 @@
     )
   }
   async function packPickerApi(params: DataSelectFetchParams) {
-    const workOrderId = String(params.filters.workOrderId || '')
-    if (!workOrders.value.some((order) => order.id === workOrderId)) return { data: [], total: 0 }
+    const workOrderId = form.value.workOrderId || String(params.filters.workOrderId || '')
+    if (!finishedWorkOrderOptions.value.some((order) => order.id === workOrderId))
+      return { data: [], total: 0 }
     const keyword = params.keyword.trim().toLowerCase()
     const rows = await fetchWmsPackPickerOptions(workOrderId)
     const matches = keyword
@@ -2061,6 +2086,10 @@
   }
   async function addWorkOrderRows(_ids: unknown, rows: DataSelectRecord[]): Promise<void> {
     const orders = rows as WmsWorkOrderOption[]
+    if (form.value.workOrderId && orders.some((order) => order.id !== form.value.workOrderId)) {
+      ElMessage.warning('请选择表头生产工单的成品明细')
+      return
+    }
     workOrders.value = Array.from(
       new Map([...workOrders.value, ...orders].map((order) => [order.id, order])).values()
     )
@@ -2117,7 +2146,14 @@
       )
   }
   async function addPackRows(_ids: unknown, selected: WmsPackPickerOption[]): Promise<void> {
-    const sourceOrders = workOrders.value.filter(
+    if (
+      form.value.workOrderId &&
+      selected.some((pack) => pack.workOrderId !== form.value.workOrderId)
+    ) {
+      ElMessage.warning('请选择表头生产工单的排包明细')
+      return
+    }
+    const sourceOrders = finishedWorkOrderOptions.value.filter(
       (order) => order.materialId && selected.some((pack) => pack.workOrderId === order.id)
     )
     const materials = await fetchWmsProductionMaterialsByIds(
