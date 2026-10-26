@@ -18,7 +18,8 @@ const INVENTORY_SOURCE_KINDS = [
   'inbound_other_inbound',
   'inbound_other_return',
   'inbound_entrusted_processing_inbound',
-  'inbound_entrusted_processing_return'
+  'inbound_entrusted_processing_return',
+  'financial_payable'
 ] as const
 
 export type WmsInventorySourceKind = (typeof INVENTORY_SOURCE_KINDS)[number]
@@ -53,6 +54,7 @@ export interface WmsInventoryReportRow {
   sourceDocumentId?: string | null
   sourceDocumentKind?: WmsInventorySourceKind | null
   sourceLineNo?: number | null
+  isCostAdjustment?: boolean
   direction: 'in' | 'out' | null
   materialCode: string
   materialDescription: string | null
@@ -145,6 +147,7 @@ function isReportPage(value: unknown): value is WmsInventoryReportPage {
         typeof row.batchId === 'string' &&
         typeof row.materialCode === 'string' &&
         typeof row.materialName === 'string' &&
+        (row.isCostAdjustment === undefined || typeof row.isCostAdjustment === 'boolean') &&
         (row.sourceDocumentId === undefined ||
           row.sourceDocumentId === null ||
           typeof row.sourceDocumentId === 'string') &&

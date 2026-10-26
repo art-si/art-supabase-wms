@@ -310,7 +310,7 @@
     type WmsBin,
     type WmsProject,
     type WmsProjectSection,
-    type WmsPackOption,
+    type WmsPackPickerOption,
     type WmsShippingNotice,
     type WmsStockBatch,
     type WmsStockOperationInput,
@@ -345,7 +345,7 @@
   const projects = ref<WmsProject[]>([])
   const sections = ref<WmsProjectSection[]>([])
   const workOrders = ref<WmsWorkOrderOption[]>([])
-  const packs = ref<WmsPackOption[]>([])
+  const packs = ref<WmsPackPickerOption[]>([])
   const shippingNotices = ref<WmsShippingNotice[]>([])
   const selectedMaterial = ref<MaterialSelectRecord[]>([])
   const selectedBatch = ref<(WmsStockBatch & { batchLabel: string }) | null>(null)
@@ -409,7 +409,9 @@
     selectedProductionOrder.value
       ? Math.max(
           0,
-          selectedProductionOrder.value.completedQuantity -
+          (selectedProductionOrder.value.productionReportControl === 'strict'
+            ? selectedProductionOrder.value.completedQuantity
+            : selectedProductionOrder.value.orderQuantity) -
             selectedProductionOrder.value.warehousedQuantity
         )
       : 0
@@ -696,29 +698,29 @@
             ? [
                 {
                   key: 'packId',
-                  label: '确认垛包',
+                  label: '待入库排包',
+                  required: selectedProductionOrder.value?.finishedInboundMode === 'pack',
                   type: 'select' as const,
                   options: packs.value
-                    .filter(
-                      (row) =>
-                        row.items.reduce((total, item) => total + Number(item.pieces), 0) <=
-                        productionRemaining.value
-                    )
+                    .filter((row) => row.productionQuantity <= productionRemaining.value)
                     .map((row) => ({
-                      label: `${row.packNo} · ${row.items.reduce((total, item) => total + Number(item.pieces), 0)} 块`,
+                      label: `${row.packNo} · ${row.areaSqm.toFixed(2)} ㎡`,
                       value: row.id
                     })),
                   props: {
-                    clearable: true,
+                    clearable: selectedProductionOrder.value?.finishedInboundMode !== 'pack',
                     filterable: true,
-                    disabled: !selectedProductionOrder.value || productionPackLoading.value,
+                    disabled:
+                      !selectedProductionOrder.value ||
+                      productionPackLoading.value ||
+                      selectedProductionOrder.value.finishedInboundMode === 'order',
                     loading: productionPackLoading.value,
                     placeholder: productionPackLoading.value
                       ? '正在读取工单垛包'
-                      : '有排包时选择确认垛包',
+                      : '选择已发布待入库包号',
                     onChange: onPackChange
                   },
-                  help: '已确认垛包按整包块数入库；未排包的工单可留空。'
+                  help: '工单首次入库后固定模式；选包时按整包面积换算入库。'
                 }
               ]
             : []),
@@ -1236,7 +1238,7 @@
       form.quantity = Math.min(1, productionRemaining.value)
       return
     }
-    form.quantity = selectedPackPieces.value
+    form.quantity = selectedPack.value.stockQuantity
     if (!materialBatchEnabled.value && !form.batchNo) form.batchNo = selectedPack.value.packNo
   }
   function onShippingNoticeChange(): void {
@@ -1514,10 +1516,13 @@
           (form.constructionNo || null) !== (selectedProductionOrder.value.constructionNo || null)
         )
           return void ElMessage.warning('入库物料和项目施工号须与 MES 工单一致')
-        if (form.quantity > productionRemaining.value)
+        if ((selectedPack.value?.productionQuantity ?? form.quantity) > productionRemaining.value)
           return void ElMessage.warning('入库数量超过工单已报工未入库数量')
-        if (form.packId && (!selectedPack.value || form.quantity !== selectedPackPieces.value))
-          return void ElMessage.warning('确认垛包须按整包块数入库')
+        if (
+          form.packId &&
+          (!selectedPack.value || form.quantity !== selectedPack.value.stockQuantity)
+        )
+          return void ElMessage.warning('排包须按整包面积换算数量入库')
       }
       if (
         !isInbound.value &&

@@ -42,6 +42,18 @@
           </ElTag>
         </template>
       </ArtEntitySummary>
+      <ElAlert
+        v-if="props.kind === 'finished_inbound'"
+        title="同一工单首次实际入库后固定入库模式"
+        :description="
+          form.inboundMode === 'pack'
+            ? '按整包面积换算入库，包号绑定库存；后续拣货、出库和调拨保持整包。'
+            : '登记工单汇总数量，项目可为空；保留排包生产资料，不生成包号库存。'
+        "
+        type="info"
+        :closable="false"
+        show-icon
+      />
       <ElAlert v-if="optionError" type="error" :closable="false" show-icon>
         {{
           mode === 'view'
@@ -327,7 +339,7 @@
               </template>
             </ArtTableMultipleSelect>
             <ArtTableMultipleSelect
-              v-if="props.kind === 'finished_inbound'"
+              v-if="props.kind === 'finished_inbound' && form.inboundMode === 'order'"
               :key="`work-order-${form.warehouseId}-${form.workOrderId}`"
               v-model="workOrderPickerIds"
               v-model:selected-data="workOrderPickerRows"
@@ -358,16 +370,16 @@
               </template>
             </ArtTableMultipleSelect>
             <ArtTableMultipleSelect
-              v-if="props.kind === 'finished_inbound'"
+              v-if="props.kind === 'finished_inbound' && form.inboundMode === 'pack'"
               :key="`pack-${form.warehouseId}-${form.workOrderId}`"
               v-model="packPickerIds"
               v-model:selected-data="packPickerRows"
               class="w-auto! shrink-0"
-              title="参选已确认排包单"
+              title="参选排包未入库明细"
               :subtitle="
                 form.workOrderId
-                  ? '仅显示表头已选生产工单的已确认发布包号；整包数量自动带入。'
-                  : '左侧选择生产工单，右侧选择已确认发布的包号；整包数量自动带入。'
+                  ? '仅显示当前工单已发布、未入库且未被占用的包号；按整包面积带入。'
+                  : '选择生产工单后参选待入库包号；块数、延米与面积同时保留。'
               "
               search-placeholder="搜索包号、板材编号或区域"
               row-key="id"
@@ -412,7 +424,7 @@
               </template>
             </ArtTableMultipleSelect>
             <ArtTableMultipleSelect
-              v-if="props.kind === 'finished_inbound'"
+              v-if="props.kind === 'finished_inbound' && form.inboundMode === 'order'"
               v-model="materialPickerIds"
               v-model:selected-data="materialPickerRows"
               class="w-auto! shrink-0"
@@ -440,7 +452,10 @@
             </ArtTableMultipleSelect>
             <ElButton
               v-auth="permission.Copy"
-              :disabled="selectedLineIndexes.length !== 1"
+              :disabled="
+                selectedLineIndexes.length !== 1 ||
+                (props.kind === 'finished_inbound' && form.inboundMode === 'pack')
+              "
               @click="copySelectedLine"
             >
               <ArtSvgIcon icon="ri:file-copy-line" />复制
@@ -454,7 +469,13 @@
             >
               <ArtSvgIcon icon="ri:delete-bin-line" />批量删除
             </ElButton>
-            <span v-if="props.kind !== 'finished_return'" v-auth="permission.Import">
+            <span
+              v-if="
+                props.kind !== 'finished_return' &&
+                !(props.kind === 'finished_inbound' && form.inboundMode === 'pack')
+              "
+              v-auth="permission.Import"
+            >
               <ArtExcelImport
                 accept=".xlsx,.xls,.csv"
                 :context-key="openData"
@@ -502,7 +523,7 @@
             </template>
             <template #requestedQuantity="{ row }">
               <ElInputNumber
-                v-if="mode !== 'view'"
+                v-if="mode !== 'view' && !row.packId"
                 v-model="row.requestedQuantity"
                 :precision="4"
                 :controls="false"
@@ -515,7 +536,7 @@
             </template>
             <template #actualQuantity="{ row }">
               <ElInputNumber
-                v-if="mode !== 'view'"
+                v-if="mode !== 'view' && !row.packId"
                 v-model="row.actualQuantity"
                 :precision="4"
                 :controls="false"
@@ -549,7 +570,10 @@
               /><span v-else>{{ row.constructionNo || '—' }}</span></template
             >
             <template #productionUnitId="{ row }"
-              ><ElSelect v-if="mode !== 'view'" v-model="row.productionUnitId" filterable
+              ><ElSelect
+                v-if="mode !== 'view' && !row.packId"
+                v-model="row.productionUnitId"
+                filterable
                 ><ElOption
                   v-for="unit in unitOptions()"
                   :key="unit.value"
@@ -559,7 +583,7 @@
             >
             <template #inventoryUnitId="{ row }"
               ><ElSelect
-                v-if="mode !== 'view'"
+                v-if="mode !== 'view' && !row.packId"
                 v-model="row.inventoryUnitId"
                 filterable
                 @change="syncInlineQuantities(row)"
@@ -572,7 +596,7 @@
             >
             <template #baseUnitId="{ row }"
               ><ElSelect
-                v-if="mode !== 'view'"
+                v-if="mode !== 'view' && !row.packId"
                 v-model="row.baseUnitId"
                 filterable
                 @change="syncInlineQuantities(row)"
@@ -877,7 +901,7 @@
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { storeToRefs } from 'pinia'
-  import { cloneDeep, groupBy, uniq } from 'lodash-es'
+  import { cloneDeep, groupBy, round, uniq } from 'lodash-es'
   import { useBreakpoints } from '@vueuse/core'
   import { normalizeNullableNumber, normalizeNullableText } from '@/utils/form/normalize'
   import {
@@ -898,7 +922,7 @@
     fetchWmsProductionProjects,
     fetchWmsFinishedInboundSourcePage,
     fetchWmsProductionStockPage,
-    fetchWmsPackPickerOptions,
+    fetchWmsPackOptions,
     fetchWmsUnitOptions,
     fetchWmsWarehouses,
     fetchWmsWorkOrderOptions,
@@ -1001,6 +1025,8 @@
   const stockStatusOptions = useDictionaryOptions('wmsInitialStockCondition')
   const finishedQualityStatusOptions = useDictionaryOptions('wmsFinishedQualityStatus')
   const stockTypeOptions = useDictionaryOptions('wmsInitialStockType')
+  const inboundModeOptions =
+    props.kind === 'finished_inbound' ? useDictionaryOptions('wmsFinishedInboundMode') : []
   const isMobile = useBreakpoints({ sm: 640 }).smaller('sm')
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const config = computed(() => productionDocumentConfig[props.kind])
@@ -1019,6 +1045,7 @@
     businessDate: dayjs().format('YYYY-MM-DD'),
     warehouseId: '',
     workOrderId: '',
+    inboundMode: 'order' as 'order' | 'pack',
     projectId: '',
     customerId: '',
     demandDate: dayjs().format('YYYY-MM-DD'),
@@ -1340,9 +1367,13 @@
     { prop: 'warehousedQuantity', label: '已入库', width: 95, align: 'right' }
   ]
   const finishedWorkOrderOptions = computed(() =>
-    form.value.workOrderId
-      ? workOrders.value.filter((order) => order.id === form.value.workOrderId)
-      : workOrders.value
+    workOrders.value.filter(
+      (order) =>
+        (!form.value.workOrderId || order.id === form.value.workOrderId) &&
+        (props.kind !== 'finished_inbound' ||
+          !order.finishedInboundMode ||
+          order.finishedInboundMode === form.value.inboundMode)
+    )
   )
   watch(
     () => [form.value.tenantId, form.value.warehouseId, form.value.workOrderId],
@@ -1594,10 +1625,19 @@
           Math.max(
             0,
             Math.abs(Number(row.requestedQuantity)) - Math.abs(Number(row.fulfilledQuantity))
-          )
+          ),
+          4
         )
     },
-    { prop: 'sourceDocument', label: '来源单据', minWidth: 150 },
+    {
+      prop: 'sourceDocument',
+      label:
+        props.kind === 'finished_inbound' && form.value.inboundMode === 'pack'
+          ? '包号'
+          : '来源单据',
+      minWidth: 190,
+      showOverflowTooltip: true
+    },
     { prop: 'sourceLineNo', label: '源行号', minWidth: 95 },
     { prop: 'remark', label: '备注', minWidth: 180, useSlot: true },
     {
@@ -1695,6 +1735,22 @@
         onChange: onWorkOrderChange
       }
     },
+    {
+      key: 'inboundMode',
+      label: '入库模式',
+      type: 'radioGroup',
+      hidden: props.kind !== 'finished_inbound',
+      options: inboundModeOptions,
+      props: {
+        disabled:
+          mode.value === 'view' ||
+          lines.value.length > 0 ||
+          Boolean(
+            workOrders.value.find((order) => order.id === form.value.workOrderId)
+              ?.finishedInboundMode
+          )
+      }
+    },
     { key: 'projectId', label: '项目名称', type: 'input' },
     { key: 'customerId', label: '客户', type: 'input' },
     {
@@ -1778,9 +1834,6 @@
   function employeeName(id: string | null): string {
     return employees.value.find((item) => item.id === id)?.employeeName ?? '—'
   }
-  function round(value: number): number {
-    return Math.round((value + Number.EPSILON) * 10000) / 10000
-  }
   function conversionFactor(
     material: WmsMaterialOption | null | undefined,
     unitId: string
@@ -1809,7 +1862,7 @@
     if (!targetUnitId) return null
     const sourceFactor = conversionFactor(material, sourceUnitId)
     const targetFactor = conversionFactor(material, targetUnitId)
-    return sourceFactor && targetFactor ? round((quantity * sourceFactor) / targetFactor) : null
+    return sourceFactor && targetFactor ? round((quantity * sourceFactor) / targetFactor, 4) : null
   }
   function syncQuantities(): void {
     const line = editLine.value
@@ -1837,7 +1890,8 @@
       Math.max(
         0,
         Math.abs(Number(line.requestedQuantity)) - Math.abs(Number(line.fulfilledQuantity))
-      )
+      ),
+      4
     )
   }
   function onRequestedQuantityChange(value: number): void {
@@ -1948,15 +2002,17 @@
       requestedQuantity: -remaining,
       actualQuantity: -remaining,
       baseQuantity:
-        source.baseQuantity == null ? null : -round(Math.abs(Number(source.baseQuantity)) * ratio),
+        source.baseQuantity == null
+          ? null
+          : -round(Math.abs(Number(source.baseQuantity)) * ratio, 4),
       auxiliaryQuantity:
         source.auxiliaryQuantity == null
           ? null
-          : -round(Math.abs(Number(source.auxiliaryQuantity)) * ratio),
+          : -round(Math.abs(Number(source.auxiliaryQuantity)) * ratio, 4),
       auxiliaryQuantity2:
         source.auxiliaryQuantity2 == null
           ? null
-          : -round(Math.abs(Number(source.auxiliaryQuantity2)) * ratio),
+          : -round(Math.abs(Number(source.auxiliaryQuantity2)) * ratio, 4),
       sourceBatchId: null,
       sourceLineId: source.id || null,
       sourceDocument: document.documentNo,
@@ -1983,7 +2039,7 @@
   }
   function copySelectedLine(): void {
     const source = lines.value[selectedLineIndexes.value[0]]
-    if (!source) return
+    if (!source || source.packId) return
     lines.value.push({
       ...cloneDeep(source),
       id: undefined,
@@ -2036,14 +2092,18 @@
     if (!finishedWorkOrderOptions.value.some((order) => order.id === workOrderId))
       return { data: [], total: 0 }
     const keyword = params.keyword.trim().toLowerCase()
-    const rows = await fetchWmsPackPickerOptions(workOrderId)
+    const rows = await fetchWmsPackOptions(
+      workOrderId,
+      mode.value === 'edit' ? form.value.id : undefined
+    )
+    const availableRows = rows.filter((row) => !lines.value.some((line) => line.packId === row.id))
     const matches = keyword
-      ? rows.filter((row) =>
+      ? availableRows.filter((row) =>
           [row.workOrderNo, row.packNo, row.area, row.axis, row.boardNumbers].some((value) =>
             value.toLowerCase().includes(keyword)
           )
         )
-      : rows
+      : availableRows
     const start = (params.page - 1) * params.pageSize
     return { data: matches.slice(start, start + params.pageSize), total: matches.length }
   }
@@ -2164,9 +2224,9 @@
     for (const pack of selected) {
       const order = sourceOrders.find((item) => item.id === pack.workOrderId)
       const material = materials.find((item) => item.id === order?.materialId)
-      if (!order || !material || pack.quantity <= 0) continue
+      if (!order || !material || pack.stockQuantity <= 0) continue
       if (lines.value.some((item) => item.packId === pack.id)) continue
-      const line = makeLine(material, Number(pack.quantity))
+      const line = makeLine(material, Number(pack.stockQuantity))
       line.workOrderId = order.id
       line.projectId = order.projectId
       line.constructionNo = order.constructionNo
@@ -2655,6 +2715,12 @@
         if (request !== documentRequest) return
         workOrders.value = rows
       }
+      if (props.kind === 'finished_inbound' && !lines.value.length) {
+        const fixedMode = workOrders.value.find(
+          (order) => order.id === form.value.workOrderId
+        )?.finishedInboundMode
+        if (fixedMode) form.value.inboundMode = fixedMode
+      }
       if (!isFinished.value && form.value.workOrderId && form.value.tenantId) {
         const rows = await fetchWmsProductionBomItems(
           form.value.workOrderId,
@@ -2733,6 +2799,8 @@
     const tenantId = form.value.tenantId
     const order = workOrders.value.find((item) => item.id === workOrderId)
     if (isFinished.value) lines.value = []
+    if (props.kind === 'finished_inbound' && order?.finishedInboundMode)
+      form.value.inboundMode = order.finishedInboundMode
     form.value.projectId = order?.projectId || ''
     form.value.customerId =
       projects.value.find((item) => item.id === order?.projectId)?.customerId || ''
@@ -2863,6 +2931,21 @@
     }
     if (!lines.value.length) {
       ElMessage.warning('请至少添加一行物料')
+      return false
+    }
+    if (
+      props.kind === 'finished_inbound' &&
+      lines.value.some((line) => {
+        const fixed = workOrders.value.find(
+          (order) => order.id === line.workOrderId
+        )?.finishedInboundMode
+        return (
+          Boolean(line.packId) !== (form.value.inboundMode === 'pack') ||
+          Boolean(fixed && fixed !== form.value.inboundMode)
+        )
+      })
+    ) {
+      ElMessage.warning('入库明细与所选模式或工单首次入库模式不一致，请重新选单')
       return false
     }
     const conversionError = lines.value.map(lineUnitConversionError).find(Boolean)
@@ -3052,6 +3135,7 @@
         businessDate: source?.businessDate || dayjs().format('YYYY-MM-DD'),
         warehouseId: source?.warehouseId || issueSource?.warehouseId || '',
         workOrderId: source?.workOrderId || issueSource?.workOrderId || '',
+        inboundMode: source?.lines.some((line) => line.packId) ? 'pack' : 'order',
         projectId: source?.projectId || issueSource?.projectId || '',
         customerId: source?.customerId || issueSource?.customerId || '',
         demandDate: source?.demandDate || dayjs().format('YYYY-MM-DD'),

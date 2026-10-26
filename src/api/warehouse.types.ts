@@ -72,6 +72,8 @@ export interface WmsWorkOrderOption {
   constructionNo: string | null
   completedQuantity: number
   warehousedQuantity: number
+  finishedInboundMode?: 'order' | 'pack' | null
+  finishedInboundAreaSqm?: number
   orderQuantity: number
   pendingInboundQuantity: number
   returnedQuantity: number
@@ -101,6 +103,11 @@ export interface WmsPackPickerOption extends WmsPackOption {
   quantity: number
   linearMeters: number
   areaSqm: number
+  stockQuantity: number
+  productionQuantity: number
+  inboundQuantity?: number
+  inboundAreaSqm?: number
+  inboundAt?: string | null
 }
 
 export interface WmsProject {

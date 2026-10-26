@@ -460,6 +460,7 @@
 </template>
 
 <script setup lang="ts">
+  import { getWmsMaterialUnitFactor } from '@/utils/wms/material-quantity'
   import { getMaterialCategoryIds } from '@/utils/business/material-category'
   import { formatWmsOwnerName } from '@/utils/wms/owner-display'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
@@ -502,6 +503,7 @@
   import { fetchEnabledOrganizationTree } from '@/api/system-manage'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import type { ColumnOption } from '@/types'
+  import { createWmsMaterialFromSelectRow } from '@/utils/wms/material-select'
   import {
     fetchWmsBins,
     fetchWmsInitialMaterials,
@@ -860,26 +862,17 @@
       Number(line.yearlyIssuedQuantity || 0)
     )
   }
-  function conversionFactor(
-    material: WmsInitialMaterial | null | undefined,
-    unitId: string | null
-  ): number | null {
-    if (!material || !unitId) return null
-    if (unitId === material.baseUnitId) return 1
-    const item = material.unitConversions.find((entry) => entry.sourceUnitId === unitId)
-    return item && item.sourceFactor > 0 ? item.baseFactor / item.sourceFactor : null
-  }
   function baseQuantity(line: WmsInitialStockLine): number {
-    const inventoryFactor = conversionFactor(line.material, line.inventoryUnitId)
-    const baseFactor = conversionFactor(line.material, line.baseUnitId)
+    const inventoryFactor = getWmsMaterialUnitFactor(line.material, line.inventoryUnitId)
+    const baseFactor = getWmsMaterialUnitFactor(line.material, line.baseUnitId)
     return inventoryFactor && baseFactor
       ? Math.round(((Number(line.openingQuantity || 0) * inventoryFactor) / baseFactor) * 10000) /
           10000
       : 0
   }
   function auxQuantity(line: WmsInitialStockLine, quantity: number): string {
-    const inventoryFactor = conversionFactor(line.material, line.inventoryUnitId)
-    const auxFactor = conversionFactor(line.material, line.auxiliaryUnitId)
+    const inventoryFactor = getWmsMaterialUnitFactor(line.material, line.inventoryUnitId)
+    const auxFactor = getWmsMaterialUnitFactor(line.material, line.auxiliaryUnitId)
     return inventoryFactor && auxFactor
       ? (
           Math.round(((Number(quantity || 0) * inventoryFactor) / auxFactor) * 10000) / 10000
@@ -914,25 +907,6 @@
         materialCode: material.code,
         materialName: material.name
       }))
-    }
-  }
-  function materialFromRow(row: DataSelectRecord): WmsInitialMaterial | null {
-    if (typeof row.id !== 'string' || typeof row.code !== 'string' || typeof row.name !== 'string')
-      return null
-    return {
-      id: row.id,
-      tenantId: form.value.tenantId,
-      code: row.code,
-      name: row.name,
-      description: typeof row.description === 'string' ? row.description : null,
-      specificationModel:
-        typeof row.specificationModel === 'string' ? row.specificationModel : null,
-      inventoryUnitId: typeof row.inventoryUnitId === 'string' ? row.inventoryUnitId : null,
-      baseUnitId: typeof row.baseUnitId === 'string' ? row.baseUnitId : null,
-      auxiliaryUnitId: typeof row.auxiliaryUnitId === 'string' ? row.auxiliaryUnitId : null,
-      auxiliaryUnit2Id: typeof row.auxiliaryUnit2Id === 'string' ? row.auxiliaryUnit2Id : null,
-      unitConversions: Array.isArray(row.unitConversions) ? row.unitConversions : [],
-      serialManagementEnabled: row.serialManagementEnabled === true
     }
   }
   function makeLine(material: WmsInitialMaterial): WmsInitialStockLine {
@@ -981,7 +955,7 @@
   }
   function addMaterials(_ids: unknown, rows: DataSelectRecord[]): void {
     const materials = rows
-      .map(materialFromRow)
+      .map((row) => createWmsMaterialFromSelectRow(row, form.value.tenantId))
       .filter((row): row is WmsInitialMaterial => row !== null)
     lines.value.push(...materials.map(makeLine))
     renumber()

@@ -53,7 +53,7 @@
             :search-items="searchItems"
             :columns-factory="columnsFactory"
             :columns-context-key="search.summaryValues?.join(',') || 'default'"
-            :search-bar-props="{ span: 8, labelWidth: 86, defaultExpanded: true }"
+            :search-bar-props="{ span: 8, labelWidth: 86 }"
             :table-props="{
               rowKey: 'id',
               tableLayout: 'fixed',
@@ -79,6 +79,8 @@
   import BusinessWorkspaceHeader from '@/components/business/business-workspace-header/index.vue'
   import BusinessTableWorkspaceActions from '@/components/business/business-table-workspace-actions/index.vue'
   import BusinessTableIdentityCell from '@/components/business/business-table-identity-cell/index.vue'
+  import BusinessRecordLink from '@/components/business/business-record-link/index.vue'
+  import { usePayableSourceLink } from '@/hooks/core/usePayableSourceLink'
   import ArtWorkspaceSplitter from '@/components/core/layouts/art-workspace-splitter/index.vue'
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import ArtTableQuery, {
@@ -153,6 +155,7 @@
   const config = computed(() => configByKind[props.kind])
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const { hasAuth } = useAuth()
+  const payableSource = usePayableSourceLink(async () => undefined, false)
   const tableRef = ref<ArtTableQueryExpose>()
   const transferRef = ref<InstanceType<typeof ProjectTransferDialog>>()
   const locations = ref<WmsInventoryLocations>({ warehouses: [], zones: [], bins: [] })
@@ -311,7 +314,10 @@
 
   function businessDocumentSource(row: WmsInventoryReportRow): { path: string } | null {
     if (!row.sourceDocumentId) return null
-    const sources: Record<WmsInventorySourceKind, { path: string; permission: string }> = {
+    const sources: Record<
+      Exclude<WmsInventorySourceKind, 'financial_payable'>,
+      { path: string; permission: string }
+    > = {
       outbound: {
         path: '/wms/outbound-business/sales-outbound',
         permission: 'WmsSalesOutbound:View'
@@ -370,7 +376,7 @@
       }
     }
     const kind = row.sourceDocumentKind
-    if (!kind || !Object.hasOwn(sources, kind)) return null
+    if (!kind || kind === 'financial_payable' || !Object.hasOwn(sources, kind)) return null
     const source = sources[kind]
     return hasAuth(source.permission) ? source : null
   }
@@ -446,6 +452,16 @@
           label: props.kind === 'ledger' ? '最近单据编号' : '单据编号',
           minWidth: 170,
           formatter: (row) => {
+            if (row.sourceDocumentKind === 'financial_payable')
+              return (
+                <BusinessRecordLink
+                  label={row.documentNo || '财务应付单'}
+                  interactive={payableSource.available('financial_payable', row.sourceDocumentId)}
+                  title={payableSource.hint('financial_payable', row.sourceDocumentId)}
+                  compact
+                  onClick={() => payableSource.open('financial_payable', row.sourceDocumentId)}
+                />
+              )
             const source = businessDocumentSource(row)
             return source ? (
               <RouterLink

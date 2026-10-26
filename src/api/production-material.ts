@@ -1,4 +1,5 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
+import { isPlainObjectRecord } from '@/utils/type-guards'
 import { uniq } from 'lodash-es'
 import { buildOrIlikeFilter } from '@/utils/supabase/search'
 import { buildSupabasePageRange, fetchAllRangePages } from '@/utils/supabase/pagination'
@@ -373,17 +374,6 @@ export async function fetchWmsFinishedInboundSourcePage(params: {
   return { data: data ?? [], total: total ?? 0 }
 }
 
-interface BomSnapshotItem {
-  id?: unknown
-  component_material_id?: unknown
-  required_quantity?: unknown
-  sequence_no?: unknown
-  unit_name?: unknown
-  basic_quantity?: unknown
-  position_no?: unknown
-  operation_name?: unknown
-}
-
 export async function fetchWmsProductionBomItems(
   workOrderId: string,
   tenantId: string,
@@ -408,19 +398,20 @@ export async function fetchWmsProductionBomItems(
     quantity: number
     sequence: string
     sourceKey: string
-    snapshot: BomSnapshotItem
+    snapshot: Record<string, unknown>
   }> = []
+  // responseHandle converts keys inside the BOM JSON to camelCase, as in the MES snapshot view.
   for (const bom of order.bomSnapshot) {
     if (!bom || typeof bom !== 'object' || !('items' in bom) || !Array.isArray(bom.items)) continue
-    for (const item of bom.items as BomSnapshotItem[]) {
-      if (typeof item.component_material_id !== 'string') continue
-      const quantity = Number(item.required_quantity)
+    for (const item of bom.items.filter(isPlainObjectRecord)) {
+      if (typeof item.componentMaterialId !== 'string') continue
+      const quantity = Number(item.requiredQuantity)
       if (!Number.isFinite(quantity) || quantity <= 0) continue
       entries.push({
-        id: item.component_material_id,
+        id: item.componentMaterialId,
         quantity,
-        sequence: String(item.sequence_no ?? entries.length + 1),
-        sourceKey: String(item.id ?? item.sequence_no ?? entries.length + 1),
+        sequence: String(item.sequenceNo ?? entries.length + 1),
+        sourceKey: String(item.id ?? item.sequenceNo ?? entries.length + 1),
         snapshot: item
       })
     }
@@ -476,16 +467,15 @@ export async function fetchWmsProductionBomItems(
             goodReturnQuantity,
             incomingDefectReturnQuantity,
             remainingQuantity,
-            unitName:
-              typeof entry.snapshot.unit_name === 'string' ? entry.snapshot.unit_name : null,
-            basicQuantity: Number.isFinite(Number(entry.snapshot.basic_quantity))
-              ? Number(entry.snapshot.basic_quantity)
+            unitName: typeof entry.snapshot.unitName === 'string' ? entry.snapshot.unitName : null,
+            basicQuantity: Number.isFinite(Number(entry.snapshot.basicQuantity))
+              ? Number(entry.snapshot.basicQuantity)
               : null,
             positionNo:
-              entry.snapshot.position_no == null ? null : String(entry.snapshot.position_no),
+              entry.snapshot.positionNo == null ? null : String(entry.snapshot.positionNo),
             operationName:
-              typeof entry.snapshot.operation_name === 'string'
-                ? entry.snapshot.operation_name
+              typeof entry.snapshot.operationName === 'string'
+                ? entry.snapshot.operationName
                 : null,
             sequenceNo: entry.sequence,
             workOrderNo: order.workOrderNo,
