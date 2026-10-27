@@ -139,7 +139,7 @@ function materialOptionQuery(tenantId: string, count?: 'exact') {
   return supabase
     .from('mdm_material')
     .select(
-      'id,material_code,material_name,specification_model,description,serial_management_enabled,inventory_unit_id,production_unit_id,base_unit_id,auxiliary_unit_id,auxiliary_unit_2_id,unit_conversions',
+      'id,material_code,material_name,specification_model,description,serial_management_enabled,batch_management_enabled,inventory_unit_id,production_unit_id,base_unit_id,auxiliary_unit_id,auxiliary_unit_2_id,unit_conversions',
       { count }
     )
     .eq('tenant_id', tenantId)

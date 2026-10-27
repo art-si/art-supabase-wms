@@ -33,6 +33,7 @@ export interface WmsMaterialOption {
   specificationModel: string | null
   description: string | null
   serialManagementEnabled: boolean
+  batchManagementEnabled?: boolean
   inventoryUnitId?: string | null
   productionUnitId?: string | null
   baseUnitId?: string | null

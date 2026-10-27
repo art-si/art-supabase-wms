@@ -22,6 +22,7 @@ export interface WmsProductionMaterialLine {
   batchNo: string | null
   warehouseId: string
   binId: string | null
+  bin?: { binCode: string; binName: string } | null
   sourceBatchId: string | null
   packId: string | null
   sourceLineId: string | null
@@ -100,12 +101,14 @@ export type WmsProductionMaterialInput = Pick<
 > & {
   id?: string
   saveAction?: 'add' | 'copy' | 'edit'
+  postImmediately?: boolean
   lines: Array<
     Omit<
       WmsProductionMaterialLine,
       | 'id'
       | 'lineNo'
       | 'material'
+      | 'bin'
       | 'fulfilledQuantity'
       | 'movementId'
       | 'availableInventoryQuantity'

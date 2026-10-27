@@ -14,7 +14,7 @@
     >
       <ElButton type="primary" @click="reloadDocument">重新加载</ElButton>
     </ArtEmptyState>
-    <div v-else class="min-w-0 space-y-4">
+    <div v-else class="flex min-w-0 flex-col gap-4">
       <ArtEntitySummary
         :icon="config.icon"
         :title="form.documentNo || `${mode === 'copy' ? '复制' : '新增'}${title}`"
@@ -53,11 +53,11 @@
       <ElAlert
         v-if="props.kind === 'finished_inbound'"
         title="同一工单首次实际入库后固定入库模式"
-        :description="
+        :description="`${
           form.inboundMode === 'pack'
             ? '按整包面积换算入库，包号绑定库存；后续拣货、出库和调拨保持整包。'
             : '登记工单汇总数量，项目可为空；保留排包生产资料，不生成包号库存。'
-        "
+        }${mode !== 'view' && !initializationWarning ? ' 可按工单、已确认排包单或物料带入；已报工数量不足时，按工单类型的报工控制设置提示或限制入库。' : ''}`"
         type="info"
         :closable="false"
         show-icon
@@ -93,14 +93,6 @@
         show-icon
       >
         从同一生产工单已过账的完工入库明细选单。退库数量以负数登记，过账时核减成品库存和工单已入库数量。
-      </ElAlert>
-      <ElAlert
-        v-else-if="mode !== 'view' && props.kind === 'finished_inbound'"
-        type="info"
-        :closable="false"
-        show-icon
-      >
-        可按工单、已确认排包单或物料带入。已报工数量不足时，按工单类型的报工控制设置提示或限制入库。
       </ElAlert>
       <ElAlert
         v-if="mode !== 'view' && reportControlWarning"
@@ -616,10 +608,18 @@
               ><span v-else>{{ unitName(row.baseUnitId) }}</span></template
             >
             <template #batchNo="{ row }"
-              ><ElInput v-if="mode !== 'view'" v-model="row.batchNo" placeholder="批号" /><span
-                v-else
-                >{{ row.batchNo || '—' }}</span
-              ></template
+              ><ElInput
+                v-if="
+                  mode !== 'view' &&
+                  (props.kind !== 'finished_inbound' || row.material?.batchManagementEnabled)
+                "
+                v-model="row.batchNo"
+                :placeholder="props.kind === 'finished_inbound' ? '保存时自动生成' : '批号'"
+              /><span v-else>{{
+                props.kind === 'finished_inbound' && !row.material?.batchManagementEnabled
+                  ? '—'
+                  : row.batchNo || '—'
+              }}</span></template
             >
             <template #warehouseId="{ row }"
               ><ElSelect
@@ -649,7 +649,9 @@
                   :key="bin.id"
                   :label="`${bin.binName} · ${bin.binCode}`"
                   :value="bin.id" /></ElSelect
-              ><span v-else>{{ row.binId || '—' }}</span></template
+              ><span v-else>{{
+                row.bin ? `${row.bin.binName} · ${row.bin.binCode}` : '—'
+              }}</span></template
             >
             <template #sourceBatchId="{ row }"
               ><ArtTableSingleSelect
@@ -795,6 +797,26 @@
         </ElScrollbar>
       </ArtSectionCard>
     </div>
+    <template v-if="props.kind === 'finished_inbound'" #footer="{ loading, api }">
+      <div class="flex w-full flex-wrap justify-end gap-3">
+        <ElButton :disabled="loading" @click="api.handleClose()">取消</ElButton>
+        <ElButton
+          :type="canSaveAndPost ? 'default' : 'primary'"
+          :loading="loading && !postImmediately"
+          :disabled="loading || saveBlocked"
+          @click="confirmSave(false)"
+          >{{ mode === 'copy' ? '保存副本' : '保存' }}</ElButton
+        >
+        <ElButton
+          v-if="canSaveAndPost"
+          type="primary"
+          :loading="loading && postImmediately"
+          :disabled="loading || saveBlocked"
+          @click="confirmSave(true)"
+          >保存并入库</ElButton
+        >
+      </div>
+    </template>
   </ArtDrawer>
 
   <ArtDialog ref="serialDialogRef" size="sm" :show-footer="mode !== 'view'">
@@ -875,6 +897,7 @@
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
+  import { useAuth } from '@/hooks/core/useAuth'
   import dayjs from 'dayjs'
   import { ElMessage } from 'element-plus'
   import {
@@ -1044,6 +1067,32 @@
   const isOutbound = computed(() => props.kind === 'issue' || props.kind === 'finished_return')
   const title = computed(() => config.value.title)
   const permission = computed(() => config.value.permissions)
+  const { hasAllAuth } = useAuth()
+  const postImmediately = ref(false)
+  const canSaveAndPost = computed(
+    () =>
+      props.kind === 'finished_inbound' &&
+      mode.value !== 'view' &&
+      hasAllAuth([
+        'WmsFinishedInbound:SaveAndPost',
+        'WmsFinishedInbound:Submit',
+        'WmsFinishedInbound:Approve',
+        'WmsFinishedInbound:Push',
+        mode.value === 'edit'
+          ? 'WmsFinishedInbound:Edit'
+          : mode.value === 'copy'
+            ? 'WmsFinishedInbound:Copy'
+            : 'WmsFinishedInbound:Add'
+      ])
+  )
+  const saveBlocked = computed(
+    () =>
+      Boolean(unref(drawerRef.value?.loading)) ||
+      parsing.value ||
+      importing.value ||
+      optionError.value ||
+      Boolean(documentError.value)
+  )
   const form = ref({
     id: '',
     tenantId: '',
@@ -2926,6 +2975,16 @@
       }
     }
   }
+  async function confirmSave(post: boolean): Promise<void> {
+    if (saveBlocked.value || unref(drawerRef.value?.confirmLoading)) return
+    if (post && !canSaveAndPost.value) return
+    postImmediately.value = post
+    try {
+      await drawerRef.value?.handleConfirm()
+    } finally {
+      postImmediately.value = false
+    }
+  }
   async function save(): Promise<boolean> {
     if (parsing.value || importing.value || optionError.value || documentError.value) return false
     try {
@@ -3031,6 +3090,7 @@
     const payload: WmsProductionMaterialInput = {
       id: mode.value === 'edit' ? form.value.id : undefined,
       saveAction: mode.value === 'copy' ? 'copy' : mode.value === 'edit' ? 'edit' : 'add',
+      postImmediately: props.kind === 'finished_inbound' && postImmediately.value,
       tenantId: form.value.tenantId,
       kind: props.kind,
       documentTypeId: form.value.documentTypeId,
@@ -3116,7 +3176,7 @@
       loadingText: '正在加载单据资料…',
       showFooter: data.mode !== 'view',
       confirmText: data.mode === 'copy' ? '保存副本' : '保存',
-      onConfirm: save,
+      onConfirm: () => save(),
       onClose: () => {
         ++documentRequest
         importing.value = false

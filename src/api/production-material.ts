@@ -87,7 +87,7 @@ export async function fetchWmsProductionMaterialDocument(
       supabase
         .from('wms_production_material_document')
         .select(
-          '*,workOrder:mes_work_order!wms_production_material_document_work_order_id_fkey(work_order_no,finished_inbound_mode,unit_snapshot),lines:wms_production_material_line(*,material:mdm_material!wms_production_material_line_material_id_fkey(id,material_code,material_name,description,specification_model,inventory_unit_id,production_unit_id,base_unit_id,auxiliary_unit_id,auxiliary_unit_2_id,unit_conversions,serial_management_enabled))'
+          '*,workOrder:mes_work_order!wms_production_material_document_work_order_id_fkey(work_order_no,finished_inbound_mode,unit_snapshot),lines:wms_production_material_line(*,material:mdm_material!wms_production_material_line_material_id_fkey(id,material_code,material_name,description,specification_model,inventory_unit_id,production_unit_id,base_unit_id,auxiliary_unit_id,auxiliary_unit_2_id,unit_conversions,serial_management_enabled,batch_management_enabled),bin:mdm_warehouse_bin!wms_production_material_line_bin_id_fkey(bin_code,bin_name))'
         )
         .eq('id', id)
         .single(),
@@ -195,7 +195,12 @@ export async function saveWmsProductionMaterial(
       supabase.rpc('wms_save_production_material_secure', {
         p_payload: keysToSnakeDeep(payload)
       }),
-    { ...writeOptions, showMessage: true, message: '生产单据已暂存' }
+    {
+      ...writeOptions,
+      showErrorMessage: false,
+      showMessage: true,
+      message: payload.postImmediately ? '完工入库单已保存并入库' : '生产单据已暂存'
+    }
   )
   if (!data) throw new Error('生产单据保存失败，请重试')
   return data
