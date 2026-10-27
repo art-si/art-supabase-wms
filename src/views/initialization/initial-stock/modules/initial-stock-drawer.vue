@@ -873,11 +873,9 @@
   function auxQuantity(line: WmsInitialStockLine, quantity: number): string {
     const inventoryFactor = getWmsMaterialUnitFactor(line.material, line.inventoryUnitId)
     const auxFactor = getWmsMaterialUnitFactor(line.material, line.auxiliaryUnitId)
-    return inventoryFactor && auxFactor
-      ? (
-          Math.round(((Number(quantity || 0) * inventoryFactor) / auxFactor) * 10000) / 10000
-        ).toString()
-      : '—'
+    if (!inventoryFactor || !auxFactor || !Number.isFinite(quantity)) return '—'
+    const converted = Math.round(((quantity * inventoryFactor) / auxFactor) * 10000) / 10000
+    return Number.isFinite(converted) ? converted.toString() : '—'
   }
   function lineAmount(
     line: Pick<WmsInitialStockLine, 'gift' | 'amount' | 'unitPrice' | 'openingQuantity'>
@@ -1126,13 +1124,24 @@
         if (validation?.firstError) ElMessage.warning(validation.firstError.message)
         return false
       }
-      const incomplete = lines.value.find((line) => Number(line.openingQuantity) <= 0)
+      const incomplete = lines.value.find(
+        (line) =>
+          !Number.isFinite(line.openingQuantity) ||
+          line.openingQuantity <= 0 ||
+          !Number.isFinite(line.yearlyReceivedQuantity) ||
+          !Number.isFinite(line.yearlyIssuedQuantity)
+      )
       if (incomplete) {
-        ElMessage.warning(`第 ${incomplete.lineNo} 行“期初数量”必须大于零`)
+        ElMessage.warning(`第 ${incomplete.lineNo} 行期初与年度数量须为有效数字，期初数量须大于零`)
         return false
       }
       for (const line of lines.value) {
-        if (yearlyOpening(line) < 0) {
+        const opening = yearlyOpening(line)
+        if (!Number.isFinite(opening)) {
+          ElMessage.warning(`第 ${line.lineNo} 行年初数量计算无效，请检查年度数量`)
+          return false
+        }
+        if (opening < 0) {
           ElMessage.warning(`第 ${line.lineNo} 行年初数量不能小于零`)
           return false
         }
@@ -1152,9 +1161,20 @@
           ElMessage.warning(`第 ${line.lineNo} 行 SN 件数须与期初数量一致且不能重复`)
           return false
         }
-        line.baseQuantity = baseQuantity(line)
-        line.yearlyOpeningQuantity = yearlyOpening(line)
-        line.amount = lineAmount(line)
+        const base = baseQuantity(line)
+        const amount = lineAmount(line)
+        if (
+          !Number.isFinite(base) ||
+          !Number.isFinite(amount) ||
+          !Number.isFinite(line.unitPrice) ||
+          (form.value.amountEntryEnabled && !Number.isFinite(line.amount))
+        ) {
+          ElMessage.warning(`第 ${line.lineNo} 行换算数量或金额无效，请检查单位和数值`)
+          return false
+        }
+        line.baseQuantity = base
+        line.yearlyOpeningQuantity = opening
+        line.amount = amount
       }
       await saveWmsInitialStock({
         id: mode.value === 'edit' ? form.value.id : undefined,

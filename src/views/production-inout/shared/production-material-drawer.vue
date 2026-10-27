@@ -43,6 +43,14 @@
         </template>
       </ArtEntitySummary>
       <ElAlert
+        v-if="currentDocument?.sourceReportId"
+        title="末道工序报工自动生成的完工入库单"
+        :description="`本单待入库上限为 ${currentDocument.sourceReportQuantity ?? 0} ${currentDocument.workOrder?.unitSnapshot || '生产单位'}。请核对入库模式、仓库、仓位与明细后确认，来源工单不可更换。`"
+        type="info"
+        :closable="false"
+        show-icon
+      />
+      <ElAlert
         v-if="props.kind === 'finished_inbound'"
         title="同一工单首次实际入库后固定入库模式"
         :description="
@@ -863,6 +871,7 @@
     buildMaterialCategoryNavigation(materialCategories.value)
   )
   import { formatWmsOwnerName } from '@/utils/wms/owner-display'
+  import { getWmsMaterialUnitFactor } from '@/utils/wms/material-quantity'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
@@ -1400,7 +1409,7 @@
     searchPlaceholder: '搜索工单或成品'
   }))
   const packColumns: DataSelectColumn<WmsPackPickerOption>[] = [
-    { prop: 'packNo', label: '包号', minWidth: 140 },
+    { prop: 'packNo', label: '包号', minWidth: 240 },
     { prop: 'area', label: '区域', minWidth: 100 },
     { prop: 'axis', label: '轴线', minWidth: 100 },
     { prop: 'boardNumbers', label: '板材编号', minWidth: 150 },
@@ -1689,6 +1698,9 @@
         },
         filterable: true,
         validateEvent: false,
+        disabled: Boolean(
+          currentDocument.value?.sourceReportId && currentDocument.value.organizationId
+        ),
         checkStrictly: true,
         defaultExpandAll: true,
         renderAfterExpand: false,
@@ -1727,11 +1739,27 @@
       key: 'workOrderId',
       label: isFinished.value ? '生产工单（单工单模式）' : '生产工单',
       type: 'select',
-      options: workOrders.value.map((item) => ({ label: item.workOrderNo, value: item.id })),
+      options: [
+        ...workOrders.value.map((item) => ({ label: item.workOrderNo, value: item.id })),
+        ...(currentDocument.value?.sourceReportId &&
+        currentDocument.value.workOrderId &&
+        !workOrders.value.some((item) => item.id === currentDocument.value?.workOrderId)
+          ? [
+              {
+                label:
+                  currentDocument.value.workOrder?.workOrderNo || '来源生产工单（选择仓库后读取）',
+                value: currentDocument.value.workOrderId
+              }
+            ]
+          : [])
+      ],
       props: {
         filterable: true,
         clearable: true,
-        disabled: mode.value === 'view' || !form.value.warehouseId,
+        disabled:
+          mode.value === 'view' ||
+          !form.value.warehouseId ||
+          Boolean(currentDocument.value?.sourceReportId),
         onChange: onWorkOrderChange
       }
     },
@@ -1746,6 +1774,7 @@
           mode.value === 'view' ||
           lines.value.length > 0 ||
           Boolean(
+            currentDocument.value?.workOrder?.finishedInboundMode ||
             workOrders.value.find((order) => order.id === form.value.workOrderId)
               ?.finishedInboundMode
           )
@@ -1834,21 +1863,11 @@
   function employeeName(id: string | null): string {
     return employees.value.find((item) => item.id === id)?.employeeName ?? '—'
   }
-  function conversionFactor(
-    material: WmsMaterialOption | null | undefined,
-    unitId: string
-  ): number | null {
-    if (!material || !unitId) return null
-    if (unitId === material.baseUnitId) return 1
-    const conversion = material.unitConversions?.find((item) => item.sourceUnitId === unitId)
-    if (!conversion || conversion.sourceFactor <= 0 || conversion.baseFactor <= 0) return null
-    return conversion.baseFactor / conversion.sourceFactor
-  }
   function lineUnitConversionError(line: DraftLine): string {
     if (!line.material || !line.inventoryUnitId || !line.baseUnitId) return ''
     if (
-      conversionFactor(line.material, line.inventoryUnitId) &&
-      conversionFactor(line.material, line.baseUnitId)
+      getWmsMaterialUnitFactor(line.material, line.inventoryUnitId) !== null &&
+      getWmsMaterialUnitFactor(line.material, line.baseUnitId) !== null
     )
       return ''
     return `第 ${line.lineNo / 10} 行物料 ${line.material.materialCode} 缺少 ${unitName(line.inventoryUnitId)} 与 ${unitName(line.baseUnitId)} 的单位换算关系，请改用已配置的单位，或在 MDM 物料编码中补齐换算关系。`
@@ -1859,10 +1878,12 @@
     targetUnitId: string | null,
     quantity: number
   ): number | null {
-    if (!targetUnitId) return null
-    const sourceFactor = conversionFactor(material, sourceUnitId)
-    const targetFactor = conversionFactor(material, targetUnitId)
-    return sourceFactor && targetFactor ? round((quantity * sourceFactor) / targetFactor, 4) : null
+    if (!targetUnitId || !Number.isFinite(quantity)) return null
+    const sourceFactor = getWmsMaterialUnitFactor(material, sourceUnitId)
+    const targetFactor = getWmsMaterialUnitFactor(material, targetUnitId)
+    if (sourceFactor === null || targetFactor === null) return null
+    const converted = round((quantity * sourceFactor) / targetFactor, 4)
+    return Number.isFinite(converted) ? converted : null
   }
   function syncQuantities(): void {
     const line = editLine.value
@@ -2417,8 +2438,8 @@
         added++
       }
       if (added && lines.value.length === added) {
-        form.value.organizationId = issue.organizationId
-        form.value.warehouseId = issue.warehouseId
+        form.value.organizationId = issue.organizationId || ''
+        form.value.warehouseId = issue.warehouseId || ''
         form.value.workOrderId = issue.workOrderId || ''
         form.value.projectId = issue.projectId || ''
         form.value.customerId = issue.customerId || ''
@@ -2783,11 +2804,19 @@
   async function onHeaderWarehouseChange(warehouseId: string): Promise<void> {
     form.value.warehouseId = warehouseId
     formRef.value?.clearValidate('warehouseId')
-    form.value.workOrderId = ''
+    form.value.workOrderId = currentDocument.value?.sourceReportId
+      ? currentDocument.value.workOrderId || ''
+      : ''
     bomItems.value = []
     const warehouseWorkOrders = warehouseId ? await fetchWmsWorkOrderOptions(warehouseId) : []
     if (form.value.warehouseId !== warehouseId) return
     workOrders.value = warehouseWorkOrders
+    if (currentDocument.value?.sourceReportId) {
+      const fixedMode = warehouseWorkOrders.find(
+        (order) => order.id === form.value.workOrderId
+      )?.finishedInboundMode
+      if (fixedMode) form.value.inboundMode = fixedMode
+    }
     if (isFinished.value) lines.value = []
     else
       lines.value.forEach((line) => {
@@ -3135,7 +3164,9 @@
         businessDate: source?.businessDate || dayjs().format('YYYY-MM-DD'),
         warehouseId: source?.warehouseId || issueSource?.warehouseId || '',
         workOrderId: source?.workOrderId || issueSource?.workOrderId || '',
-        inboundMode: source?.lines.some((line) => line.packId) ? 'pack' : 'order',
+        inboundMode:
+          source?.workOrder?.finishedInboundMode ||
+          (source?.lines.some((line) => line.packId) ? 'pack' : 'order'),
         projectId: source?.projectId || issueSource?.projectId || '',
         customerId: source?.customerId || issueSource?.customerId || '',
         demandDate: source?.demandDate || dayjs().format('YYYY-MM-DD'),

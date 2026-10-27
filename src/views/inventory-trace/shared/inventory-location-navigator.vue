@@ -470,7 +470,7 @@
       color: var(--el-text-color-secondary);
       text-align: center;
       background: var(--art-gray-100);
-      border-radius: 6px;
+      border-radius: var(--art-surface-radius);
     }
 
     &__empty {

@@ -87,7 +87,7 @@ export async function fetchWmsProductionMaterialDocument(
       supabase
         .from('wms_production_material_document')
         .select(
-          '*,lines:wms_production_material_line(*,material:mdm_material!wms_production_material_line_material_id_fkey(id,material_code,material_name,description,specification_model,inventory_unit_id,production_unit_id,base_unit_id,auxiliary_unit_id,auxiliary_unit_2_id,unit_conversions,serial_management_enabled))'
+          '*,workOrder:mes_work_order!wms_production_material_document_work_order_id_fkey(work_order_no,finished_inbound_mode,unit_snapshot),lines:wms_production_material_line(*,material:mdm_material!wms_production_material_line_material_id_fkey(id,material_code,material_name,description,specification_model,inventory_unit_id,production_unit_id,base_unit_id,auxiliary_unit_id,auxiliary_unit_2_id,unit_conversions,serial_management_enabled))'
         )
         .eq('id', id)
         .single(),

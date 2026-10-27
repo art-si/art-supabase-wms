@@ -53,11 +53,11 @@ export interface WmsProductionMaterialDocument {
   tenantId: string
   kind: WmsProductionMaterialKind
   documentNo: string
-  documentTypeId: string
-  businessTypeId: string
-  organizationId: string
+  documentTypeId: string | null
+  businessTypeId: string | null
+  organizationId: string | null
   businessDate: string
-  warehouseId: string
+  warehouseId: string | null
   workOrderId: string | null
   projectId: string | null
   customerId: string | null
@@ -71,6 +71,13 @@ export interface WmsProductionMaterialDocument {
   createdAt: string
   updatedAt: string
   approvedAt: string | null
+  sourceReportId?: string | null
+  sourceReportQuantity?: number | null
+  workOrder?: {
+    workOrderNo: string
+    finishedInboundMode: 'order' | 'pack' | null
+    unitSnapshot: string
+  } | null
   lines: WmsProductionMaterialLine[]
 }
 
@@ -111,11 +118,11 @@ export interface WmsProductionMaterialListRow {
   tenantId: string
   kind: WmsProductionMaterialKind
   documentNo: string
-  documentTypeId: string
-  businessTypeId: string
-  organizationId: string
+  documentTypeId: string | null
+  businessTypeId: string | null
+  organizationId: string | null
   businessDate: string
-  warehouseId: string
+  warehouseId: string | null
   workOrderId: string | null
   projectId: string | null
   customerId: string | null
