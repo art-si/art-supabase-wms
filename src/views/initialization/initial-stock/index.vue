@@ -102,7 +102,6 @@
   void userStore.ensureDictLoaded('wmsInitialStockType')
   void userStore.ensureDictLoaded('wmsInitialStockCondition')
   const tableRef = ref<ArtTableQueryExpose>()
-  const visibleRows = ref<StockListRow[]>([])
   const lineProperties = new Set([
     'materialCode',
     'materialName',
@@ -124,7 +123,12 @@
     column: { property?: string }
   }) {
     return displayMode.value === 'line'
-      ? documentGroupSpan(visibleRows.value, rowIndex, column.property, lineProperties)
+      ? documentGroupSpan(
+          (tableRef.value?.dataState.rows.value as StockListRow[] | undefined) ?? [],
+          rowIndex,
+          column.property,
+          lineProperties
+        )
       : ([1, 1] as [number, number])
   }
   type StockListRow = WmsInitialStockDocument & {
@@ -258,7 +262,6 @@
     const fetchPage = (page: typeof query) =>
       fetchWmsInitialStockPage({ ...page, tenantId: effectiveTenantId.value || undefined })
     if (displayMode.value === 'document') {
-      visibleRows.value = []
       return fetchPage(query)
     }
     const documents = await loadAllLinePages(fetchPage, query)
@@ -272,7 +275,6 @@
       (query.current - 1) * query.size,
       query.current * query.size - 1
     )
-    visibleRows.value = result.data
     return result
   }
   async function refresh(): Promise<void> {

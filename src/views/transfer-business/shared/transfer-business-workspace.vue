@@ -248,7 +248,6 @@
   let optionsLoadVersion = 0
   const documentTypes = ref<WmsInitializationOption[]>([])
   const warehouses = ref<WmsWarehouse[]>([])
-  const visibleRows = ref<WorkspaceRow[]>([])
   const selectedRows = ref<WorkspaceRow[]>([])
   const activeDocument = shallowRef<WmsTransferBusinessRow>()
   const returnRows = ref<WmsTransferBusinessRow[]>([])
@@ -379,7 +378,12 @@
     column: { property?: string }
   }) {
     return displayMode.value === 'line'
-      ? documentGroupSpan(visibleRows.value, rowIndex, column.property, lineProperties)
+      ? documentGroupSpan(
+          (tableRef.value?.dataState.rows.value as WorkspaceRow[] | undefined) ?? [],
+          rowIndex,
+          column.property,
+          lineProperties
+        )
       : ([1, 1] as [number, number])
   }
   function isBusinessRow(value: unknown): value is WmsTransferBusinessRow {
@@ -425,11 +429,8 @@
         const data = await loadAllLinePages(fetchPage, query)
         return { data, total: data.length }
       }
-      const result = await fetchPage(query)
-      visibleRows.value = result.data
-      return result
+      return fetchPage(query)
     }
-    visibleRows.value = []
     const rows = await loadAllLinePages(fetchPage, query)
     const documents = groupDocumentLines(rows, (row) => row.documentId).map(
       ({ first, lines: documentLines }) => ({

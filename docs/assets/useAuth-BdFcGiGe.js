@@ -1,0 +1,1 @@
+import{C as e,Qt as t,V as n,r}from"./sys-BNjFPzag.js";var i=()=>{let{isFrontendMode:i}=e(),a=r(),o=n(),{info:s,isPlatformSuper:c}=t(a),{buttonList:l}=t(o),u=()=>s.value.buttons??[],d=()=>Array.isArray(l.value)?l.value:[],f=e=>c.value?!0:i.value?u().includes(e):d().some(t=>t?.name===e);return{hasAuth:f,hasAnyAuth:e=>e.some(f),hasAllAuth:e=>e.every(f)}};export{i as t};

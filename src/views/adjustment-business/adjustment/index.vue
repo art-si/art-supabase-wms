@@ -89,7 +89,6 @@
     detailLine?: 'source' | 'target'
     detailGroupStart?: boolean
   }
-  const visibleRows = ref<AdjustmentListRow[]>([])
   const lineProperties = new Set(['detailSide', 'detailMaterial', 'detailBatch', 'detailQuantity'])
   function mergeDocumentCells({
     rowIndex,
@@ -99,7 +98,12 @@
     column: { property?: string }
   }) {
     return displayMode.value === 'line'
-      ? documentGroupSpan(visibleRows.value, rowIndex, column.property, lineProperties)
+      ? documentGroupSpan(
+          (tableRef.value?.dataState.rows.value as AdjustmentListRow[] | undefined) ?? [],
+          rowIndex,
+          column.property,
+          lineProperties
+        )
       : ([1, 1] as [number, number])
   }
   const dialogRef = ref<InstanceType<typeof AdjustmentDialog>>()
@@ -216,7 +220,6 @@
     const fetchPage = (page: WmsStockQuery) =>
       fetchWmsAdjustmentPage({ ...page, tenantId: filterTenantId.value })
     if (displayMode.value === 'document') {
-      visibleRows.value = []
       return fetchPage(query)
     }
     const documents = await loadAllLinePages(fetchPage, query)
@@ -230,7 +233,6 @@
       (query.current - 1) * query.size,
       query.current * query.size - 1
     )
-    visibleRows.value = result.data
     return result
   }
   function openCreate(): void {

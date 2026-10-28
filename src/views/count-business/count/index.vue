@@ -111,7 +111,6 @@
     detailLine?: WmsCountLine
     detailGroupStart?: boolean
   }
-  const visibleRows = ref<CountPlanListRow[]>([])
   const lineProperties = new Set([
     'detailMaterialCode',
     'detailMaterialName',
@@ -129,7 +128,12 @@
     column: { property?: string }
   }) {
     return displayMode.value === 'line'
-      ? documentGroupSpan(visibleRows.value, rowIndex, column.property, lineProperties)
+      ? documentGroupSpan(
+          (tableRef.value?.dataState.rows.value as CountPlanListRow[] | undefined) ?? [],
+          rowIndex,
+          column.property,
+          lineProperties
+        )
       : ([1, 1] as [number, number])
   }
   const createRef = ref<InstanceType<typeof CountCreateDialog>>()
@@ -273,7 +277,6 @@
       })
     }
     if (displayMode.value === 'document') {
-      visibleRows.value = []
       return fetchPage(query)
     }
     const documents = await loadAllLinePages(fetchPage, query)
@@ -294,7 +297,6 @@
       (query.current - 1) * query.size,
       query.current * query.size - 1
     )
-    visibleRows.value = result.data
     return result
   }
   function openCreate(): void {

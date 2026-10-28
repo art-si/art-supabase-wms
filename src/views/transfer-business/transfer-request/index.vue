@@ -162,7 +162,6 @@
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const { defaultWriteTenantId } = useTenantScopeFormPolicy()
   const tableRef = ref<ArtTableQueryExpose>()
-  const visibleRows = ref<WmsTransferRequestRow[]>([])
   const lineProperties = new Set([
     'materialCode',
     'materialDescription',
@@ -189,7 +188,12 @@
     column: { property?: string }
   }) {
     return displayMode.value === 'line'
-      ? documentGroupSpan(visibleRows.value, rowIndex, column.property, lineProperties)
+      ? documentGroupSpan(
+          (tableRef.value?.dataState.rows.value as WmsTransferRequestRow[] | undefined) ?? [],
+          rowIndex,
+          column.property,
+          lineProperties
+        )
       : ([1, 1] as [number, number])
   }
   const drawerRef = ref<InstanceType<typeof TransferRequestDrawer>>()
@@ -321,11 +325,8 @@
         const data = await loadAllLinePages(fetchPage, query)
         return { data, total: data.length }
       }
-      const result = await fetchPage(query)
-      visibleRows.value = result.data
-      return result
+      return fetchPage(query)
     }
-    if (!exportAll) visibleRows.value = []
     const lines = await loadAllLinePages(fetchPage, query)
     const documents = groupDocumentLines(lines, (line) => line.documentId).map(
       ({ first, lines: group }) => ({

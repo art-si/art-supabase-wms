@@ -234,7 +234,6 @@
     detailLine?: WmsIssueRequestLine
     detailGroupStart?: boolean
   }
-  const visibleRows = ref<IssueListRow[]>([])
   const lineProperties = new Set([
     'materialCodes',
     'materialDescriptions',
@@ -250,7 +249,12 @@
     column: { property?: string }
   }) {
     return displayMode.value === 'line'
-      ? documentGroupSpan(visibleRows.value, rowIndex, column.property, lineProperties)
+      ? documentGroupSpan(
+          (tableRef.value?.dataState.rows.value as IssueListRow[] | undefined) ?? [],
+          rowIndex,
+          column.property,
+          lineProperties
+        )
       : ([1, 1] as [number, number])
   }
   const createRef = ref<InstanceType<typeof IssueRequestCreateDialog>>()
@@ -544,7 +548,6 @@
         const data = await loadAllLinePages(fetchPage, query)
         return { data, total: data.length }
       }
-      visibleRows.value = []
       return fetchPage(query)
     }
     const documents = await loadAllLinePages(fetchPage, query)
@@ -577,7 +580,6 @@
       (query.current - 1) * query.size,
       query.current * query.size - 1
     )
-    visibleRows.value = result.data
     return result
   }
   function openDetail(row: WmsIssueRequest): void {

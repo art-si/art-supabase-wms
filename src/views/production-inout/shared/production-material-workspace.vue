@@ -183,7 +183,6 @@
   )
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const tableRef = ref<ArtTableQueryExpose>()
-  const visibleRows = ref<WmsProductionMaterialListRow[]>([])
   const lineProperties = new Set([
     'materialStatus',
     'workOrderQuantity',
@@ -204,7 +203,13 @@
     column: { property?: string }
   }) {
     return displayMode.value === 'line'
-      ? documentGroupSpan(visibleRows.value, rowIndex, column.property, lineProperties)
+      ? documentGroupSpan(
+          (tableRef.value?.dataState.rows.value as WmsProductionMaterialListRow[] | undefined) ??
+            [],
+          rowIndex,
+          column.property,
+          lineProperties
+        )
       : ([1, 1] as [number, number])
   }
   const drawerRef = ref<InstanceType<typeof ProductionMaterialDrawer>>()
@@ -299,11 +304,8 @@
         const data = await loadAllLinePages(fetchPage, query)
         return { data, total: data.length }
       }
-      const result = await fetchPage(query)
-      visibleRows.value = result.data
-      return result
+      return fetchPage(query)
     }
-    if (!exportAll) visibleRows.value = []
     const hasMaterialFilter = Boolean(
       query.materialCode?.trim() || query.materialDescription?.trim()
     )

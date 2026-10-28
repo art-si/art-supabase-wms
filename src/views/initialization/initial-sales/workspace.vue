@@ -161,7 +161,6 @@
   void userStore.ensureDictLoaded('wmsInitialStockType')
   void userStore.ensureDictLoaded('wmsInitialStockCondition')
   const tableRef = ref<ArtTableQueryExpose>()
-  const visibleRows = ref<WmsInitialSalesListRow[]>([])
   const lineProperties = new Set([
     'projectName',
     'materialCode',
@@ -194,7 +193,12 @@
     column: { property?: string }
   }) {
     return displayMode.value === 'line'
-      ? documentGroupSpan(visibleRows.value, rowIndex, column.property, lineProperties)
+      ? documentGroupSpan(
+          (tableRef.value?.dataState.rows.value as WmsInitialSalesListRow[] | undefined) ?? [],
+          rowIndex,
+          column.property,
+          lineProperties
+        )
       : ([1, 1] as [number, number])
   }
   const drawerRef = ref<InstanceType<typeof InitialSalesDrawer>>()
@@ -618,11 +622,8 @@
         const data = await loadAllLinePages(fetchPage, query)
         return { data, total: data.length }
       }
-      const result = await fetchPage(query)
-      visibleRows.value = result.data
-      return result
+      return fetchPage(query)
     }
-    if (!exportAll) visibleRows.value = []
     const hasMaterialFilter = Boolean(
       query.materialCode?.trim() || query.materialDescription?.trim()
     )
