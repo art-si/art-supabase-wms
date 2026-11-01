@@ -97,41 +97,6 @@
                 :gutter="20"
                 label-position="top"
               >
-                <template #keeperDepartmentId>
-                  <ElTreeSelect
-                    v-model="headerForm.keeperDepartmentId"
-                    :data="departmentOptions"
-                    :props="{ label: 'label', children: 'children' }"
-                    node-key="id"
-                    filterable
-                    clearable
-                    check-strictly
-                    :render-after-expand="false"
-                    :disabled="departmentError"
-                    placeholder="选择库管部门"
-                    class="w-full"
-                  />
-                </template>
-                <template #keeperEmployeeId>
-                  <ArtEmployeeSelect
-                    v-model="headerForm.keeperEmployeeId"
-                    v-model:selected-data="selectedKeeper"
-                    :tenant-id="sheet.tenantId"
-                    :api-fn="fetchWmsCountEmployeeOptions"
-                    :display-fields="['organization', 'jobTitle', 'employmentStatus']"
-                    placeholder="选择仓管员"
-                  />
-                </template>
-                <template #counterEmployeeId>
-                  <ArtEmployeeSelect
-                    v-model="headerForm.counterEmployeeId"
-                    v-model:selected-data="selectedCounter"
-                    :tenant-id="sheet.tenantId"
-                    :api-fn="fetchWmsCountEmployeeOptions"
-                    :display-fields="['organization', 'jobTitle', 'employmentStatus']"
-                    placeholder="选择盘点人"
-                  />
-                </template>
               </ArtForm>
               <ArtDescriptions
                 v-else
@@ -533,9 +498,61 @@
     }
   ]
   const headerItems: FormItem[] = [
-    { key: 'keeperDepartmentId', label: '库管部门', type: 'text', span: 8 },
-    { key: 'keeperEmployeeId', label: '仓管员', type: 'text', span: 8 },
-    { key: 'counterEmployeeId', label: '盘点人', type: 'text', span: 8 }
+    {
+      key: 'keeperDepartmentId',
+      label: '库管部门',
+      span: 8,
+      type: 'treeSelect',
+      get props(): FormItem['props'] {
+        return {
+          data: departmentOptions.value,
+          props: { label: 'label', children: 'children' },
+          nodeKey: 'id',
+          filterable: true,
+          clearable: true,
+          checkStrictly: true,
+          renderAfterExpand: false,
+          disabled: departmentError.value,
+          placeholder: '选择库管部门'
+        }
+      }
+    },
+    {
+      key: 'keeperEmployeeId',
+      label: '仓管员',
+      span: 8,
+      type: 'employeeSelect',
+      get props(): FormItem['props'] {
+        return {
+          selectedData: selectedKeeper.value,
+          'onUpdate:selectedData': ($event: typeof selectedKeeper.value) => {
+            selectedKeeper.value = $event
+          },
+          tenantId: sheet.value?.tenantId,
+          apiFn: fetchWmsCountEmployeeOptions,
+          displayFields: ['organization', 'jobTitle', 'employmentStatus'],
+          placeholder: '选择仓管员'
+        }
+      }
+    },
+    {
+      key: 'counterEmployeeId',
+      label: '盘点人',
+      span: 8,
+      type: 'employeeSelect',
+      get props(): FormItem['props'] {
+        return {
+          selectedData: selectedCounter.value,
+          'onUpdate:selectedData': ($event: typeof selectedCounter.value) => {
+            selectedCounter.value = $event
+          },
+          tenantId: sheet.value?.tenantId,
+          apiFn: fetchWmsCountEmployeeOptions,
+          displayFields: ['organization', 'jobTitle', 'employmentStatus'],
+          placeholder: '选择盘点人'
+        }
+      }
+    }
   ]
   const lineColumns = computed<ColumnOption<WmsCountLine>[]>(() => [
     { prop: 'lineNo', label: '行号', width: 70, fixed: 'left' },

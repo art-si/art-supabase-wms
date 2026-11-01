@@ -45,14 +45,6 @@
             :columns="2"
             :label-width="120"
         /></template>
-        <template #keeperId>
-          <ArtEmployeeSelect
-            v-model="form.keeperId"
-            :tenant-id="context?.tenantId"
-            placeholder="选择仓管员"
-            @selected="syncHeaderKeeper"
-          />
-        </template>
 
         <template #lineItems
           ><ArtSectionCard
@@ -785,7 +777,18 @@
       type: 'date',
       props: { valueFormat: 'YYYY-MM-DD', disabled: true, class: 'w-full!' }
     },
-    { key: 'keeperId', label: '仓管员', type: 'slot' },
+    {
+      key: 'keeperId',
+      label: '仓管员',
+      type: 'employeeSelect',
+      get props(): FormItem['props'] {
+        return {
+          tenantId: context.value?.tenantId,
+          placeholder: '选择仓管员',
+          onSelected: syncHeaderKeeper
+        }
+      }
+    },
     {
       key: 'remark',
       label: '备注',

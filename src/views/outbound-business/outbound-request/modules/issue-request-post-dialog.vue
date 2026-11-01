@@ -45,28 +45,6 @@
         :gutter="20"
         label-position="top"
       >
-        <template #batchId>
-          <ArtTableSingleSelect
-            :key="`${request?.id}-${line?.id}-${stockScope}`"
-            :model-value="form.batchId || undefined"
-            :api-fn="batchApi"
-            :selected-data="selectedBatch ? [selectedBatch] : []"
-            :columns="batchColumns"
-            title="选择领料批次"
-            :subtitle="
-              stockScope === 'project'
-                ? '仅显示当前项目施工号的在库物料'
-                : '仅显示申请仓库内未归属项目的在库物料'
-            "
-            placeholder="选择来源库存批次"
-            search-placeholder="输入批号或备注"
-            label-key="batchLabel"
-            :show-pagination="true"
-            :page-size="20"
-            @update:selected-data="onBatchSelected"
-            @update:model-value="form.batchId = String($event || '')"
-          />
-        </template>
       </ArtForm>
       <ElAlert v-if="selectedBatch" type="success" :closable="false" show-icon>
         {{ selectedBatch.material?.materialName }} · {{ selectedBatch.batchNo }} · 在库
@@ -113,7 +91,6 @@
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
-  import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
   import type {
     DataSelectColumn,
@@ -177,7 +154,37 @@
     { prop: 'binCode', label: '库位', minWidth: 100 }
   ]
   const items = computed<FormItem[]>(() => [
-    { key: 'batchId', label: '来源批次', type: 'slot', span: 24 },
+    {
+      key: 'batchId',
+      label: '来源批次',
+      span: 24,
+      type: 'dataSelect',
+      get props(): FormItem['props'] {
+        return {
+          mode: 'table',
+          multiple: false,
+          showSelectedPanel: false,
+          showPagination: true,
+          modelValue: form.value.batchId || undefined,
+          apiFn: batchApi,
+          selectedData: selectedBatch.value ? [selectedBatch.value] : [],
+          columns: batchColumns,
+          title: '选择领料批次',
+          subtitle:
+            stockScope.value === 'project'
+              ? '仅显示当前项目施工号的在库物料'
+              : '仅显示申请仓库内未归属项目的在库物料',
+          placeholder: '选择来源库存批次',
+          searchPlaceholder: '输入批号或备注',
+          labelKey: 'batchLabel',
+          pageSize: 20,
+          'onUpdate:selectedData': onBatchSelected,
+          'onUpdate:modelValue': ($event: typeof form.value.batchId) => {
+            form.value.batchId = String($event || '')
+          }
+        }
+      }
+    },
     {
       key: 'quantity',
       label: '本次领料数量',

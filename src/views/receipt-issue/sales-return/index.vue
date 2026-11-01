@@ -1,6 +1,6 @@
 <template>
   <ArtPermissionGuard permission="WmsSalesReturn:View" resource-name="销售退货入库">
-    <div class="business-workspace-page art-full-height min-w-0 space-y-4">
+    <div class="business-workspace-page art-full-height min-w-0">
       <BusinessWorkspaceHeader
         eyebrow="WAREHOUSE RETURNS"
         title="销售退货入库"

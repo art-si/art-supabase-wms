@@ -724,49 +724,14 @@
             <span>{{ form.documentNo || '保存后自动生成' }}</span>
           </div>
         </template>
-        <template #projectId>
-          <ArtTableSingleSelect
-            :model-value="form.projectId || undefined"
-            :selected-data="selectedProject"
-            :data="projects"
-            :columns="projectColumns"
-            row-key="id"
-            label-key="projectName"
-            description-key="projectCode"
-            title="参选销售项目"
-            placeholder="选择项目"
-            :disabled="!form.tenantId"
-            @update:selected-data="onProjectSelected"
-          />
-        </template>
+
         <template #customerId>
           <div class="production-readonly-field" :class="{ 'is-placeholder': !customerName }">
             <ArtSvgIcon icon="ri:building-2-line" />
             <span>{{ customerName || '选择项目后自动带入' }}</span>
           </div>
         </template>
-        <template #applicantId>
-          <ArtEmployeeSelect
-            :model-value="form.applicantId || undefined"
-            :selected-data="selectedApplicant"
-            :tenant-id="form.tenantId || undefined"
-            :title="
-              props.kind === 'issue' || props.kind === 'return' ? '选择领料人' : '选择领料申请人'
-            "
-            :disabled="!form.tenantId"
-            @change="onApplicantChange"
-          />
-        </template>
-        <template #keeperId>
-          <ArtEmployeeSelect
-            :model-value="form.keeperId || undefined"
-            :selected-data="selectedKeeper"
-            :tenant-id="form.tenantId || undefined"
-            title="选择仓管员"
-            :disabled="!form.tenantId"
-            @change="onKeeperChange"
-          />
-        </template>
+
         <template #status>
           <div class="production-readonly-field">
             <ArtSvgIcon icon="ri:file-list-3-line" />
@@ -1922,7 +1887,30 @@
       type: 'tab',
       description: '维护项目、部门、办理人员和补充说明。'
     },
-    { key: 'projectId', label: '项目名称', type: 'input' },
+    {
+      key: 'projectId',
+      label: '项目名称',
+      type: 'dataSelect',
+      get props(): FormItem['props'] {
+        return {
+          mode: 'table',
+          multiple: false,
+          showSelectedPanel: false,
+          showPagination: false,
+          modelValue: form.value.projectId || undefined,
+          selectedData: selectedProject.value,
+          data: projects.value,
+          columns: projectColumns,
+          rowKey: 'id',
+          labelKey: 'projectName',
+          descriptionKey: 'projectCode',
+          title: '参选销售项目',
+          placeholder: '选择项目',
+          disabled: !form.value.tenantId,
+          'onUpdate:selectedData': onProjectSelected
+        }
+      }
+    },
     { key: 'customerId', label: '客户', type: 'input' },
     {
       key: 'demandDate',
@@ -1934,8 +1922,19 @@
     {
       key: 'applicantId',
       label: props.kind === 'issue' || props.kind === 'return' ? '领料人' : '申请人',
-      type: 'input',
-      hidden: isFinished.value
+      hidden: isFinished.value,
+      type: 'employeeSelect',
+      get props(): FormItem['props'] {
+        return {
+          modelValue: form.value.applicantId || undefined,
+          selectedData: selectedApplicant.value,
+          tenantId: form.value.tenantId || undefined,
+          title:
+            props.kind === 'issue' || props.kind === 'return' ? '选择领料人' : '选择领料申请人',
+          disabled: !form.value.tenantId,
+          onChange: onApplicantChange
+        }
+      }
     },
     {
       key: 'departmentId',
@@ -1959,7 +1958,21 @@
         renderAfterExpand: false
       }
     },
-    { key: 'keeperId', label: '仓管员', type: 'input' },
+    {
+      key: 'keeperId',
+      label: '仓管员',
+      type: 'employeeSelect',
+      get props(): FormItem['props'] {
+        return {
+          modelValue: form.value.keeperId || undefined,
+          selectedData: selectedKeeper.value,
+          tenantId: form.value.tenantId || undefined,
+          title: '选择仓管员',
+          disabled: !form.value.tenantId,
+          onChange: onKeeperChange
+        }
+      }
+    },
     { key: 'status', label: '单据状态', type: 'input' },
     {
       key: 'materialStatus',

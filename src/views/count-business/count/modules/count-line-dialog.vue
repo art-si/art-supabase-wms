@@ -17,14 +17,6 @@
         SN 清单加载失败或已变化，请重新生成盘点方案。
       </ElAlert>
       <ArtForm ref="formRef" v-model="form" :items="items" :rules="rules" label-position="top">
-        <template #newSerialText>
-          <ElInput
-            v-model="newSerialText"
-            type="textarea"
-            :rows="4"
-            placeholder="实物中多出的新 SN，每行一个"
-          />
-        </template>
       </ArtForm>
       <p v-if="isSerial" class="text-xs text-[var(--el-text-color-secondary)]">
         SN 实盘件数 = 已选择原 SN {{ form.countedSerialIds.length }} 件 + 新增
@@ -105,8 +97,11 @@
           {
             key: 'newSerialText',
             label: '实盘多出的新 SN',
-            type: 'input' as const,
-            help: '每行一个；新增 SN 将记为盘盈。'
+            help: '每行一个；新增 SN 将记为盘盈。',
+            type: 'textarea',
+            get props(): FormItem['props'] {
+              return { rows: 4, placeholder: '实物中多出的新 SN，每行一个' }
+            }
           }
         ]
       : [])

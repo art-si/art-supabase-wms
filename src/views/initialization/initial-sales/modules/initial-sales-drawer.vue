@@ -63,84 +63,6 @@
         <template #headerSummary
           ><ArtDescriptions :data="viewData" :items="viewItems" :columns="3"
         /></template>
-        <template #projectId>
-          <ArtTableSingleSelect
-            v-model="form.projectId"
-            :data="projects"
-            :columns="partyColumns"
-            row-key="id"
-            label-key="name"
-            description-key="code"
-            title="选择项目"
-            clearable
-            @change="onHeaderProjectChange"
-          />
-        </template>
-        <template #workOrderId>
-          <ArtTableSingleSelect
-            v-model="form.workOrderId"
-            :api-fn="workOrderApi"
-            :selected-data="selectedWorkOrder"
-            :columns="workOrderColumns"
-            label-key="workOrderNo"
-            title="参选生产工单"
-            :disabled="!form.warehouseId"
-            clearable
-            @update:selected-data="onWorkOrderSelected"
-          />
-        </template>
-        <template #constructionNo>
-          <ArtTableSingleSelect
-            :model-value="form.constructionNo || undefined"
-            @update:model-value="form.constructionNo = String($event || '') || null"
-            :api-fn="(params) => constructionApi(form.projectId, params)"
-            :columns="constructionColumns"
-            row-key="constructionNo"
-            label-key="constructionNo"
-            title="参选施工号"
-            :disabled="!form.projectId"
-            clearable
-          />
-        </template>
-        <template #customerId>
-          <ArtTableSingleSelect
-            :model-value="form.customerId || undefined"
-            :selected-data="selectedCustomer"
-            :data="customers"
-            :columns="partyColumns"
-            row-key="id"
-            label-key="name"
-            description-key="code"
-            title="选择客户"
-            placeholder="从销售主数据选择"
-            :disabled="!form.tenantId"
-            clearable
-            @update:model-value="form.customerId = String($event || '')"
-            @update:selected-data="selectedCustomer = $event"
-          />
-        </template>
-        <template #salespersonId>
-          <ArtEmployeeSelect
-            :model-value="form.salespersonId || undefined"
-            :selected-data="selectedSalesperson"
-            :tenant-id="form.tenantId || undefined"
-            :title="issueRequest ? '选择申请人' : '选择销售员'"
-            :disabled="!form.tenantId"
-            @update:model-value="form.salespersonId = $event || null"
-            @update:selected-data="onSalespersonSelected"
-          />
-        </template>
-        <template #keeperId>
-          <ArtEmployeeSelect
-            :model-value="form.keeperId || undefined"
-            :selected-data="selectedKeeper"
-            :tenant-id="form.tenantId || undefined"
-            title="选择仓管员"
-            :disabled="!form.tenantId"
-            @update:model-value="onHeaderKeeperChange"
-            @update:selected-data="selectedKeeper = $event"
-          />
-        </template>
 
         <template #lineItems
           ><ArtSectionCard
@@ -1415,7 +1337,27 @@
     },
     ...(!isInitial.value
       ? ([
-          { key: 'projectId', label: '项目名称', type: 'input' },
+          {
+            key: 'projectId',
+            label: '项目名称',
+            type: 'dataSelect',
+            get props(): FormItem['props'] {
+              return {
+                mode: 'table',
+                multiple: false,
+                showSelectedPanel: false,
+                showPagination: false,
+                data: projects.value,
+                columns: partyColumns,
+                rowKey: 'id',
+                labelKey: 'name',
+                descriptionKey: 'code',
+                title: '选择项目',
+                clearable: true,
+                onChange: onHeaderProjectChange
+              }
+            }
+          },
           {
             key: 'warehouseId',
             label: '仓库号',
@@ -1428,7 +1370,36 @@
           }
         ] as FormItem[])
       : []),
-    { key: 'customerId', label: '客户', type: 'input', props: { disabled: mode.value === 'view' } },
+    {
+      key: 'customerId',
+      label: '客户',
+      type: 'dataSelect',
+      get props(): FormItem['props'] {
+        return {
+          disabled: mode.value === 'view' || !form.value.tenantId,
+          mode: 'table',
+          multiple: false,
+          showSelectedPanel: false,
+          showPagination: false,
+          modelValue: form.value.customerId || undefined,
+          selectedData: selectedCustomer.value,
+          data: customers.value,
+          columns: partyColumns,
+          rowKey: 'id',
+          labelKey: 'name',
+          descriptionKey: 'code',
+          title: '选择客户',
+          placeholder: '从销售主数据选择',
+          clearable: true,
+          'onUpdate:modelValue': ($event: typeof form.value.customerId) => {
+            form.value.customerId = String($event || '')
+          },
+          'onUpdate:selectedData': ($event: typeof selectedCustomer.value) => {
+            selectedCustomer.value = $event
+          }
+        }
+      }
+    },
     ...(!isInitial.value && ['other_outbound', 'other_return'].includes(props.kind)
       ? ([
           {
@@ -1451,15 +1422,71 @@
             type: 'select',
             options: requestTypeOptions.value
           },
-          { key: 'workOrderId', label: '生产工单', type: 'input' },
-          { key: 'constructionNo', label: '施工号', type: 'input' }
+          {
+            key: 'workOrderId',
+            label: '生产工单',
+            type: 'dataSelect',
+            get props(): FormItem['props'] {
+              return {
+                mode: 'table',
+                multiple: false,
+                showSelectedPanel: false,
+                showPagination: true,
+                apiFn: workOrderApi,
+                selectedData: selectedWorkOrder.value,
+                columns: workOrderColumns,
+                labelKey: 'workOrderNo',
+                title: '参选生产工单',
+                disabled: !form.value.warehouseId,
+                clearable: true,
+                'onUpdate:selectedData': onWorkOrderSelected
+              }
+            }
+          },
+          {
+            key: 'constructionNo',
+            label: '施工号',
+            type: 'dataSelect',
+            get props(): FormItem['props'] {
+              return {
+                mode: 'table',
+                multiple: false,
+                showSelectedPanel: false,
+                showPagination: true,
+                modelValue: form.value.constructionNo || undefined,
+                'onUpdate:modelValue': ($event: typeof form.value.constructionNo) => {
+                  form.value.constructionNo = String($event || '') || null
+                },
+                apiFn: (params: DataSelectFetchParams) =>
+                  constructionApi(form.value.projectId, params),
+                columns: constructionColumns,
+                rowKey: 'constructionNo',
+                labelKey: 'constructionNo',
+                title: '参选施工号',
+                disabled: !form.value.projectId,
+                clearable: true
+              }
+            }
+          }
         ] as FormItem[])
       : []),
     {
       key: 'salespersonId',
       label: props.issueRequest ? '申请人' : '销售员',
-      type: 'input',
-      props: { disabled: mode.value === 'view' }
+      type: 'employeeSelect',
+      get props(): FormItem['props'] {
+        return {
+          disabled: mode.value === 'view' || !form.value.tenantId,
+          modelValue: form.value.salespersonId || undefined,
+          selectedData: selectedSalesperson.value,
+          tenantId: form.value.tenantId || undefined,
+          title: props.issueRequest ? '选择申请人' : '选择销售员',
+          'onUpdate:modelValue': ($event: typeof form.value.salespersonId) => {
+            form.value.salespersonId = $event || null
+          },
+          'onUpdate:selectedData': onSalespersonSelected
+        }
+      }
     },
     {
       key: 'salesDepartmentId',
@@ -1477,7 +1504,24 @@
         disabled: mode.value === 'view'
       }
     },
-    { key: 'keeperId', label: '仓管员', type: 'input', props: { disabled: mode.value === 'view' } },
+    {
+      key: 'keeperId',
+      label: '仓管员',
+      type: 'employeeSelect',
+      get props(): FormItem['props'] {
+        return {
+          disabled: mode.value === 'view' || !form.value.tenantId,
+          modelValue: form.value.keeperId || undefined,
+          selectedData: selectedKeeper.value,
+          tenantId: form.value.tenantId || undefined,
+          title: '选择仓管员',
+          'onUpdate:modelValue': onHeaderKeeperChange,
+          'onUpdate:selectedData': ($event: typeof selectedKeeper.value) => {
+            selectedKeeper.value = $event
+          }
+        }
+      }
+    },
     {
       key: 'status',
       label: '单据状态',

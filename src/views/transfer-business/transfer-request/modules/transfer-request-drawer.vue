@@ -45,22 +45,6 @@
             :columns="2"
             :label-width="120"
         /></template>
-        <template #applicantUserId>
-          <ArtUserSelect
-            :model-value="form.applicantUserId || undefined"
-            :options="applicantOptions"
-            placeholder="选择申请账号"
-            @update:model-value="onApplicantUserChange"
-          />
-          <p
-            v-if="form.applicantId && !form.applicantUserId"
-            class="mt-1 text-xs text-[var(--el-text-color-secondary)]"
-          >
-            历史员工申请人：{{
-              documentRows[0]?.applicantName || '未找到员工资料'
-            }}；选择账号后替换。
-          </p>
-        </template>
 
         <template #lineItems
           ><ArtSectionCard
@@ -459,7 +443,6 @@
   import ArtTable, { type ArtTableExpose } from '@/components/core/tables/art-table/index.vue'
   import type { ColumnOption } from '@/types'
   import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
-  import ArtUserSelect from '@/components/core/forms/art-user-select/index.vue'
   import type {
     ArtUserSelectOption,
     ArtUserSelectValue
@@ -832,7 +815,17 @@
       type: 'date',
       props: { valueFormat: 'YYYY-MM-DD', class: 'w-full!' }
     },
-    { key: 'applicantUserId', label: '申请人', type: 'slot' },
+    {
+      key: 'applicantUserId',
+      label: '申请人',
+      type: 'userSelect',
+      options: applicantOptions.value,
+      props: { placeholder: '选择申请账号', 'onUpdate:modelValue': onApplicantUserChange },
+      description:
+        form.value.applicantId && !form.value.applicantUserId
+          ? `历史员工申请人：${documentRows.value[0]?.applicantName || '未找到员工资料'}；选择账号后替换。`
+          : undefined
+    },
     {
       key: 'departmentId',
       label: '申请部门',

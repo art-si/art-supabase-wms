@@ -1,6 +1,6 @@
 <template>
   <ArtPermissionGuard permission="WmsStockOperation:View" resource-name="库存作业">
-    <div class="business-workspace-page art-full-height min-w-0 space-y-4">
+    <div class="business-workspace-page art-full-height min-w-0">
       <BusinessWorkspaceHeader
         eyebrow="WAREHOUSE TRANSACTIONS"
         title="库存作业"
@@ -13,17 +13,11 @@
           { label: '序列号逐件核对', type: 'info' }
         ]"
       />
-      <ElAlert v-if="loadError" type="warning" :closable="false" show-icon class="mb-3">
+      <ElAlert v-if="loadError" type="warning" :closable="false" show-icon>
         作业基础数据加载失败，请重试后再办理。
         <ElButton link type="primary" @click="retryOptions">重新加载</ElButton>
       </ElAlert>
-      <ElAlert
-        v-if="requestedShippingNoticeUnavailable"
-        type="warning"
-        :closable="false"
-        show-icon
-        class="mb-3"
-      >
+      <ElAlert v-if="requestedShippingNoticeUnavailable" type="warning" :closable="false" show-icon>
         当前仓库所属租户没有这张待出库发货通知单，请选择匹配的仓库，或检查 SCM 单据状态。
       </ElAlert>
       <div class="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
@@ -91,15 +85,8 @@
                   @bins-loaded="sourceBins = $event"
                 />
               </template>
-              <template #materialId>
-                <ElInput
-                  v-if="form.movementType === 'production_in'"
-                  :model-value="selectedProductionOrder?.materialName || ''"
-                  placeholder="先选择已报工的 MES 工单"
-                  disabled
-                />
+              <template #materialId v-if="form.movementType !== 'production_in'">
                 <ArtMaterialSelect
-                  v-else
                   :model-value="form.materialId || undefined"
                   :api-fn="materialApi"
                   :selected-data="selectedMaterial"
@@ -133,42 +120,6 @@
                     </ElButton>
                   </ElAlert>
                 </div>
-              </template>
-              <template #batchId>
-                <ArtTableSingleSelect
-                  :model-value="form.batchId || undefined"
-                  :api-fn="batchApi"
-                  :selected-data="selectedBatch ? [selectedBatch] : []"
-                  :columns="batchColumns"
-                  :disabled="
-                    !selectedWarehouse ||
-                    (form.movementType === 'sales_out' && !selectedShippingLine)
-                  "
-                  title="选择来源批次"
-                  subtitle="只显示当前仓库有库存的批次；项目归属随批次带入"
-                  placeholder="选择在库批次"
-                  search-placeholder="输入批号或备注"
-                  label-key="batchLabel"
-                  :show-pagination="true"
-                  :page-size="20"
-                  @update:selected-data="onBatchSelected"
-                  @update:model-value="form.batchId = String($event || '') || null"
-                />
-              </template>
-              <template #targetWarehouseId>
-                <ElInput
-                  :model-value="selectedWarehouse?.warehouseName || ''"
-                  placeholder="先选择来源仓库"
-                  disabled
-                />
-              </template>
-              <template #serialText>
-                <ElInput
-                  v-model="serialText"
-                  type="textarea"
-                  :rows="4"
-                  placeholder="每行一个 SN；件数须等于入库数量"
-                />
               </template>
             </ArtForm>
             <ElAlert
@@ -280,7 +231,6 @@
   import ArtMaterialSelect from '@/components/business/art-material-select/index.vue'
   import WmsBinPicker from '@wms/views/shared/wms-bin-picker.vue'
   import { normalizeNullableText } from '@/utils/form/normalize'
-  import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
   import type { MaterialSelectRecord } from '@/components/business/art-material-select/types'
   import type {
     DataSelectFetchParams,
@@ -686,7 +636,17 @@
             type: 'slot' as const,
             help: '自动选位按物料、库区、容量、混放与 SN 约束推荐；也可手动选择。'
           },
-          { key: 'materialId', label: '入库物料', type: 'slot' as const, span: 24 },
+          {
+            key: 'materialId',
+            label: '入库物料',
+            type: form.value.movementType === 'production_in' ? 'text' : 'materialSelect',
+            span: 24,
+            props: {
+              emptyText: '先选择已报工的 MES 工单',
+              formatter: () =>
+                selectedProductionOrder.value?.materialName || '先选择已报工的 MES 工单'
+            }
+          },
           {
             key: 'batchNo',
             label: '批号',
@@ -802,7 +762,17 @@
             props: { min: 0, precision: 3, class: 'w-full!' }
           },
           ...(materialSerialEnabled.value
-            ? [{ key: 'serialText', label: '序列号清单', type: 'slot' as const, span: 24 }]
+            ? [
+                {
+                  key: 'serialText',
+                  label: '序列号清单',
+                  span: 24,
+                  type: 'textarea',
+                  get props(): FormItem['props'] {
+                    return { rows: 4, placeholder: '每行一个 SN；件数须等于入库数量' }
+                  }
+                }
+              ]
             : [])
         ]
       : [
@@ -845,7 +815,37 @@
                 }
               ]
             : []),
-          { key: 'batchId', label: '来源批次', type: 'slot' as const, span: 24 },
+          {
+            key: 'batchId',
+            label: '来源批次',
+            span: 24,
+            type: 'dataSelect',
+            get props(): FormItem['props'] {
+              return {
+                mode: 'table',
+                multiple: false,
+                showSelectedPanel: false,
+                showPagination: true,
+                modelValue: form.value.batchId || undefined,
+                apiFn: batchApi,
+                selectedData: selectedBatch.value ? [selectedBatch.value] : [],
+                columns: batchColumns,
+                disabled:
+                  !selectedWarehouse.value ||
+                  (form.value.movementType === 'sales_out' && !selectedShippingLine.value),
+                title: '选择来源批次',
+                subtitle: '只显示当前仓库有库存的批次；项目归属随批次带入',
+                placeholder: '选择在库批次',
+                searchPlaceholder: '输入批号或备注',
+                labelKey: 'batchLabel',
+                pageSize: 20,
+                'onUpdate:selectedData': onBatchSelected,
+                'onUpdate:modelValue': ($event: typeof form.value.batchId) => {
+                  form.value.batchId = String($event || '') || null
+                }
+              }
+            }
+          },
           ...(selectedBatch.value?.material?.serialManagementEnabled || serials.value.length
             ? [
                 {
@@ -875,8 +875,15 @@
                 {
                   key: 'targetWarehouseId',
                   label: '目标仓库',
-                  type: 'slot' as const,
-                  help: '直接调拨的来源和目标须在同一仓库；跨仓库请使用分步调拨。'
+                  help: '直接调拨的来源和目标须在同一仓库；跨仓库请使用分步调拨。',
+                  type: 'input',
+                  get props(): FormItem['props'] {
+                    return {
+                      modelValue: selectedWarehouse.value?.warehouseName || '',
+                      placeholder: '先选择来源仓库',
+                      disabled: true
+                    }
+                  }
                 },
                 {
                   key: 'targetOrganizationId',

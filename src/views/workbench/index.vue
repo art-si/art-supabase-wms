@@ -1,5 +1,5 @@
 <template>
-  <div class="business-workspace-page art-full-height min-w-0 space-y-4">
+  <div class="business-workspace-page art-full-height min-w-0">
     <BusinessWorkspaceHeader
       eyebrow="WAREHOUSE OPERATIONS"
       title="仓储运营工作台"

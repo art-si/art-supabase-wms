@@ -14,7 +14,7 @@
       >
         <template #actions><BusinessTableWorkspaceActions :table="tableRef" /></template>
       </BusinessWorkspaceHeader>
-      <ElAlert v-if="optionError" type="warning" :closable="false" show-icon class="mb-3">
+      <ElAlert v-if="optionError" type="warning" :closable="false" show-icon>
         筛选项加载失败。<ElButton link type="primary" :loading="optionsLoading" @click="loadOptions"
           >重新加载</ElButton
         >
@@ -24,7 +24,6 @@
         :type="linkedRequestError ? 'error' : 'info'"
         :closable="false"
         show-icon
-        class="mb-3"
       >
         <span>{{
           linkedRequestLoading

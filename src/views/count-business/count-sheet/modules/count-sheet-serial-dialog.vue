@@ -32,14 +32,6 @@
         :gutter="20"
         label-position="top"
       >
-        <template #newSerialText>
-          <ElInput
-            v-model="form.newSerialText"
-            type="textarea"
-            :rows="5"
-            placeholder="每行一个实物中新增的 SN"
-          />
-        </template>
       </ArtForm>
       <ArtSectionCard
         v-else
@@ -174,7 +166,15 @@
         placeholder: '逐件选择实物中找到的原 SN'
       }
     },
-    { key: 'newSerialText', label: '实物中新增的 SN', type: 'text', span: 24 }
+    {
+      key: 'newSerialText',
+      label: '实物中新增的 SN',
+      span: 24,
+      type: 'textarea',
+      get props(): FormItem['props'] {
+        return { rows: 5, placeholder: '每行一个实物中新增的 SN' }
+      }
+    }
   ])
   async function loadOptions(): Promise<void> {
     if (!line.value) return

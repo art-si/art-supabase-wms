@@ -19,7 +19,7 @@
       >
         <template #actions><BusinessTableWorkspaceActions :table="tableRef" /></template>
       </BusinessWorkspaceHeader>
-      <ElAlert v-if="optionError" type="warning" :closable="false" show-icon class="mb-3">
+      <ElAlert v-if="optionError" type="warning" :closable="false" show-icon>
         单据类型加载失败。<ElButton link type="primary" @click="loadOptions">重新加载</ElButton>
       </ElAlert>
       <ArtTableQuery

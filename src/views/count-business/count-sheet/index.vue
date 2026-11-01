@@ -15,11 +15,11 @@
       >
         <template #actions><BusinessTableWorkspaceActions :table="tableRef" /></template>
       </BusinessWorkspaceHeader>
-      <ElAlert v-if="planId" type="info" :closable="false" show-icon class="mb-3">
+      <ElAlert v-if="planId" type="info" :closable="false" show-icon>
         当前仅显示所选盘点方案生成的盘点表。
         <ElButton link type="primary" @click="showAllSheets">查看全部盘点表</ElButton>
       </ElAlert>
-      <ElAlert v-if="optionError" type="warning" :closable="false" show-icon class="mb-3">
+      <ElAlert v-if="optionError" type="warning" :closable="false" show-icon>
         库存组织选项加载失败。
         <ElButton link type="primary" :loading="optionsLoading" @click="loadOptions"
           >重新加载</ElButton

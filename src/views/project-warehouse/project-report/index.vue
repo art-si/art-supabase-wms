@@ -15,7 +15,6 @@
       <ArtSectionCard
         title="查询范围"
         subtitle="先选择项目，可再缩小到一个施工号。"
-        class="mb-4"
         :show-scrollbar="false"
       >
         <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -91,7 +90,6 @@
         v-if="selectedProjectId"
         title="项目完工复盘明细"
         subtitle="七类明细使用同一项目和施工号范围；在制材料按已过账净领料和完工入库审核记录计算。"
-        class="mt-4"
         preserve-content-structure
       >
         <ElTabs v-model="activeTab" class="min-w-0">

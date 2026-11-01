@@ -1,1 +1,0 @@
-import{Xr as e}from"./supabase-adyVcRTj.js";import{r as t,t as n}from"./unit-display-DQTVFhOg.js";import{t as r}from"./unit-of-measure-C_dB2WxA.js";function i(){let i=e(n([])),a=0;async function o(e){let t=++a,o=await r(e);t===a&&(i.value=n(o))}function s(e,n){return t(i.value,e,n)}return{loadUnitDisplayNames:o,unitDisplayName:s}}export{i as t};

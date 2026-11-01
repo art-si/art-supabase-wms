@@ -53,24 +53,6 @@
               :gutter="20"
               label-position="top"
             >
-              <template #sourceKeeperId>
-                <ArtEmployeeSelect
-                  :model-value="form.sourceKeeperId || undefined"
-                  @update:model-value="form.sourceKeeperId = $event || null"
-                  :tenant-id="context?.tenantId"
-                  :disabled="readonly || isReceipt"
-                  placeholder="选择调出仓管员"
-                />
-              </template>
-              <template #targetKeeperId>
-                <ArtEmployeeSelect
-                  :model-value="form.targetKeeperId || undefined"
-                  @update:model-value="form.targetKeeperId = $event || null"
-                  :tenant-id="context?.tenantId"
-                  :disabled="readonly || isReceipt"
-                  placeholder="选择调入仓管员"
-                />
-              </template>
             </ArtForm>
             <div v-if="!readonly && !isReceipt" class="mt-2 flex flex-wrap items-center gap-2">
               <ElInput
@@ -248,15 +230,6 @@
             @update:selected-data="onLineStockSelected"
           />
         </template>
-        <template #keeperId>
-          <ArtEmployeeSelect
-            :model-value="lineForm.keeperId || undefined"
-            @update:model-value="lineForm.keeperId = $event || null"
-            :tenant-id="context?.tenantId"
-            :disabled="readonly"
-            placeholder="选择仓管员"
-          />
-        </template>
       </ArtForm>
     </div>
   </ArtDialog>
@@ -322,7 +295,6 @@
   } from '@/components/core/tables/art-table-query/index.vue'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type { ColumnOption } from '@/types'
-  import ArtEmployeeSelect from '@/components/business/art-employee-select/index.vue'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
@@ -937,8 +909,38 @@
         childrenField: 'children',
         props: { disabled: readonly.value, filterable: true, clearable: true, checkStrictly: true }
       },
-      { key: 'sourceKeeperId', label: '调出仓管员', type: 'slot' },
-      { key: 'targetKeeperId', label: '调入仓管员', type: 'slot' },
+      {
+        key: 'sourceKeeperId',
+        label: '调出仓管员',
+        type: 'employeeSelect',
+        get props(): FormItem['props'] {
+          return {
+            modelValue: form.value.sourceKeeperId || undefined,
+            'onUpdate:modelValue': ($event: typeof form.value.sourceKeeperId) => {
+              form.value.sourceKeeperId = $event || null
+            },
+            tenantId: context.value?.tenantId,
+            disabled: readonly.value || isReceipt.value,
+            placeholder: '选择调出仓管员'
+          }
+        }
+      },
+      {
+        key: 'targetKeeperId',
+        label: '调入仓管员',
+        type: 'employeeSelect',
+        get props(): FormItem['props'] {
+          return {
+            modelValue: form.value.targetKeeperId || undefined,
+            'onUpdate:modelValue': ($event: typeof form.value.targetKeeperId) => {
+              form.value.targetKeeperId = $event || null
+            },
+            tenantId: context.value?.tenantId,
+            disabled: readonly.value || isReceipt.value,
+            placeholder: '选择调入仓管员'
+          }
+        }
+      },
       {
         key: 'remark',
         label: '备注',
@@ -1462,7 +1464,22 @@
         options: stockStatusDisplayOptions.value,
         props: { disabled: true }
       },
-      { key: 'keeperId', label: '仓管员', type: 'slot' },
+      {
+        key: 'keeperId',
+        label: '仓管员',
+        type: 'employeeSelect',
+        get props(): FormItem['props'] {
+          return {
+            modelValue: lineForm.value.keeperId || undefined,
+            'onUpdate:modelValue': ($event: typeof lineForm.value.keeperId) => {
+              lineForm.value.keeperId = $event || null
+            },
+            tenantId: context.value?.tenantId,
+            disabled: readonly.value,
+            placeholder: '选择仓管员'
+          }
+        }
+      },
       { key: 'tracking', label: '辅助与跟踪', type: 'tab' },
       {
         key: 'auxiliaryQuantity',

@@ -26,40 +26,6 @@
         :gutter="20"
         label-position="top"
       >
-        <template #sourceBatchId>
-          <ArtTableSingleSelect
-            :model-value="form.sourceBatchId || undefined"
-            :api-fn="batchApi"
-            :selected-data="selectedBatch ? [selectedBatch] : []"
-            :columns="batchColumns"
-            title="选择来源库存"
-            subtitle="项目归属、仓库及批次从来源库存锁定"
-            placeholder="选择来源批次"
-            search-placeholder="输入批号或备注"
-            label-key="batchLabel"
-            :show-pagination="true"
-            :page-size="20"
-            @update:selected-data="onBatchSelected"
-            @update:model-value="form.sourceBatchId = String($event || '')"
-          />
-        </template>
-        <template #targetMaterialId>
-          <ArtTableSingleSelect
-            :model-value="form.targetMaterialId || undefined"
-            :api-fn="materialApi"
-            :selected-data="selectedMaterial"
-            :columns="materialColumns"
-            title="选择目标物料"
-            subtitle="转换后产生新的物料批次，并保留来源单据"
-            placeholder="选择目标物料"
-            search-placeholder="输入物料编码或名称"
-            label-key="materialName"
-            :show-pagination="true"
-            :page-size="20"
-            @update:selected-data="onMaterialSelected"
-            @update:model-value="form.targetMaterialId = String($event || '')"
-          />
-        </template>
       </ArtForm>
       <ElAlert v-if="selectedBatch" type="success" :closable="false" show-icon>
         来源：{{ selectedBatch.warehouse?.warehouseName }} ·
@@ -82,7 +48,6 @@
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
-  import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
   import type {
     DataSelectColumn,
     DataSelectFetchParams,
@@ -199,7 +164,34 @@
       type: 'input',
       props: { maxlength: 80, placeholder: '自动生成，可修改' }
     },
-    { key: 'sourceBatchId', label: '来源批次', type: 'input', span: 24 },
+    {
+      key: 'sourceBatchId',
+      label: '来源批次',
+      span: 24,
+      type: 'dataSelect',
+      get props(): FormItem['props'] {
+        return {
+          mode: 'table',
+          multiple: false,
+          showSelectedPanel: false,
+          showPagination: true,
+          modelValue: form.value.sourceBatchId || undefined,
+          apiFn: batchApi,
+          selectedData: selectedBatch.value ? [selectedBatch.value] : [],
+          columns: batchColumns,
+          title: '选择来源库存',
+          subtitle: '项目归属、仓库及批次从来源库存锁定',
+          placeholder: '选择来源批次',
+          searchPlaceholder: '输入批号或备注',
+          labelKey: 'batchLabel',
+          pageSize: 20,
+          'onUpdate:selectedData': onBatchSelected,
+          'onUpdate:modelValue': ($event: typeof form.value.sourceBatchId) => {
+            form.value.sourceBatchId = String($event || '')
+          }
+        }
+      }
+    },
     {
       key: 'quantity',
       label: '调整数量',
@@ -234,7 +226,34 @@
       : []),
     ...(form.value.adjustmentType === 'material_convert'
       ? [
-          { key: 'targetMaterialId', label: '目标物料', type: 'input' as const, span: 24 },
+          {
+            key: 'targetMaterialId',
+            label: '目标物料',
+            span: 24,
+            type: 'dataSelect',
+            get props(): FormItem['props'] {
+              return {
+                mode: 'table',
+                multiple: false,
+                showSelectedPanel: false,
+                showPagination: true,
+                modelValue: form.value.targetMaterialId || undefined,
+                apiFn: materialApi,
+                selectedData: selectedMaterial.value,
+                columns: materialColumns,
+                title: '选择目标物料',
+                subtitle: '转换后产生新的物料批次，并保留来源单据',
+                placeholder: '选择目标物料',
+                searchPlaceholder: '输入物料编码或名称',
+                labelKey: 'materialName',
+                pageSize: 20,
+                'onUpdate:selectedData': onMaterialSelected,
+                'onUpdate:modelValue': ($event: typeof form.value.targetMaterialId) => {
+                  form.value.targetMaterialId = String($event || '')
+                }
+              }
+            }
+          },
           {
             key: 'targetQuantity',
             label: '转换后数量',

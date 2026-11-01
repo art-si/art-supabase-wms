@@ -75,18 +75,6 @@
         <template #headerSummary
           ><ArtDescriptions :data="viewData" :items="viewItems" :columns="3"
         /></template>
-        <template #keeperId>
-          <ArtEmployeeSelect
-            :model-value="form.keeperId || undefined"
-            :selected-data="selectedKeeper"
-            :tenant-id="form.tenantId || undefined"
-            title="选择仓管员"
-            placeholder="从员工花名册选择"
-            :disabled="!form.tenantId"
-            @update:model-value="form.keeperId = $event || null"
-            @update:selected-data="selectedKeeper = $event"
-          />
-        </template>
 
         <template #lineItems
           ><ArtSectionCard
@@ -878,7 +866,27 @@
       type: 'date',
       props: { valueFormat: 'YYYY-MM-DD', disabled: true, class: 'w-full!' }
     },
-    { key: 'keeperId', label: '仓管员', type: 'input', props: { disabled: mode.value === 'view' } },
+    {
+      key: 'keeperId',
+      label: '仓管员',
+      type: 'employeeSelect',
+      get props(): FormItem['props'] {
+        return {
+          disabled: mode.value === 'view' || !form.value.tenantId,
+          modelValue: form.value.keeperId || undefined,
+          selectedData: selectedKeeper.value,
+          tenantId: form.value.tenantId || undefined,
+          title: '选择仓管员',
+          placeholder: '从员工花名册选择',
+          'onUpdate:modelValue': ($event: typeof form.value.keeperId) => {
+            form.value.keeperId = $event || null
+          },
+          'onUpdate:selectedData': ($event: typeof selectedKeeper.value) => {
+            selectedKeeper.value = $event
+          }
+        }
+      }
+    },
     {
       key: 'currencyCode',
       label: '币种',

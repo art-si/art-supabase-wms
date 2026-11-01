@@ -25,24 +25,6 @@
         :gutter="20"
         label-position="top"
       >
-        <template #targetMaterialId>
-          <ArtTableSingleSelect
-            :model-value="form.targetMaterialId || undefined"
-            :api-fn="materialApi"
-            :selected-data="selectedMaterial"
-            :columns="materialColumns"
-            title="选择成品物料"
-            subtitle="成品物料须不同于所有来源组件"
-            placeholder="选择成品物料"
-            search-placeholder="输入物料编码或名称"
-            label-key="materialName"
-            :show-pagination="true"
-            :page-size="20"
-            :disabled="!firstBatch"
-            @update:selected-data="onMaterialSelected"
-            @update:model-value="form.targetMaterialId = String($event || '')"
-          />
-        </template>
         <template #sourceComponents
           ><ArtSectionCard
             title="来源组件"
@@ -223,7 +205,35 @@
       type: 'input',
       props: { maxlength: 80, placeholder: '留空沿用组装单号' }
     },
-    { key: 'targetMaterialId', label: '成品物料', type: 'input', span: 24 },
+    {
+      key: 'targetMaterialId',
+      label: '成品物料',
+      span: 24,
+      type: 'dataSelect',
+      get props(): FormItem['props'] {
+        return {
+          mode: 'table',
+          multiple: false,
+          showSelectedPanel: false,
+          showPagination: true,
+          modelValue: form.value.targetMaterialId || undefined,
+          apiFn: materialApi,
+          selectedData: selectedMaterial.value,
+          columns: materialColumns,
+          title: '选择成品物料',
+          subtitle: '成品物料须不同于所有来源组件',
+          placeholder: '选择成品物料',
+          searchPlaceholder: '输入物料编码或名称',
+          labelKey: 'materialName',
+          pageSize: 20,
+          disabled: !firstBatch.value,
+          'onUpdate:selectedData': onMaterialSelected,
+          'onUpdate:modelValue': ($event: typeof form.value.targetMaterialId) => {
+            form.value.targetMaterialId = String($event || '')
+          }
+        }
+      }
+    },
     {
       key: 'targetQuantity',
       label: '成品数量',
