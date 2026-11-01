@@ -55,15 +55,12 @@
             </ElAlert>
             <ArtForm
               ref="formRef"
-              :model-value="form"
-              @update:model-value="replaceReactiveModel(form, $event)"
+              v-model="form"
               :items="formItems"
               :rules="rules"
               :span="12"
               :gutter="20"
               label-position="top"
-              :show-reset="false"
-              :show-submit="false"
               root-class="wms-sales-return-form"
             >
               <template #binId>
@@ -163,7 +160,6 @@
 
 <script setup lang="ts">
   import { RouterLink } from 'vue-router'
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { formatDateTimeValue, formatNumberValue } from '@/utils/ui/format'
   import { ElMessage } from 'element-plus'
@@ -220,7 +216,7 @@
   let optionRequest = 0
   let formVersion = 0
   const scanText = ref('')
-  const form = reactive<WmsSalesReturnInput>({
+  const form = ref<WmsSalesReturnInput>({
     outboundAllocationId: '',
     warehouseId: '',
     binId: null,
@@ -247,14 +243,16 @@
     const outboundDisplayQuantity = allocation?.outboundDisplayQuantity
     if (!allocation || outboundDisplayQuantity == null || remainingDisplayQuantity.value === null)
       return null
-    if (form.quantity >= remainingQuantity.value) return remainingDisplayQuantity.value
-    return Math.round((outboundDisplayQuantity * form.quantity * 1e6) / allocation.quantity) / 1e6
+    if (form.value.quantity >= remainingQuantity.value) return remainingDisplayQuantity.value
+    return (
+      Math.round((outboundDisplayQuantity * form.value.quantity * 1e6) / allocation.quantity) / 1e6
+    )
   })
   const availableSerials = computed(() =>
     serials.value.filter((row) => row.status === 'out' && !returnedSerialIds.value.includes(row.id))
   )
   const selectedWarehouse = computed(() =>
-    warehouses.value.find((row) => row.id === form.warehouseId)
+    warehouses.value.find((row) => row.id === form.value.warehouseId)
   )
   const scopeLabel = computed(() => {
     const projectId = selectedAllocation.value?.batch?.projectId
@@ -266,7 +264,7 @@
     const items: ArtDescriptionItem[] = [
       { key: 'scope', label: '项目施工号', value: scopeLabel.value },
       { key: 'remainingQuantity', label: '可退数量', value: remainingQuantity.value },
-      { key: 'quantity', label: '本次入库', value: form.quantity }
+      { key: 'quantity', label: '本次入库', value: form.value.quantity }
     ]
     if (remainingDisplayQuantity.value !== null) {
       const unit = formatUnitDisplayName(selectedAllocation.value?.displayUnit?.unitName, '')
@@ -346,7 +344,7 @@
               disabled: serialLoading.value || serialLoadError.value,
               collapseTags: true,
               collapseTagsTooltip: true,
-              onChange: () => (form.quantity = form.serialIds.length)
+              onChange: () => (form.value.quantity = form.value.serialIds.length)
             },
             help: '选择原发货记录中尚未退回的 SN；数量随所选 SN 自动变化。'
           }
@@ -407,13 +405,13 @@
       row && typeof row.id === 'string' && Array.isArray(row.returns)
         ? (row as AllocationRow)
         : null
-    form.outboundAllocationId = selectedAllocation.value?.id || ''
-    form.warehouseId = ''
-    form.binId = null
-    form.quantity = selectedAllocation.value?.serialIds.length
+    form.value.outboundAllocationId = selectedAllocation.value?.id || ''
+    form.value.warehouseId = ''
+    form.value.binId = null
+    form.value.quantity = selectedAllocation.value?.serialIds.length
       ? 0
       : Math.min(1, remainingQuantity.value)
-    form.serialIds = []
+    form.value.serialIds = []
     bins.value = []
     serials.value = []
     scanText.value = ''
@@ -441,10 +439,10 @@
     const request = ++binRequest
     binLoading.value = true
     binLoadError.value = false
-    form.binId = null
+    form.value.binId = null
     bins.value = []
     try {
-      const loaded = form.warehouseId ? await fetchWmsBins(form.warehouseId) : []
+      const loaded = form.value.warehouseId ? await fetchWmsBins(form.value.warehouseId) : []
       if (request !== binRequest) return
       bins.value = loaded
     } catch {
@@ -461,9 +459,9 @@
     if (!code) return
     const serial = availableSerials.value.find((row) => row.serialNo === code)
     if (!serial) return void ElMessage.warning('原发货记录中未找到可退的该 SN')
-    if (form.serialIds.includes(serial.id)) return void ElMessage.warning('该 SN 已选择')
-    form.serialIds = [...form.serialIds, serial.id]
-    form.quantity = form.serialIds.length
+    if (form.value.serialIds.includes(serial.id)) return void ElMessage.warning('该 SN 已选择')
+    form.value.serialIds = [...form.value.serialIds, serial.id]
+    form.value.quantity = form.value.serialIds.length
     scanText.value = ''
     ElMessage.success(`已加入退货 SN：${code}`)
   }
@@ -479,7 +477,7 @@
     serials.value = []
     bins.value = []
     scanText.value = ''
-    Object.assign(form, {
+    Object.assign(form.value, {
       outboundAllocationId: '',
       warehouseId: '',
       binId: null,
@@ -522,15 +520,15 @@
       if (!selectedAllocation.value || !selectedWarehouse.value) return
       if (selectedWarehouse.value.tenantId !== selectedAllocation.value.tenantId)
         return void ElMessage.warning('退货仓库与原发货记录不属于同一租户')
-      if (form.quantity <= 0 || form.quantity > remainingQuantity.value)
+      if (form.value.quantity <= 0 || form.value.quantity > remainingQuantity.value)
         return void ElMessage.warning('本次退货数量超过原发货可退数量')
       if (
         selectedAllocation.value.serialIds.length &&
-        (form.serialIds.length !== form.quantity || serialLoadError.value)
+        (form.value.serialIds.length !== form.value.quantity || serialLoadError.value)
       )
         return void ElMessage.warning('请逐件选择与退货数量一致的原发货 SN')
       submitting.value = true
-      await postWmsSalesReturn({ ...form })
+      await postWmsSalesReturn({ ...form.value })
       if (formVersion === version) clearForm()
     } catch {
       // ArtForm 和 API provider 已展示字段或业务错误。

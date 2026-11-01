@@ -16,15 +16,7 @@
       <ElAlert v-if="loadError" type="error" :closable="false" show-icon>
         SN 清单加载失败或已变化，请重新生成盘点方案。
       </ElAlert>
-      <ArtForm
-        ref="formRef"
-        v-model="form"
-        :items="items"
-        :rules="rules"
-        label-position="top"
-        :show-reset="false"
-        :show-submit="false"
-      >
+      <ArtForm ref="formRef" v-model="form" :items="items" :rules="rules" label-position="top">
         <template #newSerialText>
           <ElInput
             v-model="newSerialText"

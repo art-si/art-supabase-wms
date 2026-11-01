@@ -25,8 +25,7 @@
       </ElAlert>
       <ArtTableQuery
         ref="tableRef"
-        :model-value="search"
-        @update:model-value="replaceReactiveModel(search, $event)"
+        v-model="search"
         :api-fn="fetchRows"
         :search-items="searchItems"
         :columns-factory="columnsFactory"
@@ -47,7 +46,6 @@
 </template>
 
 <script setup lang="tsx">
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import BusinessWorkspaceHeader from '@/components/business/business-workspace-header/index.vue'
@@ -90,7 +88,7 @@
       onClick: () => openAdd()
     }
   ]
-  const search = reactive({ projectId: '', status: '', keyword: '' })
+  const search = ref({ projectId: '', status: '', keyword: '' })
   const filterTenantId = computed(() => effectiveTenantId.value || undefined)
   const searchItems = computed<SearchFormItem[]>(() => [
     {

@@ -26,8 +26,7 @@
       </ElAlert>
       <ArtTableQuery
         ref="tableRef"
-        :model-value="search"
-        @update:model-value="replaceReactiveModel(search, $event)"
+        v-model="search"
         :api-fn="fetchRows"
         :search-items="searchItems"
         :columns-factory="columnsFactory"
@@ -53,7 +52,7 @@
 
 <script setup lang="tsx">
   import { formatDateTimeValue } from '@/utils/ui/format'
-  import { replaceReactiveModel } from '@/utils/form/model'
+  import TreeUtils from '@/utils/tree'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { ElTag } from 'element-plus'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
@@ -140,6 +139,7 @@
   const detailRef = ref<InstanceType<typeof CountDetailDrawer>>()
   const warehouses = ref<WmsWarehouse[]>([])
   const organizations = ref<WmsInventoryOrganization[]>([])
+  const organizationTreeUtils = new TreeUtils({ parentKey: 'parentId' })
   const projects = ref<WmsProject[]>([])
   const sections = ref<WmsProjectSection[]>([])
   const optionError = ref(false)
@@ -155,7 +155,7 @@
     }
   ]
   const workingId = ref<string>()
-  const search = reactive({
+  const search = ref({
     displayMode: 'document' as 'document' | 'line',
     organizationId: '',
     warehouseId: '',
@@ -164,7 +164,12 @@
     constructionNo: '',
     keyword: ''
   })
-  const displayMode = toRef(search, 'displayMode')
+  const displayMode = computed({
+    get: () => search.value.displayMode,
+    set: (value) => {
+      search.value.displayMode = value
+    }
+  })
   watch(displayMode, () => void refresh())
   const displayModeOptions = useDictionaryOptions('commonDocumentDisplayMode')
   const filterTenantId = computed(() => effectiveTenantId.value || undefined)
@@ -179,18 +184,22 @@
     {
       label: '库存组织',
       key: 'organizationId',
-      type: 'select',
+      type: 'treeSelect',
+      options: organizationTreeUtils.listToTree(
+        organizations.value.filter(
+          (row) => !filterTenantId.value || row.tenantId === filterTenantId.value
+        )
+      ),
+      valueField: 'id',
+      labelField: 'organizationName',
+      labelFn: (row) => `${row.organizationName ?? ''} · ${row.organizationCode ?? ''}`,
       props: {
         clearable: true,
         filterable: true,
+        checkStrictly: true,
+        renderAfterExpand: false,
         placeholder: '全部库存组织',
-        options: organizations.value
-          .filter((row) => !filterTenantId.value || row.tenantId === filterTenantId.value)
-          .map((row) => ({
-            label: `${row.organizationName} · ${row.organizationCode}`,
-            value: row.id
-          })),
-        onChange: () => (search.warehouseId = '')
+        onChange: () => (search.value.warehouseId = '')
       }
     },
     {
@@ -205,7 +214,7 @@
           .filter(
             (row) =>
               (!filterTenantId.value || row.tenantId === filterTenantId.value) &&
-              (!search.organizationId || row.organizationId === search.organizationId)
+              (!search.value.organizationId || row.organizationId === search.value.organizationId)
           )
           .map((row) => ({ label: `${row.warehouseName} · ${row.warehouseCode}`, value: row.id }))
       }
@@ -231,7 +240,7 @@
         options: projects.value
           .filter((row) => !filterTenantId.value || row.tenantId === filterTenantId.value)
           .map((row) => ({ label: `${row.projectName} · ${row.projectCode}`, value: row.id })),
-        onChange: () => (search.constructionNo = '')
+        onChange: () => (search.value.constructionNo = '')
       }
     },
     {
@@ -241,10 +250,10 @@
       props: {
         clearable: true,
         filterable: true,
-        disabled: !search.projectId,
-        placeholder: search.projectId ? '全部施工号' : '请先选项目',
+        disabled: !search.value.projectId,
+        placeholder: search.value.projectId ? '全部施工号' : '请先选项目',
         options: sections.value
-          .filter((row) => row.projectId === search.projectId)
+          .filter((row) => row.projectId === search.value.projectId)
           .map((row) => ({
             label: `${row.constructionNo} · ${row.sectionName}`,
             value: row.constructionNo

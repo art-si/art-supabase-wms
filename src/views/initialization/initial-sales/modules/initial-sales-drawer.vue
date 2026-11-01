@@ -49,596 +49,590 @@
       <ElAlert v-if="importIntent" type="success" :closable="false" show-icon>
         先选择库存组织及客户，再在“物料明细”中点击“导入明细”；导入后请核对仓储和价格信息。
       </ElAlert>
-      <ArtSectionCard
-        title="单据表头"
-        :subtitle="
-          issueRequest
-            ? '生产工单可参选；选择工单或项目后自动带入客户，仍可修改。'
-            : '填写业务日期、库存组织及业务归属；记账日期由系统记录。'
-        "
+      <ArtForm
+        ref="formRef"
+        v-model:active-tab="activeTab"
+        class="px-0! pt-0!"
+        v-model="form"
+        :items="formItems"
+        :rules="headerRules"
+        :span="8"
+        :gutter="18"
+        label-position="top"
       >
-        <ArtDescriptions v-if="mode === 'view'" :data="viewData" :items="viewItems" :columns="3" />
-        <ArtForm
-          v-else
-          ref="formRef"
-          v-model="form"
-          :items="headerItems"
-          :rules="headerRules"
-          :span="8"
-          :gutter="18"
-          label-position="top"
-          :show-reset="false"
-          :show-submit="false"
-        >
-          <template #projectId>
-            <ArtTableSingleSelect
-              v-model="form.projectId"
-              :data="projects"
-              :columns="partyColumns"
-              row-key="id"
-              label-key="name"
-              description-key="code"
-              title="选择项目"
-              clearable
-              @change="onHeaderProjectChange"
-            />
-          </template>
-          <template #workOrderId>
-            <ArtTableSingleSelect
-              v-model="form.workOrderId"
-              :api-fn="workOrderApi"
-              :selected-data="selectedWorkOrder"
-              :columns="workOrderColumns"
-              label-key="workOrderNo"
-              title="参选生产工单"
-              :disabled="!form.warehouseId"
-              clearable
-              @update:selected-data="onWorkOrderSelected"
-            />
-          </template>
-          <template #constructionNo>
-            <ArtTableSingleSelect
-              :model-value="form.constructionNo || undefined"
-              @update:model-value="form.constructionNo = String($event || '') || null"
-              :api-fn="(params) => constructionApi(form.projectId, params)"
-              :columns="constructionColumns"
-              row-key="constructionNo"
-              label-key="constructionNo"
-              title="参选施工号"
-              :disabled="!form.projectId"
-              clearable
-            />
-          </template>
-          <template #customerId>
-            <ArtTableSingleSelect
-              :model-value="form.customerId || undefined"
-              :selected-data="selectedCustomer"
-              :data="customers"
-              :columns="partyColumns"
-              row-key="id"
-              label-key="name"
-              description-key="code"
-              title="选择客户"
-              placeholder="从销售主数据选择"
-              :disabled="!form.tenantId"
-              clearable
-              @update:model-value="form.customerId = String($event || '')"
-              @update:selected-data="selectedCustomer = $event"
-            />
-          </template>
-          <template #salespersonId>
-            <ArtEmployeeSelect
-              :model-value="form.salespersonId || undefined"
-              :selected-data="selectedSalesperson"
-              :tenant-id="form.tenantId || undefined"
-              :title="issueRequest ? '选择申请人' : '选择销售员'"
-              :disabled="!form.tenantId"
-              @update:model-value="form.salespersonId = $event || null"
-              @update:selected-data="onSalespersonSelected"
-            />
-          </template>
-          <template #keeperId>
-            <ArtEmployeeSelect
-              :model-value="form.keeperId || undefined"
-              :selected-data="selectedKeeper"
-              :tenant-id="form.tenantId || undefined"
-              title="选择仓管员"
-              :disabled="!form.tenantId"
-              @update:model-value="onHeaderKeeperChange"
-              @update:selected-data="selectedKeeper = $event"
-            />
-          </template>
-        </ArtForm>
-      </ArtSectionCard>
-      <ArtSectionCard
-        :title="issueRequest ? '申请物料' : isReturn ? '退货明细' : '物料明细'"
-        :subtitle="`共 ${lines.length} 行 · 数量 ${quantityTotal.toFixed(4)} · 价税合计 ${totalAmount.toFixed(2)} 元`"
-        :empty="lines.length === 0"
-        empty-title="尚未选择物料"
-        empty-description="先选择库存组织，再从物料编码中添加明细。"
-      >
-        <template #actions>
-          <div
-            v-if="mode !== 'view' && form.tenantId"
-            class="flex flex-wrap items-center justify-end gap-2 whitespace-nowrap lg:flex-nowrap"
+        <template #headerSummary
+          ><ArtDescriptions :data="viewData" :items="viewItems" :columns="3"
+        /></template>
+        <template #projectId>
+          <ArtTableSingleSelect
+            v-model="form.projectId"
+            :data="projects"
+            :columns="partyColumns"
+            row-key="id"
+            label-key="name"
+            description-key="code"
+            title="选择项目"
+            clearable
+            @change="onHeaderProjectChange"
+          />
+        </template>
+        <template #workOrderId>
+          <ArtTableSingleSelect
+            v-model="form.workOrderId"
+            :api-fn="workOrderApi"
+            :selected-data="selectedWorkOrder"
+            :columns="workOrderColumns"
+            label-key="workOrderNo"
+            title="参选生产工单"
+            :disabled="!form.warehouseId"
+            clearable
+            @update:selected-data="onWorkOrderSelected"
+          />
+        </template>
+        <template #constructionNo>
+          <ArtTableSingleSelect
+            :model-value="form.constructionNo || undefined"
+            @update:model-value="form.constructionNo = String($event || '') || null"
+            :api-fn="(params) => constructionApi(form.projectId, params)"
+            :columns="constructionColumns"
+            row-key="constructionNo"
+            label-key="constructionNo"
+            title="参选施工号"
+            :disabled="!form.projectId"
+            clearable
+          />
+        </template>
+        <template #customerId>
+          <ArtTableSingleSelect
+            :model-value="form.customerId || undefined"
+            :selected-data="selectedCustomer"
+            :data="customers"
+            :columns="partyColumns"
+            row-key="id"
+            label-key="name"
+            description-key="code"
+            title="选择客户"
+            placeholder="从销售主数据选择"
+            :disabled="!form.tenantId"
+            clearable
+            @update:model-value="form.customerId = String($event || '')"
+            @update:selected-data="selectedCustomer = $event"
+          />
+        </template>
+        <template #salespersonId>
+          <ArtEmployeeSelect
+            :model-value="form.salespersonId || undefined"
+            :selected-data="selectedSalesperson"
+            :tenant-id="form.tenantId || undefined"
+            :title="issueRequest ? '选择申请人' : '选择销售员'"
+            :disabled="!form.tenantId"
+            @update:model-value="form.salespersonId = $event || null"
+            @update:selected-data="onSalespersonSelected"
+          />
+        </template>
+        <template #keeperId>
+          <ArtEmployeeSelect
+            :model-value="form.keeperId || undefined"
+            :selected-data="selectedKeeper"
+            :tenant-id="form.tenantId || undefined"
+            title="选择仓管员"
+            :disabled="!form.tenantId"
+            @update:model-value="onHeaderKeeperChange"
+            @update:selected-data="selectedKeeper = $event"
+          />
+        </template>
+
+        <template #lineItems
+          ><ArtSectionCard
+            :title="issueRequest ? '申请物料' : isReturn ? '退货明细' : '物料明细'"
+            :subtitle="`共 ${lines.length} 行 · 数量 ${quantityTotal.toFixed(4)} · 价税合计 ${totalAmount.toFixed(2)} 元`"
+            :empty="lines.length === 0"
+            empty-title="尚未选择物料"
+            empty-description="先选择库存组织，再从物料编码中添加明细。"
           >
-            <ArtButtonMore
-              v-if="isDailySales && !issueRequest"
-              :list="sourceActions"
-              trigger="click"
-              @click="openSourceChoice"
+            <template #actions>
+              <div
+                v-if="mode !== 'view' && form.tenantId"
+                class="flex flex-wrap items-center justify-end gap-2 whitespace-nowrap lg:flex-nowrap"
+              >
+                <ArtButtonMore
+                  v-if="isDailySales && !issueRequest"
+                  :list="sourceActions"
+                  trigger="click"
+                  @click="openSourceChoice"
+                >
+                  <template #trigger
+                    ><ElButton
+                      :disabled="
+                        !form.organizationId || (props.kind === 'outbound' && !form.warehouseId)
+                      "
+                      plain
+                      >选单<ArtSvgIcon icon="ri:arrow-down-s-line" /></ElButton
+                  ></template>
+                </ArtButtonMore>
+                <ElButton
+                  v-if="usesStockPicker"
+                  type="primary"
+                  :disabled="!form.warehouseId"
+                  @click="openStockChoice"
+                >
+                  <ArtSvgIcon icon="ri:add-line" />添加物料
+                </ElButton>
+                <ArtMaterialSelect
+                  v-if="!usesStockPicker"
+                  v-model:model-values="materialPickerIds"
+                  v-model:selected-data="materialPickerRows"
+                  class="w-auto! shrink-0"
+                  title="选择销售物料"
+                  subtitle="可按物料编码、名称和描述检索并多选。"
+                  search-placeholder="搜索物料编码或描述"
+                  label-key="name"
+                  multiple
+                  :categories="materialCategories"
+                  :api-fn="materialApi"
+                  @confirm="addMaterials"
+                >
+                  <template #trigger="{ open }"
+                    ><ElButton type="primary" @click="open"
+                      ><ArtSvgIcon icon="ri:add-line" />添加物料</ElButton
+                    ></template
+                  >
+                </ArtMaterialSelect>
+                <span
+                  v-auth="importPermission"
+                  class="shrink-0"
+                  :title="form.organizationId ? '' : '请先选择库存组织'"
+                >
+                  <ArtExcelImport
+                    accept=".xlsx,.xls,.csv"
+                    :context-key="openData"
+                    :disabled="!form.organizationId || importing || parsing"
+                    :button-props="{ type: 'success', plain: true, loading: importing || parsing }"
+                    icon="ri:upload-2-line"
+                    @parsing-change="onImportParsing"
+                    @import-success="importLines"
+                    @import-error="onImportError"
+                    >导入明细</ArtExcelImport
+                  >
+                </span>
+              </div>
+            </template>
+            <ArtTable
+              v-if="lines.length"
+              ref="lineTableRef"
+              class="wms-editable-line-table"
+              :data="lines"
+              :columns="lineColumns"
+              :pagination="false"
+              :cell-class-name="salesLineCellClassName"
+              row-key="lineNo"
+              table-layout="fixed"
             >
-              <template #trigger
-                ><ElButton
-                  :disabled="
-                    !form.organizationId || (props.kind === 'outbound' && !form.warehouseId)
-                  "
-                  plain
-                  >选单<ArtSvgIcon icon="ri:arrow-down-s-line" /></ElButton
-              ></template>
-            </ArtButtonMore>
-            <ElButton
-              v-if="usesStockPicker"
-              type="primary"
-              :disabled="!form.warehouseId"
-              @click="openStockChoice"
-            >
-              <ArtSvgIcon icon="ri:add-line" />添加物料
-            </ElButton>
-            <ArtMaterialSelect
-              v-if="!usesStockPicker"
-              v-model:model-values="materialPickerIds"
-              v-model:selected-data="materialPickerRows"
-              class="w-auto! shrink-0"
-              title="选择销售物料"
-              subtitle="可按物料编码、名称和描述检索并多选。"
-              search-placeholder="搜索物料编码或描述"
-              label-key="name"
-              multiple
-              :categories="materialCategories"
-              :api-fn="materialApi"
-              @confirm="addMaterials"
-            >
-              <template #trigger="{ open }"
-                ><ElButton type="primary" @click="open"
-                  ><ArtSvgIcon icon="ri:add-line" />添加物料</ElButton
+              <template #material="{ row }">
+                <ArtMaterialSelect
+                  v-if="issueRequest && mode !== 'view'"
+                  v-model:model-values="materialPickerIds"
+                  v-model:selected-data="materialPickerRows"
+                  title="参选物料描述"
+                  label-key="description"
+                  multiple
+                  :categories="materialCategories"
+                  :api-fn="materialApi"
+                  @confirm="addMaterials"
+                >
+                  <template #trigger="{ open }"
+                    ><ElButton link type="primary" @click="open">{{
+                      row.material?.description || row.material?.name || '参选物料描述'
+                    }}</ElButton></template
+                  >
+                </ArtMaterialSelect>
+                <template v-else>
+                  <strong class="block truncate text-sm">{{
+                    row.material?.description ||
+                    row.material?.name ||
+                    row.material?.code ||
+                    '物料资料不可用'
+                  }}</strong>
+                  <small class="text-[var(--el-text-color-secondary)]">{{
+                    row.material?.code || '—'
+                  }}</small>
+                </template>
+              </template>
+              <template #returnType="{ row }">
+                <ElSelect v-if="mode !== 'view'" v-model="row.returnType" placeholder="退货类型">
+                  <ElOption
+                    v-for="option in returnTypes"
+                    :key="option.value"
+                    :label="option.label"
+                    :value="option.value"
+                  />
+                </ElSelect>
+                <ArtDictDisplay
+                  v-else
+                  dict-code="wmsInitialSalesReturnType"
+                  :value="row.returnType"
+                  display="text"
+                />
+              </template>
+              <template #projectId="{ row }">
+                <ArtTableSingleSelect
+                  v-if="mode !== 'view'"
+                  :model-value="row.projectId || undefined"
+                  :selected-data="row.project ? [row.project] : []"
+                  :data="projects"
+                  :columns="partyColumns"
+                  row-key="id"
+                  label-key="name"
+                  description-key="code"
+                  title="选择销售项目"
+                  placeholder="选择项目"
+                  clearable
+                  @update:model-value="onInlineProjectChange(row, String($event || '') || null)"
+                  @update:selected-data="row.project = $event[0] || null"
+                />
+                <span v-else>{{ projectName(row.projectId) }}</span>
+              </template>
+              <template #constructionNo="{ row }">
+                <ArtTableSingleSelect
+                  v-if="mode !== 'view'"
+                  :model-value="row.constructionNo || undefined"
+                  @update:model-value="row.constructionNo = String($event || '') || null"
+                  :api-fn="(params) => constructionApi(row.projectId, params)"
+                  :columns="constructionColumns"
+                  row-key="constructionNo"
+                  label-key="constructionNo"
+                  title="参选施工号"
+                  clearable
+                  :disabled="!row.projectId"
+                  placeholder="施工号"
+                />
+                <span v-else>{{ row.constructionNo || '—' }}</span>
+              </template>
+              <template #quantity="{ row }">
+                <ElInputNumber
+                  v-if="mode !== 'view'"
+                  :model-value="Math.abs(Number(row.quantity || 0))"
+                  @update:model-value="row.quantity = Math.abs(Number($event || 0))"
+                  :min="0"
+                  :precision="4"
+                  :controls="false"
+                  class="w-full!"
+                  ><template v-if="usesCurrencyQuantities" #prefix>￥</template></ElInputNumber
+                >
+                <strong v-else :class="isReturn ? 'sales-return-quantity' : 'tabular-nums'">{{
+                  formatSalesValue(displayQuantity(Number(row.quantity)))
+                }}</strong>
+              </template>
+              <template #inventoryUnitId="{ row }">
+                <ElSelect
+                  v-if="mode !== 'view'"
+                  v-model="row.inventoryUnitId"
+                  filterable
+                  placeholder="库存单位"
+                  ><ElOption
+                    v-for="unit in salesUnitOptions"
+                    :key="unit.value"
+                    :label="unit.label"
+                    :value="unit.value"
+                /></ElSelect>
+                <span v-else>{{ unitName(row.inventoryUnitId) }}</span>
+              </template>
+              <template #baseUnitId="{ row }">
+                <ElSelect
+                  v-if="mode !== 'view'"
+                  v-model="row.baseUnitId"
+                  filterable
+                  placeholder="基本单位"
+                >
+                  <ElOption
+                    v-for="unit in salesUnitOptions"
+                    :key="unit.value"
+                    :label="unit.label"
+                    :value="unit.value"
+                  />
+                </ElSelect>
+                <span v-else>{{ unitName(row.baseUnitId) }}</span>
+              </template>
+              <template #baseQuantity="{ row }">
+                <ElInputNumber
+                  v-if="issueRequest && mode !== 'view'"
+                  v-model="row.baseQuantity"
+                  :min="0"
+                  :precision="4"
+                  :controls="false"
+                  class="w-full!"
+                />
+                <template v-else>{{
+                  formatSalesValue(
+                    mode === 'view' ? Math.abs(Number(row.baseQuantity || 0)) : baseQuantity(row)
+                  )
+                }}</template></template
+              >
+              <template #auxiliaryUnitId="{ row }">{{ unitName(row.auxiliaryUnitId) }}</template>
+              <template #auxiliaryQuantity="{ row }">{{
+                mode === 'view'
+                  ? row.auxiliaryQuantity == null
+                    ? '—'
+                    : Math.abs(Number(row.auxiliaryQuantity))
+                  : auxQuantity(row, row.auxiliaryUnitId)
+              }}</template>
+              <template #auxiliaryUnit2Id="{ row }">{{ unitName(row.auxiliaryUnit2Id) }}</template>
+              <template #auxiliaryQuantity2="{ row }">{{
+                mode === 'view'
+                  ? row.auxiliaryQuantity2 == null
+                    ? '—'
+                    : Math.abs(Number(row.auxiliaryQuantity2))
+                  : auxQuantity(row, row.auxiliaryUnit2Id)
+              }}</template>
+              <template #unitPrice="{ row }"
+                ><ElInputNumber
+                  v-if="mode !== 'view'"
+                  v-model="row.unitPrice"
+                  :min="0"
+                  :precision="4"
+                  :controls="false"
+                  class="w-full!"
+                  @change="updatePrice(row, 'untaxed')"
+                /><span v-else>{{ Number(row.unitPrice).toFixed(4) }}</span></template
+              >
+              <template #taxInclusiveUnitPrice="{ row }"
+                ><ElInputNumber
+                  v-if="mode !== 'view'"
+                  v-model="row.taxInclusiveUnitPrice"
+                  :min="0"
+                  :precision="4"
+                  :controls="false"
+                  class="w-full!"
+                  @change="updatePrice(row, 'taxed')"
+                /><span v-else>{{ Number(row.taxInclusiveUnitPrice).toFixed(4) }}</span></template
+              >
+              <template #taxRate="{ row }"
+                ><ElSelect
+                  v-if="mode !== 'view'"
+                  v-model="row.taxRate"
+                  @change="updatePrice(row, row.priceBasis)"
+                  ><ElOption
+                    v-for="rate in taxRateOptions"
+                    :key="rate.value"
+                    :label="rate.label"
+                    :value="rate.value" /></ElSelect
+                ><span v-else>{{ row.taxRate }}%</span></template
+              >
+              <template #discountMethod="{ row }"
+                ><ElSelect
+                  v-if="mode !== 'view'"
+                  v-model="row.discountMethod"
+                  @change="row.unitDiscountRate = 0"
+                  ><ElOption
+                    v-for="option in wmsLineDiscountModeOptions"
+                    :key="option.value"
+                    :label="option.label"
+                    :value="option.value" /></ElSelect
+                ><span v-else>{{ row.discountMethod }}</span></template
+              >
+              <template #unitDiscountRate="{ row }"
+                ><ElInputNumber
+                  v-if="mode !== 'view'"
+                  v-model="row.unitDiscountRate"
+                  :min="0"
+                  :max="1"
+                  :precision="4"
+                  :controls="false"
+                  :disabled="row.discountMethod === 'none'"
+                  class="w-full!"
+                /><span v-else>{{ row.unitDiscountRate }}</span></template
+              >
+              <template #discountAmount="{ row }">{{
+                lineFinancial(row).discount.toFixed(2)
+              }}</template>
+              <template #amount="{ row }">{{
+                formatSalesValue(lineFinancial(row).amount, 2)
+              }}</template>
+              <template #taxAmount="{ row }">{{
+                formatSalesValue(lineFinancial(row).tax, 2)
+              }}</template>
+              <template #totalAmount="{ row }">{{
+                formatSalesValue(lineFinancial(row).total, 2)
+              }}</template>
+              <template #gift="{ row }"
+                ><ElCheckbox v-if="mode !== 'view'" v-model="row.gift" aria-label="赠品" /><span
+                  v-else
+                  >{{ row.gift ? '✓' : '—' }}</span
                 ></template
               >
-            </ArtMaterialSelect>
-            <span
-              v-auth="importPermission"
-              class="shrink-0"
-              :title="form.organizationId ? '' : '请先选择库存组织'"
-            >
-              <ArtExcelImport
-                accept=".xlsx,.xls,.csv"
-                :context-key="openData"
-                :disabled="!form.organizationId || importing || parsing"
-                :button-props="{ type: 'success', plain: true, loading: importing || parsing }"
-                icon="ri:upload-2-line"
-                @parsing-change="onImportParsing"
-                @import-success="importLines"
-                @import-error="onImportError"
-                >导入明细</ArtExcelImport
+              <template #batchNo="{ row }"
+                ><ElInput v-if="mode !== 'view'" v-model="row.batchNo" placeholder="批号" /><span
+                  v-else
+                  >{{ row.batchNo || '—' }}</span
+                ></template
               >
-            </span>
-          </div>
-        </template>
-        <ElScrollbar v-if="lines.length">
-          <ArtTable
-            ref="lineTableRef"
-            class="wms-editable-line-table"
-            :data="lines"
-            :columns="lineColumns"
-            :pagination="false"
-            :cell-class-name="salesLineCellClassName"
-            row-key="lineNo"
-            table-layout="fixed"
-          >
-            <template #material="{ row }">
-              <ArtMaterialSelect
-                v-if="issueRequest && mode !== 'view'"
-                v-model:model-values="materialPickerIds"
-                v-model:selected-data="materialPickerRows"
-                title="参选物料描述"
-                label-key="description"
-                multiple
-                :categories="materialCategories"
-                :api-fn="materialApi"
-                @confirm="addMaterials"
+              <template #warehouseId="{ row }"
+                ><ElSelect
+                  v-if="mode !== 'view'"
+                  v-model="row.warehouseId"
+                  filterable
+                  clearable
+                  placeholder="仓库"
+                  @change="onInlineWarehouseChange(row)"
+                  ><ElOption
+                    v-for="warehouse in currentWarehouses"
+                    :key="warehouse.id"
+                    :label="`${warehouse.warehouseName} · ${warehouse.warehouseCode}`"
+                    :value="warehouse.id" /></ElSelect
+                ><span v-else>{{
+                  currentWarehouses.find((item) => item.id === row.warehouseId)?.warehouseName ||
+                  '—'
+                }}</span></template
               >
-                <template #trigger="{ open }"
-                  ><ElButton link type="primary" @click="open">{{
-                    row.material?.description || row.material?.name || '参选物料描述'
-                  }}</ElButton></template
-                >
-              </ArtMaterialSelect>
-              <template v-else>
-                <strong class="block truncate text-sm">{{
-                  row.material?.description ||
-                  row.material?.name ||
-                  row.material?.code ||
-                  '物料资料不可用'
-                }}</strong>
-                <small class="text-[var(--el-text-color-secondary)]">{{
-                  row.material?.code || '—'
-                }}</small>
+              <template #binId="{ row }"
+                ><ElSelect
+                  v-if="mode !== 'view'"
+                  v-model="row.binId"
+                  filterable
+                  clearable
+                  :disabled="!row.warehouseId"
+                  placeholder="仓位"
+                  @visible-change="($event) => $event && loadInlineBins(row)"
+                  ><ElOption
+                    v-for="bin in bins"
+                    :key="bin.id"
+                    :label="`${bin.binName} · ${bin.binCode}`"
+                    :value="bin.id" /></ElSelect
+                ><span v-else>{{
+                  row.bin?.binName || row.bin?.binCode || (row.binId ? '仓位资料不可用' : '—')
+                }}</span></template
+              >
+              <template #stockType="{ row }"
+                ><ElSelect v-if="mode !== 'view'" v-model="row.stockType"
+                  ><ElOption
+                    v-for="option in stockTypes"
+                    :key="option.value"
+                    :label="option.label"
+                    :value="option.value" /></ElSelect
+                ><span v-else>{{
+                  stockTypes.find((item) => item.value === row.stockType)?.label || row.stockType
+                }}</span></template
+              >
+              <template #ownerType="{ row }"
+                ><ElSelect
+                  v-if="mode !== 'view'"
+                  v-model="row.ownerType"
+                  @change="onInlineOwnerTypeChange(row)"
+                  ><ElOption
+                    v-for="option in ownerTypes"
+                    :key="option.value"
+                    :label="option.label"
+                    :value="option.value" /></ElSelect
+                ><span v-else>{{
+                  ownerTypes.find((item) => item.value === row.ownerType)?.label || row.ownerType
+                }}</span></template
+              >
+              <template #ownerId="{ row }"
+                ><ArtTableSingleSelect
+                  v-if="mode !== 'view' && row.ownerType !== 'self'"
+                  :model-value="row.ownerId || undefined"
+                  :data="row.ownerType === 'supplier' ? suppliers : customers"
+                  :columns="partyColumns"
+                  row-key="id"
+                  label-key="name"
+                  description-key="code"
+                  title="选择货主"
+                  @update:model-value="onInlineOwnerChange(row, String($event || '') || null)"
+                /><span v-else>{{
+                  formatWmsOwnerName(row.ownerType, row.ownerId, suppliers, customers)
+                }}</span></template
+              >
+              <template #stockStatus="{ row }"
+                ><ElSelect v-if="mode !== 'view'" v-model="row.stockStatus"
+                  ><ElOption
+                    v-for="option in stockStatuses"
+                    :key="option.value"
+                    :label="option.label"
+                    :value="option.value" /></ElSelect
+                ><span v-else>{{
+                  stockStatuses.find((item) => item.value === row.stockStatus)?.label ||
+                  row.stockStatus
+                }}</span></template
+              >
+              <template #keeperId="{ row }">
+                <ArtEmployeeSelect
+                  v-if="mode !== 'view'"
+                  :model-value="row.keeperId || undefined"
+                  :tenant-id="form.tenantId || undefined"
+                  title="选择行仓管员"
+                  @update:model-value="row.keeperId = $event || null"
+                />
+                <span v-else>{{
+                  row.keeperName ||
+                  (row.keeperId === form.keeperId ? currentDocument?.keeper?.employeeName : '') ||
+                  (row.keeperId ? '已指定' : '—')
+                }}</span>
               </template>
-            </template>
-            <template #returnType="{ row }">
-              <ElSelect v-if="mode !== 'view'" v-model="row.returnType" placeholder="退货类型">
-                <ElOption
-                  v-for="option in returnTypes"
-                  :key="option.value"
-                  :label="option.label"
-                  :value="option.value"
+              <template #productionDate="{ row }"
+                ><ElDatePicker
+                  v-if="mode !== 'view'"
+                  v-model="row.productionDate"
+                  type="date"
+                  value-format="YYYY-MM-DD"
+                  placeholder="生产日期"
+                  class="w-full!"
+                /><span v-else>{{ row.productionDate || '—' }}</span></template
+              >
+              <template #expiryDate="{ row }"
+                ><ElDatePicker
+                  v-if="mode !== 'view'"
+                  v-model="row.expiryDate"
+                  type="date"
+                  value-format="YYYY-MM-DD"
+                  placeholder="有效期至"
+                  class="w-full!"
+                /><span v-else>{{ row.expiryDate || '—' }}</span></template
+              >
+              <template #trackingNo="{ row }"
+                ><ElInput
+                  v-if="mode !== 'view'"
+                  v-model="row.trackingNo"
+                  placeholder="跟踪号"
+                /><span v-else>{{ row.trackingNo || '—' }}</span></template
+              >
+              <template #sourceDocument="{ row }"
+                ><ElInput
+                  v-if="mode !== 'view'"
+                  v-model="row.sourceDocument"
+                  placeholder="来源单据"
+                /><span v-else>{{ row.sourceDocument || '—' }}</span></template
+              >
+              <template #sourceLineNo="{ row }"
+                ><ElInput
+                  v-if="mode !== 'view'"
+                  v-model="row.sourceLineNo"
+                  placeholder="源行号"
+                /><span v-else>{{ row.sourceLineNo || '—' }}</span></template
+              >
+              <template #remark="{ row }"
+                ><ElInput v-if="mode !== 'view'" v-model="row.remark" placeholder="备注" /><span
+                  v-else
+                  >{{ row.remark || '—' }}</span
+                ></template
+              >
+              <template #operation="{ row }">
+                <ElButton
+                  v-if="row.material?.serialManagementEnabled"
+                  link
+                  type="primary"
+                  @click="openInlineSerials(row)"
+                  >序列号 {{ row.serialNos.length }}</ElButton
+                >
+                <ArtButtonMore
+                  v-if="mode !== 'view'"
+                  :list="lineMoreActions"
+                  trigger="click"
+                  @click="(item) => onLineMoreAction(item, row)"
                 />
-              </ElSelect>
-              <ArtDictDisplay
-                v-else
-                dict-code="wmsInitialSalesReturnType"
-                :value="row.returnType"
-                display="text"
-              />
-            </template>
-            <template #projectId="{ row }">
-              <ArtTableSingleSelect
-                v-if="mode !== 'view'"
-                :model-value="row.projectId || undefined"
-                :selected-data="row.project ? [row.project] : []"
-                :data="projects"
-                :columns="partyColumns"
-                row-key="id"
-                label-key="name"
-                description-key="code"
-                title="选择销售项目"
-                placeholder="选择项目"
-                clearable
-                @update:model-value="onInlineProjectChange(row, String($event || '') || null)"
-                @update:selected-data="row.project = $event[0] || null"
-              />
-              <span v-else>{{ projectName(row.projectId) }}</span>
-            </template>
-            <template #constructionNo="{ row }">
-              <ArtTableSingleSelect
-                v-if="mode !== 'view'"
-                :model-value="row.constructionNo || undefined"
-                @update:model-value="row.constructionNo = String($event || '') || null"
-                :api-fn="(params) => constructionApi(row.projectId, params)"
-                :columns="constructionColumns"
-                row-key="constructionNo"
-                label-key="constructionNo"
-                title="参选施工号"
-                clearable
-                :disabled="!row.projectId"
-                placeholder="施工号"
-              />
-              <span v-else>{{ row.constructionNo || '—' }}</span>
-            </template>
-            <template #quantity="{ row }">
-              <ElInputNumber
-                v-if="mode !== 'view'"
-                :model-value="Math.abs(Number(row.quantity || 0))"
-                @update:model-value="row.quantity = Math.abs(Number($event || 0))"
-                :min="0"
-                :precision="4"
-                :controls="false"
-                class="w-full!"
-                ><template v-if="usesCurrencyQuantities" #prefix>￥</template></ElInputNumber
-              >
-              <strong v-else :class="isReturn ? 'sales-return-quantity' : 'tabular-nums'">{{
-                formatSalesValue(displayQuantity(Number(row.quantity)))
-              }}</strong>
-            </template>
-            <template #inventoryUnitId="{ row }">
-              <ElSelect
-                v-if="mode !== 'view'"
-                v-model="row.inventoryUnitId"
-                filterable
-                placeholder="库存单位"
-                ><ElOption
-                  v-for="unit in salesUnitOptions"
-                  :key="unit.value"
-                  :label="unit.label"
-                  :value="unit.value"
-              /></ElSelect>
-              <span v-else>{{ unitName(row.inventoryUnitId) }}</span>
-            </template>
-            <template #baseUnitId="{ row }">
-              <ElSelect
-                v-if="mode !== 'view'"
-                v-model="row.baseUnitId"
-                filterable
-                placeholder="基本单位"
-              >
-                <ElOption
-                  v-for="unit in salesUnitOptions"
-                  :key="unit.value"
-                  :label="unit.label"
-                  :value="unit.value"
-                />
-              </ElSelect>
-              <span v-else>{{ unitName(row.baseUnitId) }}</span>
-            </template>
-            <template #baseQuantity="{ row }">
-              <ElInputNumber
-                v-if="issueRequest && mode !== 'view'"
-                v-model="row.baseQuantity"
-                :min="0"
-                :precision="4"
-                :controls="false"
-                class="w-full!"
-              />
-              <template v-else>{{
-                formatSalesValue(
-                  mode === 'view' ? Math.abs(Number(row.baseQuantity || 0)) : baseQuantity(row)
-                )
-              }}</template></template
-            >
-            <template #auxiliaryUnitId="{ row }">{{ unitName(row.auxiliaryUnitId) }}</template>
-            <template #auxiliaryQuantity="{ row }">{{
-              mode === 'view'
-                ? row.auxiliaryQuantity == null
-                  ? '—'
-                  : Math.abs(Number(row.auxiliaryQuantity))
-                : auxQuantity(row, row.auxiliaryUnitId)
-            }}</template>
-            <template #auxiliaryUnit2Id="{ row }">{{ unitName(row.auxiliaryUnit2Id) }}</template>
-            <template #auxiliaryQuantity2="{ row }">{{
-              mode === 'view'
-                ? row.auxiliaryQuantity2 == null
-                  ? '—'
-                  : Math.abs(Number(row.auxiliaryQuantity2))
-                : auxQuantity(row, row.auxiliaryUnit2Id)
-            }}</template>
-            <template #unitPrice="{ row }"
-              ><ElInputNumber
-                v-if="mode !== 'view'"
-                v-model="row.unitPrice"
-                :min="0"
-                :precision="4"
-                :controls="false"
-                class="w-full!"
-                @change="updatePrice(row, 'untaxed')"
-              /><span v-else>{{ Number(row.unitPrice).toFixed(4) }}</span></template
-            >
-            <template #taxInclusiveUnitPrice="{ row }"
-              ><ElInputNumber
-                v-if="mode !== 'view'"
-                v-model="row.taxInclusiveUnitPrice"
-                :min="0"
-                :precision="4"
-                :controls="false"
-                class="w-full!"
-                @change="updatePrice(row, 'taxed')"
-              /><span v-else>{{ Number(row.taxInclusiveUnitPrice).toFixed(4) }}</span></template
-            >
-            <template #taxRate="{ row }"
-              ><ElSelect
-                v-if="mode !== 'view'"
-                v-model="row.taxRate"
-                @change="updatePrice(row, row.priceBasis)"
-                ><ElOption
-                  v-for="rate in taxRateOptions"
-                  :key="rate.value"
-                  :label="rate.label"
-                  :value="rate.value" /></ElSelect
-              ><span v-else>{{ row.taxRate }}%</span></template
-            >
-            <template #discountMethod="{ row }"
-              ><ElSelect
-                v-if="mode !== 'view'"
-                v-model="row.discountMethod"
-                @change="row.unitDiscountRate = 0"
-                ><ElOption
-                  v-for="option in wmsLineDiscountModeOptions"
-                  :key="option.value"
-                  :label="option.label"
-                  :value="option.value" /></ElSelect
-              ><span v-else>{{ row.discountMethod }}</span></template
-            >
-            <template #unitDiscountRate="{ row }"
-              ><ElInputNumber
-                v-if="mode !== 'view'"
-                v-model="row.unitDiscountRate"
-                :min="0"
-                :max="1"
-                :precision="4"
-                :controls="false"
-                :disabled="row.discountMethod === 'none'"
-                class="w-full!"
-              /><span v-else>{{ row.unitDiscountRate }}</span></template
-            >
-            <template #discountAmount="{ row }">{{
-              lineFinancial(row).discount.toFixed(2)
-            }}</template>
-            <template #amount="{ row }">{{
-              formatSalesValue(lineFinancial(row).amount, 2)
-            }}</template>
-            <template #taxAmount="{ row }">{{
-              formatSalesValue(lineFinancial(row).tax, 2)
-            }}</template>
-            <template #totalAmount="{ row }">{{
-              formatSalesValue(lineFinancial(row).total, 2)
-            }}</template>
-            <template #gift="{ row }"
-              ><ElCheckbox v-if="mode !== 'view'" v-model="row.gift" aria-label="赠品" /><span
-                v-else
-                >{{ row.gift ? '✓' : '—' }}</span
-              ></template
-            >
-            <template #batchNo="{ row }"
-              ><ElInput v-if="mode !== 'view'" v-model="row.batchNo" placeholder="批号" /><span
-                v-else
-                >{{ row.batchNo || '—' }}</span
-              ></template
-            >
-            <template #warehouseId="{ row }"
-              ><ElSelect
-                v-if="mode !== 'view'"
-                v-model="row.warehouseId"
-                filterable
-                clearable
-                placeholder="仓库"
-                @change="onInlineWarehouseChange(row)"
-                ><ElOption
-                  v-for="warehouse in currentWarehouses"
-                  :key="warehouse.id"
-                  :label="`${warehouse.warehouseName} · ${warehouse.warehouseCode}`"
-                  :value="warehouse.id" /></ElSelect
-              ><span v-else>{{
-                currentWarehouses.find((item) => item.id === row.warehouseId)?.warehouseName || '—'
-              }}</span></template
-            >
-            <template #binId="{ row }"
-              ><ElSelect
-                v-if="mode !== 'view'"
-                v-model="row.binId"
-                filterable
-                clearable
-                :disabled="!row.warehouseId"
-                placeholder="仓位"
-                @visible-change="($event) => $event && loadInlineBins(row)"
-                ><ElOption
-                  v-for="bin in bins"
-                  :key="bin.id"
-                  :label="`${bin.binName} · ${bin.binCode}`"
-                  :value="bin.id" /></ElSelect
-              ><span v-else>{{
-                row.bin?.binName || row.bin?.binCode || (row.binId ? '仓位资料不可用' : '—')
-              }}</span></template
-            >
-            <template #stockType="{ row }"
-              ><ElSelect v-if="mode !== 'view'" v-model="row.stockType"
-                ><ElOption
-                  v-for="option in stockTypes"
-                  :key="option.value"
-                  :label="option.label"
-                  :value="option.value" /></ElSelect
-              ><span v-else>{{
-                stockTypes.find((item) => item.value === row.stockType)?.label || row.stockType
-              }}</span></template
-            >
-            <template #ownerType="{ row }"
-              ><ElSelect
-                v-if="mode !== 'view'"
-                v-model="row.ownerType"
-                @change="onInlineOwnerTypeChange(row)"
-                ><ElOption
-                  v-for="option in ownerTypes"
-                  :key="option.value"
-                  :label="option.label"
-                  :value="option.value" /></ElSelect
-              ><span v-else>{{
-                ownerTypes.find((item) => item.value === row.ownerType)?.label || row.ownerType
-              }}</span></template
-            >
-            <template #ownerId="{ row }"
-              ><ArtTableSingleSelect
-                v-if="mode !== 'view' && row.ownerType !== 'self'"
-                :model-value="row.ownerId || undefined"
-                :data="row.ownerType === 'supplier' ? suppliers : customers"
-                :columns="partyColumns"
-                row-key="id"
-                label-key="name"
-                description-key="code"
-                title="选择货主"
-                @update:model-value="onInlineOwnerChange(row, String($event || '') || null)"
-              /><span v-else>{{
-                formatWmsOwnerName(row.ownerType, row.ownerId, suppliers, customers)
-              }}</span></template
-            >
-            <template #stockStatus="{ row }"
-              ><ElSelect v-if="mode !== 'view'" v-model="row.stockStatus"
-                ><ElOption
-                  v-for="option in stockStatuses"
-                  :key="option.value"
-                  :label="option.label"
-                  :value="option.value" /></ElSelect
-              ><span v-else>{{
-                stockStatuses.find((item) => item.value === row.stockStatus)?.label ||
-                row.stockStatus
-              }}</span></template
-            >
-            <template #keeperId="{ row }">
-              <ArtEmployeeSelect
-                v-if="mode !== 'view'"
-                :model-value="row.keeperId || undefined"
-                :tenant-id="form.tenantId || undefined"
-                title="选择行仓管员"
-                @update:model-value="row.keeperId = $event || null"
-              />
-              <ArtEmployeeSelect
-                v-else
-                :model-value="row.keeperId || undefined"
-                :tenant-id="form.tenantId || undefined"
-                disabled
-              />
-            </template>
-            <template #productionDate="{ row }"
-              ><ElDatePicker
-                v-if="mode !== 'view'"
-                v-model="row.productionDate"
-                type="date"
-                value-format="YYYY-MM-DD"
-                placeholder="生产日期"
-                class="w-full!"
-              /><span v-else>{{ row.productionDate || '—' }}</span></template
-            >
-            <template #expiryDate="{ row }"
-              ><ElDatePicker
-                v-if="mode !== 'view'"
-                v-model="row.expiryDate"
-                type="date"
-                value-format="YYYY-MM-DD"
-                placeholder="有效期至"
-                class="w-full!"
-              /><span v-else>{{ row.expiryDate || '—' }}</span></template
-            >
-            <template #trackingNo="{ row }"
-              ><ElInput v-if="mode !== 'view'" v-model="row.trackingNo" placeholder="跟踪号" /><span
-                v-else
-                >{{ row.trackingNo || '—' }}</span
-              ></template
-            >
-            <template #sourceDocument="{ row }"
-              ><ElInput
-                v-if="mode !== 'view'"
-                v-model="row.sourceDocument"
-                placeholder="来源单据"
-              /><span v-else>{{ row.sourceDocument || '—' }}</span></template
-            >
-            <template #sourceLineNo="{ row }"
-              ><ElInput
-                v-if="mode !== 'view'"
-                v-model="row.sourceLineNo"
-                placeholder="源行号"
-              /><span v-else>{{ row.sourceLineNo || '—' }}</span></template
-            >
-            <template #remark="{ row }"
-              ><ElInput v-if="mode !== 'view'" v-model="row.remark" placeholder="备注" /><span
-                v-else
-                >{{ row.remark || '—' }}</span
-              ></template
-            >
-            <template #operation="{ row }">
-              <ElButton
-                v-if="row.material?.serialManagementEnabled"
-                link
-                type="primary"
-                @click="openInlineSerials(row)"
-                >序列号 {{ row.serialNos.length }}</ElButton
-              >
-              <ArtButtonMore
-                v-if="mode !== 'view'"
-                :list="lineMoreActions"
-                trigger="click"
-                @click="(item) => onLineMoreAction(item, row)"
-              />
-            </template>
-          </ArtTable>
-        </ElScrollbar>
-      </ArtSectionCard>
+              </template>
+            </ArtTable> </ArtSectionCard
+        ></template>
+      </ArtForm>
     </div>
   </ArtDrawer>
   <SalesChoicePicker
@@ -659,14 +653,7 @@
       @file-change="importSerials"
       >导入序列号</ArtExcelImport
     >
-    <ArtForm
-      :model-value="serialEntryForm"
-      @update:model-value="replaceReactiveModel(serialEntryForm, $event)"
-      :items="serialEntryItems"
-      :show-reset="false"
-      :show-submit="false"
-      label-position="top"
-    />
+    <ArtForm v-model="serialEntryForm" :items="serialEntryItems" label-position="top" />
   </ArtDialog>
   <ArtDialog ref="serialViewDialogRef" size="sm" :show-footer="false">
     <ArtEmptyState
@@ -692,7 +679,6 @@
   import { readWmsDocumentImportRows } from '@/utils/wms/document-import'
   import { createImportReferenceLookup } from '@/utils/business/import-reference'
   import { formatWmsOwnerName } from '@/utils/wms/owner-display'
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { isWmsBusinessTypeAvailable } from '@/utils/wms/business-type'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
@@ -1041,7 +1027,21 @@
       ? [{ prop: 'returnType', label: '退货类型', minWidth: 110, useSlot: true }]
       : []),
     { prop: 'projectId', label: '项目名称', minWidth: 150, useSlot: true },
-    { prop: 'constructionNo', label: '施工号', width: 150, useSlot: true },
+    {
+      prop: 'constructionNo',
+      label: '施工号',
+      width: 150,
+      useSlot: true,
+      headerTooltip: '销售单选择项目后必填；领料申请与其他出退库沿用各自业务规则。',
+      rules: {
+        validator: ({ row }) =>
+          props.issueRequest ||
+          ['other_outbound', 'other_return'].includes(props.kind) ||
+          !row.projectId ||
+          Boolean(row.constructionNo?.trim()),
+        message: ({ row }) => `第 ${row.lineNo} 行选择项目后请填写施工号`
+      }
+    },
     { prop: 'project.code', label: '项目编码', minWidth: 150 },
     {
       prop: 'quantity',
@@ -1049,7 +1049,12 @@
       width: 180,
       align: 'right',
       useSlot: true,
-      required: mode.value !== 'view'
+      required: mode.value !== 'view',
+      headerTooltip: '数量不能为零；退货方向由单据类型统一计算。',
+      rules: {
+        validator: ({ row }) => Math.abs(Number(row.quantity)) > 0,
+        message: ({ row }) => `第 ${row.lineNo} 行数量不能为零`
+      }
     },
     { prop: 'availableQuantity', label: '可用库存量', width: 130 },
     { prop: 'allocatedQuantity', label: '已分配量', width: 120 },
@@ -1100,7 +1105,18 @@
     { prop: 'taxAmount', label: '税额(元)', width: 110, align: 'right', useSlot: true },
     { prop: 'totalAmount', label: '价税合计', width: 124, align: 'right', useSlot: true },
     { prop: 'gift', label: '赠品', width: 68, align: 'center', useSlot: true },
-    { prop: 'batchNo', label: '批号', width: 145, useSlot: true },
+    {
+      prop: 'batchNo',
+      label: '批号',
+      width: 145,
+      useSlot: true,
+      headerTooltip: '期初单据中的批次管理物料须填写历史批号。',
+      rules: {
+        validator: ({ row }) =>
+          !isInitial.value || !row.material?.batchManagementEnabled || Boolean(row.batchNo?.trim()),
+        message: ({ row }) => `第 ${row.lineNo} 行批次管理物料请填写期初历史批次`
+      }
+    },
     {
       prop: 'packNo',
       label: '包号',
@@ -1117,7 +1133,17 @@
       required: mode.value !== 'view'
     },
     { prop: 'ownerType', label: '货主类型', width: 160, useSlot: true },
-    { prop: 'ownerId', label: '货主', width: 170, useSlot: true },
+    {
+      prop: 'ownerId',
+      label: '货主',
+      width: 170,
+      useSlot: true,
+      headerTooltip: '货主类型为供应商或客户时必填。',
+      rules: {
+        validator: ({ row }) => row.ownerType === 'self' || Boolean(row.ownerId),
+        message: ({ row }) => `第 ${row.lineNo} 行请选择货主`
+      }
+    },
     { prop: 'stockStatus', label: '库存状态', width: 160, useSlot: true },
     { prop: 'keeperId', label: '仓管员', width: 170, useSlot: true },
     { prop: 'productionDate', label: '生产日期', width: 190, useSlot: true },
@@ -1142,7 +1168,7 @@
   const selectedKeeper = ref<EmployeeIntegrationItem[]>([])
   const serialLine = ref<WmsInitialSalesLine>()
   const serialText = ref('')
-  const serialEntryForm = reactive({ serialText: '' })
+  const serialEntryForm = ref({ serialText: '' })
   const serialEntryItems: FormItem[] = [
     {
       key: 'serialText',
@@ -1323,6 +1349,15 @@
       value: item.id
     }))
   )
+  const activeTab = ref('headerSection')
+  const formItems = computed<FormItem[]>(() => [
+    { key: 'headerSection', label: '单据表头', type: 'tab' },
+    ...(mode.value === 'view'
+      ? [{ key: 'headerSummary', label: '', type: 'slot', span: 24 } as FormItem]
+      : headerItems.value),
+    { key: 'linesSection', label: '物料明细', type: 'tab' },
+    { key: 'lineItems', label: '', type: 'slot', span: 24 }
+  ])
   const headerItems = computed<FormItem[]>(() => [
     {
       key: 'documentNo',
@@ -1646,13 +1681,13 @@
     get: () => false,
     set: (value: boolean) => {
       if (value) {
-        serialEntryForm.serialText = serialText.value
+        serialEntryForm.value.serialText = serialText.value
         void serialEntryDialogRef.value?.handleOpen(undefined, {
           title: '录入序列号',
           showFooter: mode.value !== 'view',
           confirmText: '保存序列号',
           onConfirm: () => {
-            serialText.value = serialEntryForm.serialText
+            serialText.value = serialEntryForm.value.serialText
             if (serialLine.value) serialLine.value.serialNos = serialList.value
             return true
           }
@@ -1673,7 +1708,7 @@
         ElMessage.warning('文件中没有可用的序列号，请检查文件内容后重试')
         return
       }
-      serialEntryForm.serialText = serials.join('\n')
+      serialEntryForm.value.serialText = serials.join('\n')
       ElMessage.success(`已导入 ${serials.length} 个序列号`)
     } catch (error) {
       notifyFriendlyError(error, '序列号文件读取失败，请重新选择文件')
@@ -1891,6 +1926,8 @@
         ElMessage.warning('业务日期不得晚于库存组织启用日期')
         return false
       }
+      activeTab.value = 'linesSection'
+      await nextTick()
       if (!lines.value.length) {
         ElMessage.warning('请至少添加一行物料')
         return false
@@ -1900,29 +1937,7 @@
         if (validation?.firstError) ElMessage.warning(validation.firstError.message)
         return false
       }
-      const incomplete = lines.value.find((line) => Math.abs(Number(line.quantity)) <= 0)
-      if (incomplete) {
-        ElMessage.warning(`第 ${incomplete.lineNo} 行“数量”不能为零`)
-        return false
-      }
       for (const line of lines.value) {
-        if (isInitial.value && line.material?.batchManagementEnabled && !line.batchNo?.trim()) {
-          ElMessage.warning(`第 ${line.lineNo} 行批次管理物料请填写期初历史批次`)
-          return false
-        }
-        if (
-          !props.issueRequest &&
-          !['other_outbound', 'other_return'].includes(props.kind) &&
-          line.projectId &&
-          !line.constructionNo?.trim()
-        ) {
-          ElMessage.warning(`第 ${line.lineNo} 行选择项目后请填写施工号`)
-          return false
-        }
-        if (line.ownerType !== 'self' && !line.ownerId) {
-          ElMessage.warning(`第 ${line.lineNo} 行请选择货主`)
-          return false
-        }
         const serials = line.serialNos
         if (
           line.material?.serialManagementEnabled &&
@@ -1989,6 +2004,7 @@
     }
   }
   async function handleOpen(data: OpenData): Promise<void> {
+    activeTab.value = 'headerSection'
     documentRequest += 1
     importing.value = false
     parsing.value = false

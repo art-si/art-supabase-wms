@@ -31,8 +31,6 @@
           :span="isNarrowScreen ? 24 : 12"
           :gutter="20"
           label-position="top"
-          :show-reset="false"
-          :show-submit="false"
         />
       </template>
     </div>

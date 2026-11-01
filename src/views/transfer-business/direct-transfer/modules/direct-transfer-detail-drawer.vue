@@ -25,67 +25,91 @@
           </strong>
         </div>
       </div>
-      <ArtSectionCard title="来源与目标" subtitle="库存组织和库位变化保存在同一笔库存流水中。">
-        <div class="grid gap-4 sm:grid-cols-2">
-          <div class="min-w-0 rounded-xl border border-[var(--el-border-color-light)] p-4">
-            <span class="text-xs font-medium text-[var(--el-text-color-secondary)]">调出</span>
-            <strong class="mt-2 block truncate" :title="sourceOrganization">
-              {{ sourceOrganization }}
-            </strong>
-            <p class="mt-1 text-sm text-[var(--el-text-color-regular)]">
-              {{ transfer.sourceBatch?.warehouse?.warehouseName || '历史仓库' }} ·
-              {{ transfer.sourceBatch?.bin?.binName || '仓库直存' }}
-            </p>
-            <p class="mt-2 break-all text-xs text-[var(--el-text-color-secondary)]">
-              批次 {{ transfer.sourceBatch?.batchNo || '—' }}
-            </p>
-          </div>
-          <div class="min-w-0 rounded-xl border border-[var(--el-border-color-light)] p-4">
-            <span class="text-xs font-medium text-[var(--el-text-color-secondary)]">调入</span>
-            <strong class="mt-2 block truncate" :title="targetOrganization">
-              {{ targetOrganization }}
-            </strong>
-            <p class="mt-1 text-sm text-[var(--el-text-color-regular)]">
-              {{ transfer.targetBatch?.warehouse?.warehouseName || '历史仓库' }} ·
-              {{ transfer.targetBatch?.bin?.binName || '仓库直存' }}
-            </p>
-            <p class="mt-2 break-all text-xs text-[var(--el-text-color-secondary)]">
-              批次 {{ transfer.targetBatch?.batchNo || '—' }}
-            </p>
-          </div>
-        </div>
-      </ArtSectionCard>
-      <ArtSectionCard title="业务归属" subtitle="项目施工号在直接调拨中保持不变。">
-        <ArtDescriptions
-          :data="transfer"
-          :items="descriptionItems"
-          :columns="2"
-          label-width="96px"
-        />
-      </ArtSectionCard>
-      <ArtSectionCard
-        v-if="transfer.serialMovements.length"
-        title="调拨序列号"
-        subtitle="逐件 SN 与此笔库存流水关联，可继续从序列号追溯查询完整链路。"
-      >
-        <ul class="flex flex-wrap gap-2">
-          <li
-            v-for="item in transfer.serialMovements"
-            :key="item.serialId"
-            class="min-w-0 max-w-full"
-          >
-            <ElTag
-              effect="plain"
-              class="h-auto! max-w-full py-1"
-              :title="item.serial?.serialNo || '序列号资料不可用'"
+      <ElTabs
+        v-model="activeDetailTab"
+        :class="!transfer.serialMovements.length ? '[&_.el-tabs__header]:hidden' : undefined"
+        ><ElTabPane name="section0" label="调拨信息" :lazy="false"
+          ><div class="space-y-4"
+            ><ArtSectionCard
+              title="来源与目标"
+              subtitle="库存组织和库位变化保存在同一笔库存流水中。"
             >
-              <span class="block whitespace-normal break-all leading-5">{{
-                item.serial?.serialNo || '序列号资料不可用'
-              }}</span>
-            </ElTag>
-          </li>
-        </ul>
-      </ArtSectionCard>
+              <div class="grid gap-4 sm:grid-cols-2">
+                <div class="min-w-0 rounded-xl border border-[var(--el-border-color-light)] p-4">
+                  <span class="text-xs font-medium text-[var(--el-text-color-secondary)]"
+                    >调出</span
+                  >
+                  <strong class="mt-2 block truncate" :title="sourceOrganization">
+                    {{ sourceOrganization }}
+                  </strong>
+                  <p class="mt-1 text-sm text-[var(--el-text-color-regular)]">
+                    {{ transfer.sourceBatch?.warehouse?.warehouseName || '历史仓库' }} ·
+                    {{ transfer.sourceBatch?.bin?.binName || '仓库直存' }}
+                  </p>
+                  <p class="mt-2 break-all text-xs text-[var(--el-text-color-secondary)]">
+                    批次 {{ transfer.sourceBatch?.batchNo || '—' }}
+                  </p>
+                </div>
+                <div class="min-w-0 rounded-xl border border-[var(--el-border-color-light)] p-4">
+                  <span class="text-xs font-medium text-[var(--el-text-color-secondary)]"
+                    >调入</span
+                  >
+                  <strong class="mt-2 block truncate" :title="targetOrganization">
+                    {{ targetOrganization }}
+                  </strong>
+                  <p class="mt-1 text-sm text-[var(--el-text-color-regular)]">
+                    {{ transfer.targetBatch?.warehouse?.warehouseName || '历史仓库' }} ·
+                    {{ transfer.targetBatch?.bin?.binName || '仓库直存' }}
+                  </p>
+                  <p class="mt-2 break-all text-xs text-[var(--el-text-color-secondary)]">
+                    批次 {{ transfer.targetBatch?.batchNo || '—' }}
+                  </p>
+                </div>
+              </div>
+            </ArtSectionCard>
+          </div>
+          <div class="space-y-4"
+            ><ArtSectionCard title="业务归属" subtitle="项目施工号在直接调拨中保持不变。">
+              <ArtDescriptions
+                :data="transfer"
+                :items="descriptionItems"
+                :columns="2"
+                label-width="96px"
+              />
+            </ArtSectionCard> </div
+        ></ElTabPane>
+        <ElTabPane
+          v-if="transfer.serialMovements.length"
+          name="section2"
+          label="调拨序列号"
+          :lazy="false"
+          ><div class="space-y-4"
+            ><ArtSectionCard
+              v-if="transfer.serialMovements.length"
+              title="调拨序列号"
+              subtitle="逐件 SN 与此笔库存流水关联，可继续从序列号追溯查询完整链路。"
+            >
+              <ul class="flex flex-wrap gap-2">
+                <li
+                  v-for="item in transfer.serialMovements"
+                  :key="item.serialId"
+                  class="min-w-0 max-w-full"
+                >
+                  <ElTag
+                    effect="plain"
+                    class="h-auto! max-w-full py-1"
+                    :title="item.serial?.serialNo || '序列号资料不可用'"
+                  >
+                    <span class="block whitespace-normal break-all leading-5">{{
+                      item.serial?.serialNo || '序列号资料不可用'
+                    }}</span>
+                  </ElTag>
+                </li>
+              </ul>
+            </ArtSectionCard></div
+          ></ElTabPane
+        ></ElTabs
+      >
     </div>
   </ArtDrawer>
 </template>
@@ -100,6 +124,7 @@
   import { formatDateTimeValue } from '@/utils/ui/format'
   import type { WmsDirectTransfer } from '@wms/api'
 
+  const activeDetailTab = ref('section0')
   const drawerRef = ref<ArtDrawerExpose<WmsDirectTransfer>>()
   const transfer = shallowRef<WmsDirectTransfer>()
   const projectName = ref('')
@@ -118,6 +143,7 @@
   )
 
   async function handleOpen(row: WmsDirectTransfer, rowProjectName: string): Promise<void> {
+    activeDetailTab.value = 'section0'
     transfer.value = row
     projectName.value = rowProjectName
     await drawerRef.value?.handleOpen(row, {

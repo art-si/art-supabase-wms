@@ -2,6 +2,7 @@ import type { WmsDocumentClassification } from '@/api/wms-document.types'
 export interface WmsInventoryOrganization {
   id: string
   tenantId: string
+  parentId?: string | null
   organizationCode: string
   organizationName: string
   organizationType: string

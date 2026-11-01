@@ -41,8 +41,6 @@
               :rules="rules"
               :span="12"
               label-position="top"
-              :show-submit="false"
-              :show-reset="false"
             />
           </ArtSectionCard>
           <ArtSectionCard

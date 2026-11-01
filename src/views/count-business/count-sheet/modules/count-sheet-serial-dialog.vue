@@ -31,8 +31,6 @@
         :span="12"
         :gutter="20"
         label-position="top"
-        :show-reset="false"
-        :show-submit="false"
       >
         <template #newSerialText>
           <ElInput
@@ -46,38 +44,36 @@
       <ArtSectionCard
         v-else
         title="初盘序列号"
+        scroll-max-height="260px"
         :empty="!initialSerialNumbers.length"
         empty-title="初盘未录入序列号"
         empty-description="请核对盘点表初盘记录。"
       >
-        <ElScrollbar max-height="260px">
-          <ul class="grid gap-2 sm:grid-cols-2">
-            <li
-              v-for="serial in initialSerialNumbers"
-              :key="serial.key"
-              class="rounded-lg bg-[var(--el-fill-color-light)] px-3 py-2 font-mono text-sm"
-              >{{ serial.label }}</li
-            >
-          </ul>
-        </ElScrollbar>
+        <ul class="grid gap-2 sm:grid-cols-2">
+          <li
+            v-for="serial in initialSerialNumbers"
+            :key="serial.key"
+            class="rounded-lg bg-[var(--el-fill-color-light)] px-3 py-2 font-mono text-sm"
+            >{{ serial.label }}</li
+          >
+        </ul>
       </ArtSectionCard>
       <ArtSectionCard
         v-if="!editable && sheet?.recountEnabled"
         title="复盘序列号"
+        scroll-max-height="260px"
         :empty="!recountSerialNumbers.length"
         empty-title="复盘未录入序列号"
         empty-description="请核对盘点表复盘记录。"
       >
-        <ElScrollbar max-height="260px">
-          <ul class="grid gap-2 sm:grid-cols-2">
-            <li
-              v-for="serial in recountSerialNumbers"
-              :key="serial.key"
-              class="rounded-lg bg-[var(--el-fill-color-light)] px-3 py-2 font-mono text-sm"
-              >{{ serial.label }}</li
-            >
-          </ul>
-        </ElScrollbar>
+        <ul class="grid gap-2 sm:grid-cols-2">
+          <li
+            v-for="serial in recountSerialNumbers"
+            :key="serial.key"
+            class="rounded-lg bg-[var(--el-fill-color-light)] px-3 py-2 font-mono text-sm"
+            >{{ serial.label }}</li
+          >
+        </ul>
       </ArtSectionCard>
       <p v-if="editable" class="text-sm text-[var(--el-text-color-secondary)]">
         实盘件数：原 SN {{ form.serialIds.length }} 件 + 新增 SN {{ newSerialNos.length }} 件 =

@@ -161,6 +161,7 @@ export async function fetchWmsCountEmployeeOptions(
 export interface WmsCountDepartmentOption {
   id: string
   tenantId: string
+  parentId?: string | null
   organizationCode: string
   organizationName: string
 }
@@ -172,7 +173,7 @@ export async function fetchWmsCountDepartments(
     () =>
       supabase
         .from('mdm_organization')
-        .select('id,tenant_id,organization_code,organization_name')
+        .select('id,tenant_id,parent_id,organization_code,organization_name')
         .eq('tenant_id', tenantId)
         .eq('organization_type', 'department')
         .eq('status', '1')

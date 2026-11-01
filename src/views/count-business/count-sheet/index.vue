@@ -27,8 +27,7 @@
       </ElAlert>
       <ArtTableQuery
         ref="tableRef"
-        :model-value="search"
-        @update:model-value="replaceReactiveModel(search, $event)"
+        v-model="search"
         :api-fn="fetchRows"
         :search-items="searchItems"
         :columns-factory="columnsFactory"
@@ -50,7 +49,6 @@
 
 <script setup lang="tsx">
   import { useRoute, useRouter } from 'vue-router'
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { formatDateTimeValue } from '@/utils/ui/format'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { useArtFeedback, notifyFriendlyError } from '@/hooks/core/useArtFeedback'
@@ -73,6 +71,7 @@
   } from '@/components/business/master-data-delete-guard/index.vue'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type { ColumnOption } from '@/types'
+  import TreeUtils from '@/utils/tree'
   import {
     approveWmsCountSheet,
     deleteWmsCountSheets,
@@ -98,11 +97,12 @@
   const tableRef = ref<ArtTableQueryExpose>()
   const drawerRef = ref<InstanceType<typeof CountSheetDrawer>>()
   const organizations = ref<WmsInventoryOrganization[]>([])
+  const organizationTreeUtils = new TreeUtils({ parentKey: 'parentId' })
   const optionError = ref(false)
   const optionsLoading = ref(false)
   const workingId = ref<string>()
   const planId = computed(() => (typeof route.query.planId === 'string' ? route.query.planId : ''))
-  const search = reactive({
+  const search = ref({
     organizationId: '',
     businessDateRange: [] as string[],
     countMethod: '',
@@ -113,17 +113,21 @@
     {
       label: '库存组织',
       key: 'organizationId',
-      type: 'select',
+      type: 'treeSelect',
+      options: organizationTreeUtils.listToTree(
+        organizations.value.filter(
+          (row) => !effectiveTenantId.value || row.tenantId === effectiveTenantId.value
+        )
+      ),
+      valueField: 'id',
+      labelField: 'organizationName',
+      labelFn: (row) => `${row.organizationName ?? ''} · ${row.organizationCode ?? ''}`,
       props: {
         clearable: true,
         filterable: true,
-        placeholder: '全部库存组织',
-        options: organizations.value
-          .filter((row) => !effectiveTenantId.value || row.tenantId === effectiveTenantId.value)
-          .map((row) => ({
-            label: `${row.organizationName} · ${row.organizationCode}`,
-            value: row.id
-          }))
+        checkStrictly: true,
+        renderAfterExpand: false,
+        placeholder: '全部库存组织'
       }
     },
     {

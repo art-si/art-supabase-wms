@@ -22,8 +22,6 @@
         :span="isNarrowScreen ? 24 : 12"
         :gutter="20"
         label-position="top"
-        :show-reset="false"
-        :show-submit="false"
       >
         <template #sourceBatchId>
           <TransferStockPicker
@@ -60,6 +58,8 @@
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
   import { isWmsBusinessTypeAvailable } from '@/utils/wms/business-type'
   import { normalizeNullableText } from '@/utils/form/normalize'
+  import TreeUtils from '@/utils/tree'
+  import { buildOrganizationSelectTree } from '@/utils/organization-options'
   import {
     createWmsTransfer,
     fetchWmsInitialDocumentTypes,
@@ -91,6 +91,7 @@
   let generation = 0
   const warehouses = ref<WmsWarehouse[]>([])
   const organizations = ref<WmsInventoryOrganization[]>([])
+  const organizationTreeUtils = new TreeUtils({ parentKey: 'parentId' })
   const documentTypes = ref<WmsInitializationOption[]>([])
   const businessTypes = ref<WmsInitializationOption[]>([])
   const menuId = ref('')
@@ -198,13 +199,22 @@
     {
       key: 'targetOrganizationId',
       label: '目标库存组织',
-      type: 'select',
-      options: availableOrganizations.value.map((row) => ({
-        label: `${row.organizationName} · ${row.organizationCode}`,
-        value: row.id
-      })),
+      type: 'treeSelect',
+      options: buildOrganizationSelectTree(
+        organizationTreeUtils.listToTree(
+          organizations.value.filter(
+            (row) => !selectedBatch.value || row.tenantId === selectedBatch.value.tenantId
+          )
+        ),
+        availableOrganizations.value
+      ),
+      valueField: 'id',
+      labelField: 'name',
+      labelFn: (row) => `${row.name ?? ''} · ${row.code ?? ''}`,
       props: {
         filterable: true,
+        checkStrictly: true,
+        renderAfterExpand: false,
         disabled: !form.value.targetWarehouseId,
         placeholder: '选择已启用库存的目标组织'
       },

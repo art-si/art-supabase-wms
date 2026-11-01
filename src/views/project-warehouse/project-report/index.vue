@@ -106,8 +106,7 @@
         <ArtTableQuery
           v-if="activeTab === 'stock'"
           :key="`stock-${selectedProjectId}-${selectedConstructionNo}`"
-          :model-value="stockSearch"
-          @update:model-value="replaceReactiveModel(stockSearch, $event)"
+          v-model="stockSearch"
           :api-fn="fetchStockRows"
           :search-items="stockSearchItems"
           :columns-factory="stockColumns"
@@ -117,8 +116,7 @@
         <ArtTableQuery
           v-if="activeTab === 'materials'"
           :key="`materials-${selectedProjectId}-${selectedConstructionNo}`"
-          :model-value="materialSearch"
-          @update:model-value="replaceReactiveModel(materialSearch, $event)"
+          v-model="materialSearch"
           :api-fn="fetchMaterialRows"
           :search-items="materialSearchItems"
           :columns-factory="materialColumns"
@@ -132,8 +130,7 @@
         <ArtTableQuery
           v-if="activeTab === 'materialWip'"
           :key="`material-wip-${selectedProjectId}-${selectedConstructionNo}`"
-          :model-value="materialWipSearch"
-          @update:model-value="replaceReactiveModel(materialWipSearch, $event)"
+          v-model="materialWipSearch"
           :api-fn="fetchMaterialWipRows"
           :search-items="materialWipSearchItems"
           :columns-factory="materialWipColumns"
@@ -147,8 +144,7 @@
         <ArtTableQuery
           v-if="activeTab === 'packs'"
           :key="`packs-${selectedProjectId}-${selectedConstructionNo}`"
-          :model-value="packSearch"
-          @update:model-value="replaceReactiveModel(packSearch, $event)"
+          v-model="packSearch"
           :api-fn="fetchPackRows"
           :search-items="packSearchItems"
           :columns-factory="packColumns"
@@ -158,8 +154,7 @@
         <ArtTableQuery
           v-if="activeTab === 'orders'"
           :key="`orders-${selectedProjectId}-${selectedConstructionNo}`"
-          :model-value="orderSearch"
-          @update:model-value="replaceReactiveModel(orderSearch, $event)"
+          v-model="orderSearch"
           :api-fn="fetchOrderRows"
           :search-items="orderSearchItems"
           :columns-factory="orderColumns"
@@ -169,8 +164,7 @@
         <ArtTableQuery
           v-if="activeTab === 'movements'"
           :key="`movements-${selectedProjectId}-${selectedConstructionNo}`"
-          :model-value="movementSearch"
-          @update:model-value="replaceReactiveModel(movementSearch, $event)"
+          v-model="movementSearch"
           :api-fn="fetchMovementRows"
           :search-items="movementSearchItems"
           :columns-factory="movementColumns"
@@ -180,8 +174,7 @@
         <ArtTableQuery
           v-if="activeTab === 'serials'"
           :key="`serials-${selectedProjectId}-${selectedConstructionNo}`"
-          :model-value="serialSearch"
-          @update:model-value="replaceReactiveModel(serialSearch, $event)"
+          v-model="serialSearch"
           :api-fn="fetchSerialRows"
           :search-items="serialSearchItems"
           :columns-factory="serialColumns"
@@ -198,7 +191,6 @@
   import { ElButton } from 'element-plus'
   import { formatWmsMovementType } from '@/utils/wms/movement-display'
   import { formatWmsSerialParent } from '@/utils/wms/serial-display'
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import BusinessWorkspaceHeader from '@/components/business/business-workspace-header/index.vue'
@@ -248,14 +240,14 @@
   const summaryError = ref(false)
   const optionError = ref(false)
   let summaryRequestId = 0
-  const stockSearch = reactive({ keyword: '', positiveOnly: true })
-  const materialSearch = reactive({ keyword: '' })
-  const materialWipSearch = reactive({ keyword: '' })
+  const stockSearch = ref({ keyword: '', positiveOnly: true })
+  const materialSearch = ref({ keyword: '' })
+  const materialWipSearch = ref({ keyword: '' })
   const materialWipHistoryDrawerRef = ref<{ open: (row: WmsProjectMaterialWip) => void }>()
-  const packSearch = reactive({ keyword: '' })
-  const orderSearch = reactive({ keyword: '' })
-  const movementSearch = reactive({ keyword: '' })
-  const serialSearch = reactive({ keyword: '' })
+  const packSearch = ref({ keyword: '' })
+  const orderSearch = ref({ keyword: '' })
+  const movementSearch = ref({ keyword: '' })
+  const serialSearch = ref({ keyword: '' })
   const selectedProject = computed(() =>
     projects.value.find((item) => item.id === selectedProjectId.value)
   )

@@ -1,6 +1,5 @@
 <template>
   <ArtSectionCard
-    :show-scrollbar="false"
     class="inventory-location-navigator"
     title="仓储位置"
     :subtitle="`当前条件下共 ${navigationTotal} 条记录`"
@@ -22,106 +21,104 @@
       />
     </template>
 
-    <div class="inventory-location-navigator__content">
-      <ElInput
-        v-model="keyword"
-        clearable
-        placeholder="搜索仓库、库区或库位"
-        aria-label="搜索仓库、库区或库位"
-      >
-        <template #prefix><ArtSvgIcon icon="ri:search-line" /></template>
-      </ElInput>
-
-      <button
-        type="button"
-        class="inventory-location-navigator__all"
-        :class="{ 'is-active': selection.key === 'all' }"
-        @click="emit('select', { key: 'all' })"
-      >
-        <span class="inventory-location-navigator__all-icon" aria-hidden="true">
-          <ArtSvgIcon icon="ri:archive-stack-line" />
-        </span>
-        <span class="inventory-location-navigator__all-copy">
-          <strong>全部仓库</strong>
-          <small>{{ locations.warehouses.length }} 个仓库 · 当前查询范围</small>
-        </span>
-        <span class="inventory-location-navigator__count">{{ navigationTotal }}</span>
-      </button>
-
-      <div class="inventory-location-navigator__tree-label">
-        <span>{{ kind === 'stock' ? '仓库 / 库区 / 库位' : '仓库 / 库区' }}</span>
-        <ElButton
-          link
-          type="primary"
-          size="small"
-          @click="showEmptyLocations = !showEmptyLocations"
+    <template #toolbar
+      ><div class="inventory-location-navigator__content">
+        <ElInput
+          v-model="keyword"
+          clearable
+          placeholder="搜索仓库、库区或库位"
+          aria-label="搜索仓库、库区或库位"
         >
-          {{ showEmptyLocations ? '仅看有记录' : '显示空位置' }}
-        </ElButton>
-      </div>
+          <template #prefix><ArtSvgIcon icon="ri:search-line" /></template>
+        </ElInput>
 
-      <ArtEmptyState
-        v-if="keyword.trim() && !hasKeywordMatch"
-        class="inventory-location-navigator__empty"
-        title="未找到匹配的仓储位置"
-        description="位置搜索只影响左侧导航，右侧仍显示当前报表结果。"
-        size="compact"
-        :visual-size="72"
-      >
-        <ElButton link type="primary" @click="keyword = ''">清除位置搜索</ElButton>
-      </ArtEmptyState>
-      <ArtEmptyState
-        v-else-if="!navigationTree.length"
-        class="inventory-location-navigator__empty"
-        title="当前范围暂无位置记录"
-        description="可显示空位置，或调整右侧查询条件。"
-        size="compact"
-        :visual-size="72"
-      >
-        <ElButton v-if="!showEmptyLocations" link type="primary" @click="showEmptyLocations = true">
-          显示全部位置
-        </ElButton>
-      </ArtEmptyState>
-      <ElScrollbar v-else class="inventory-location-navigator__scrollbar">
-        <ElTree
-          ref="treeRef"
-          :data="navigationTree"
-          node-key="key"
-          :props="{ label: 'label', children: 'children' }"
-          :default-expanded-keys="defaultExpandedKeys"
-          :filter-node-method="filterNode"
-          :current-node-key="selection.key === 'all' ? undefined : selection.key"
-          :indent="16"
-          highlight-current
-          :expand-on-click-node="false"
-          empty-text="没有匹配位置"
-          :aria-label="kind === 'stock' ? '按仓库、库区和库位筛选库存' : '按仓库和库区筛选库存'"
-          @node-click="handleNodeClick"
+        <button
+          type="button"
+          class="inventory-location-navigator__all"
+          :class="{ 'is-active': selection.key === 'all' }"
+          @click="emit('select', { key: 'all' })"
         >
-          <template #default="{ data: node }">
-            <span
-              class="inventory-location-navigator__node"
-              :class="{ 'is-empty': node.count === 0 }"
-            >
-              <ArtSvgIcon :icon="nodeIcon(node)" aria-hidden="true" />
-              <span class="inventory-location-navigator__node-copy">
-                <strong :title="node.name">{{ node.name }}</strong>
-                <small v-if="node.code" :title="node.code">{{ node.code }}</small>
-              </span>
-              <span class="inventory-location-navigator__count">{{ node.count }}</span>
-            </span>
-          </template>
-          <template #empty>
-            <ArtEmptyState
-              title="未找到匹配项"
-              description="请调整关键词或清空筛选条件。"
-              size="compact"
-              :visual-size="64"
-            />
-          </template>
-        </ElTree>
-      </ElScrollbar>
-    </div>
+          <span class="inventory-location-navigator__all-icon" aria-hidden="true">
+            <ArtSvgIcon icon="ri:archive-stack-line" />
+          </span>
+          <span class="inventory-location-navigator__all-copy">
+            <strong>全部仓库</strong>
+            <small>{{ locations.warehouses.length }} 个仓库 · 当前查询范围</small>
+          </span>
+          <span class="inventory-location-navigator__count">{{ navigationTotal }}</span>
+        </button>
+
+        <div class="inventory-location-navigator__tree-label">
+          <span>{{ kind === 'stock' ? '仓库 / 库区 / 库位' : '仓库 / 库区' }}</span>
+          <ElButton
+            link
+            type="primary"
+            size="small"
+            @click="showEmptyLocations = !showEmptyLocations"
+          >
+            {{ showEmptyLocations ? '仅看有记录' : '显示空位置' }}
+          </ElButton>
+        </div>
+      </div></template
+    >
+
+    <ArtEmptyState
+      v-if="keyword.trim() && !hasKeywordMatch"
+      class="inventory-location-navigator__empty"
+      title="未找到匹配的仓储位置"
+      description="位置搜索只影响左侧导航，右侧仍显示当前报表结果。"
+      size="compact"
+      :visual-size="72"
+    >
+      <ElButton link type="primary" @click="keyword = ''">清除位置搜索</ElButton>
+    </ArtEmptyState>
+    <ArtEmptyState
+      v-else-if="!navigationTree.length"
+      class="inventory-location-navigator__empty"
+      title="当前范围暂无位置记录"
+      description="可显示空位置，或调整右侧查询条件。"
+      size="compact"
+      :visual-size="72"
+    >
+      <ElButton v-if="!showEmptyLocations" link type="primary" @click="showEmptyLocations = true">
+        显示全部位置
+      </ElButton>
+    </ArtEmptyState>
+    <ElTree
+      v-else
+      ref="treeRef"
+      :data="navigationTree"
+      node-key="key"
+      :props="{ label: 'label', children: 'children' }"
+      :default-expanded-keys="defaultExpandedKeys"
+      :filter-node-method="filterNode"
+      :current-node-key="selection.key === 'all' ? undefined : selection.key"
+      :indent="16"
+      highlight-current
+      :expand-on-click-node="false"
+      empty-text="没有匹配位置"
+      :aria-label="kind === 'stock' ? '按仓库、库区和库位筛选库存' : '按仓库和库区筛选库存'"
+      @node-click="handleNodeClick"
+    >
+      <template #default="{ data: node }">
+        <span class="inventory-location-navigator__node" :class="{ 'is-empty': node.count === 0 }">
+          <ArtSvgIcon :icon="nodeIcon(node)" aria-hidden="true" />
+          <span class="inventory-location-navigator__node-copy">
+            <strong :title="node.name">{{ node.name }}</strong>
+            <small v-if="node.code" :title="node.code">{{ node.code }}</small>
+          </span>
+          <span class="inventory-location-navigator__count">{{ node.count }}</span>
+        </span>
+      </template>
+      <template #empty>
+        <ArtEmptyState
+          title="未找到匹配项"
+          description="请调整关键词或清空筛选条件。"
+          size="compact"
+          :visual-size="64"
+        />
+      </template>
+    </ElTree>
   </ArtSectionCard>
 </template>
 
@@ -345,20 +342,10 @@
     min-height: 0;
     overflow: hidden;
 
-    :deep(.art-section-card__body) {
-      display: flex;
-      flex: 1 1 auto;
-      flex-direction: column;
-      min-height: 0;
-      overflow: hidden;
-    }
-
     &__content {
       display: flex;
-      flex: 1 1 auto;
       flex-direction: column;
       gap: 12px;
-      min-height: 0;
     }
 
     &__all {
@@ -437,11 +424,6 @@
       font-size: 12px;
       font-weight: 600;
       color: var(--el-text-color-regular);
-    }
-
-    &__scrollbar {
-      flex: 1 1 auto;
-      min-height: 0;
     }
 
     &__node {

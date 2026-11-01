@@ -37,8 +37,7 @@
       </ElAlert>
       <ArtTableQuery
         ref="tableRef"
-        :model-value="search"
-        @update:model-value="replaceReactiveModel(search, $event)"
+        v-model="search"
         :api-fn="fetchRows"
         :search-items="searchItems"
         :columns-factory="columnsFactory"
@@ -95,7 +94,6 @@
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { formatDateTimeValue } from '@/utils/ui/format'
   import { issueRequestTypeLabels as requestTypeLabels } from '@wms/views/shared/issue-request-types'
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { ElMessage, ElTag } from 'element-plus'
   import { useRoute, useRouter } from 'vue-router'
@@ -385,7 +383,7 @@
   const optionError = ref(false)
   const optionsLoading = ref(true)
   const workingId = ref<string>()
-  const search = reactive({
+  const search = ref({
     displayMode: 'document' as 'document' | 'line',
     status: '',
     requestType: '',
@@ -395,7 +393,12 @@
     materialCode: '',
     applicantKeyword: ''
   })
-  const displayMode = toRef(search, 'displayMode')
+  const displayMode = computed({
+    get: () => search.value.displayMode,
+    set: (value) => {
+      search.value.displayMode = value
+    }
+  })
   watch(displayMode, () => void refresh())
   const displayModeOptions = useDictionaryOptions('commonDocumentDisplayMode')
   const filterTenantId = computed(() => effectiveTenantId.value || undefined)
@@ -442,7 +445,7 @@
       buttonProps: { type: 'warning', plain: true },
       exportFilename: displayTitle.value,
       exportData: async () =>
-        (await fetchRows({ ...search, current: 1, size: 500, exportAll: true })).data.map(
+        (await fetchRows({ ...search.value, current: 1, size: 500, exportAll: true })).data.map(
           (row) => ({
             ...row,
             status: statusLabels[row.status],

@@ -16,8 +16,7 @@
       </BusinessWorkspaceHeader>
       <ArtTableQuery
         ref="tableRef"
-        :model-value="search"
-        @update:model-value="replaceReactiveModel(search, $event)"
+        v-model="search"
         :api-fn="fetchRows"
         :search-items="searchItems"
         :columns-factory="columnsFactory"
@@ -42,12 +41,9 @@
           </ElAlert>
           <ArtForm
             ref="activationFormRef"
-            :model-value="activationForm"
-            @update:model-value="replaceReactiveModel(activationForm, $event)"
+            v-model="activationForm"
             :items="activationItems"
             :rules="activationRules"
-            :show-reset="false"
-            :show-submit="false"
             label-position="top"
           />
         </div>
@@ -57,7 +53,6 @@
 </template>
 
 <script setup lang="tsx">
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import dayjs from 'dayjs'
@@ -96,7 +91,7 @@
   const activationFormRef = ref<InstanceType<typeof ArtForm>>()
   const selectedCount = ref(0)
   const defaultOrganizationLoading = ref(false)
-  const activationForm = reactive({ enabledOn: dayjs().format('YYYY-MM-DD'), isDefault: true })
+  const activationForm = ref({ enabledOn: dayjs().format('YYYY-MM-DD'), isDefault: true })
   const activationItems = computed<FormItem[]>(() => [
     {
       key: 'enabledOn',
@@ -125,7 +120,7 @@
   const activationRules = {
     enabledOn: [{ required: true, message: '请选择启用日期', trigger: 'change' }]
   }
-  const search = reactive({ enabled: '', keyword: '' })
+  const search = ref({ enabled: '', keyword: '' })
   const searchItems: SearchFormItem[] = [
     {
       label: '启用状态',
@@ -158,15 +153,19 @@
   async function openEnable(ids: string[]): Promise<void> {
     if (!ids.length) return void ElMessage.warning('请先勾选库存组织')
     selectedCount.value = ids.length
-    activationForm.enabledOn = dayjs().format('YYYY-MM-DD')
-    activationForm.isDefault = ids.length === 1
+    activationForm.value.enabledOn = dayjs().format('YYYY-MM-DD')
+    activationForm.value.isDefault = ids.length === 1
     await dialogRef.value?.handleOpen(undefined, {
       title: '设置库存启用日期',
       subtitle: `${ids.length} 个库存组织`,
       onOpen: () => activationFormRef.value?.clearValidate(),
       onConfirm: async () => {
         if (!(await validateArtFormForSubmit(activationFormRef.value))) return false
-        await setWmsInventoryEnabled(ids, activationForm.enabledOn, activationForm.isDefault)
+        await setWmsInventoryEnabled(
+          ids,
+          activationForm.value.enabledOn,
+          activationForm.value.isDefault
+        )
         await refresh()
         return true
       }

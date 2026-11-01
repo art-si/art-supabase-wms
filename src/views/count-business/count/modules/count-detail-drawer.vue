@@ -47,217 +47,233 @@
           确认盘盈盘亏
         </ElButton>
       </div>
-      <ArtSectionCard
-        v-if="plan.status === 'posted'"
-        title="盘盈盘亏单"
-        subtitle="按盘点差异自动生成；每条明细关联实际库存流水，保留项目施工号。"
-        :loading="documentsLoading"
-        :error="
-          loadError ? '盘点表加载失败，请重试' : documentsError ? '差异单据加载失败，请重试' : null
-        "
-        :empty="!loading && !documentsLoading && !documentsError && documents.length === 0"
-        empty-title="账实相符，无盘盈盘亏单"
-        empty-description="本次实盘没有数量或 SN 差异。"
-        @retry="loadError ? loadLines() : loadDocuments(lines)"
-      >
-        <div class="space-y-4">
-          <div
-            v-for="document in documents"
-            :key="document.id"
-            class="min-w-0 rounded-xl border border-[var(--el-border-color-light)] p-4"
-          >
-            <div class="flex flex-wrap items-start justify-between gap-3">
-              <div class="min-w-0">
-                <strong class="block break-all text-sm"
-                  >{{ document.kind === 'gain' ? '盘盈单' : '盘亏单' }} ·
-                  {{ document.documentNo }}</strong
+      <ElTabs
+        v-model="activeDetailTab"
+        :class="plan.status !== 'posted' ? '[&_.el-tabs__header]:hidden' : undefined"
+        ><ElTabPane v-if="plan.status === 'posted'" name="section0" label="盘盈盘亏单" :lazy="false"
+          ><div class="space-y-4"
+            ><ArtSectionCard
+              v-if="plan.status === 'posted'"
+              title="盘盈盘亏单"
+              subtitle="按盘点差异自动生成；每条明细关联实际库存流水，保留项目施工号。"
+              :loading="documentsLoading"
+              :error="
+                loadError
+                  ? '盘点表加载失败，请重试'
+                  : documentsError
+                    ? '差异单据加载失败，请重试'
+                    : null
+              "
+              :empty="!loading && !documentsLoading && !documentsError && documents.length === 0"
+              empty-title="账实相符，无盘盈盘亏单"
+              empty-description="本次实盘没有数量或 SN 差异。"
+              @retry="loadError ? loadLines() : loadDocuments(lines)"
+            >
+              <div class="space-y-4">
+                <div
+                  v-for="document in documents"
+                  :key="document.id"
+                  class="min-w-0 rounded-xl border border-[var(--el-border-color-light)] p-4"
                 >
-                <p class="mt-1 text-xs text-[var(--el-text-color-secondary)]">
-                  {{ formatDateTimeValue(document.postedAt) }} ·
-                  {{ documentLines(document.kind).length }} 条差异
-                </p>
-              </div>
-              <ElTag :type="document.kind === 'gain' ? 'success' : 'warning'" size="small">
-                已记账
-              </ElTag>
-            </div>
-            <ul class="mt-3 divide-y divide-[var(--el-border-color-light)]">
-              <li
-                v-for="item in documentLines(document.kind)"
-                :key="item.id"
-                class="flex min-w-0 flex-wrap items-center justify-between gap-2 py-2 text-sm"
-              >
-                <div class="min-w-0">
-                  <strong class="block truncate">{{
-                    item.material?.materialName || '物料'
-                  }}</strong>
-                  <p class="mt-0.5 break-all text-xs text-[var(--el-text-color-secondary)]">
-                    {{ item.batch?.batchNo || '批次资料不可用' }} · {{ projectName(item.projectId)
-                    }}{{ item.constructionNo ? ` / ${item.constructionNo}` : '' }}
-                  </p>
-                  <p
-                    v-if="document.kind === 'gain' && item.newSerialNos.length"
-                    class="mt-0.5 break-all text-xs text-[var(--el-text-color-secondary)]"
-                  >
-                    新增 SN：{{ item.newSerialNos.join('、') }}
-                  </p>
+                  <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div class="min-w-0">
+                      <strong class="block break-all text-sm"
+                        >{{ document.kind === 'gain' ? '盘盈单' : '盘亏单' }} ·
+                        {{ document.documentNo }}</strong
+                      >
+                      <p class="mt-1 text-xs text-[var(--el-text-color-secondary)]">
+                        {{ formatDateTimeValue(document.postedAt) }} ·
+                        {{ documentLines(document.kind).length }} 条差异
+                      </p>
+                    </div>
+                    <ElTag :type="document.kind === 'gain' ? 'success' : 'warning'" size="small">
+                      已记账
+                    </ElTag>
+                  </div>
+                  <ul class="mt-3 divide-y divide-[var(--el-border-color-light)]">
+                    <li
+                      v-for="item in documentLines(document.kind)"
+                      :key="item.id"
+                      class="flex min-w-0 flex-wrap items-center justify-between gap-2 py-2 text-sm"
+                    >
+                      <div class="min-w-0">
+                        <strong class="block truncate">{{
+                          item.material?.materialName || '物料'
+                        }}</strong>
+                        <p class="mt-0.5 break-all text-xs text-[var(--el-text-color-secondary)]">
+                          {{ item.batch?.batchNo || '批次资料不可用' }} ·
+                          {{ projectName(item.projectId)
+                          }}{{ item.constructionNo ? ` / ${item.constructionNo}` : '' }}
+                        </p>
+                        <p
+                          v-if="document.kind === 'gain' && item.newSerialNos.length"
+                          class="mt-0.5 break-all text-xs text-[var(--el-text-color-secondary)]"
+                        >
+                          新增 SN：{{ item.newSerialNos.join('、') }}
+                        </p>
+                      </div>
+                      <div class="shrink-0 text-right tabular-nums">
+                        <strong
+                          :class="
+                            document.kind === 'gain'
+                              ? 'text-[var(--el-color-success)]'
+                              : 'text-[var(--el-color-warning)]'
+                          "
+                          >{{ document.kind === 'gain' ? '+' : '−'
+                          }}{{ movementQuantity(item, document.kind) }}</strong
+                        >
+                        <small
+                          v-if="movementArea(item, document.kind) !== null"
+                          class="mt-0.5 block text-[var(--el-text-color-secondary)]"
+                        >
+                          {{ document.kind === 'gain' ? '+' : '−'
+                          }}{{ movementArea(item, document.kind) }}㎡
+                        </small>
+                      </div>
+                    </li>
+                  </ul>
                 </div>
-                <div class="shrink-0 text-right tabular-nums">
+              </div>
+            </ArtSectionCard>
+          </div></ElTabPane
+        >
+        <ElTabPane name="section1" label="盘点表" :lazy="false"
+          ><div class="space-y-4"
+            ><ArtSectionCard
+              title="盘点表"
+              subtitle="一个库存批次对应一行；项目施工号随来源库存保留。"
+              :error="loadError ? '盘点表加载失败，请重试' : null"
+              :empty="!loading && !loadError && lines.length === 0"
+              empty-title="暂无盘点行"
+              empty-description="生成盘点表后可按库存批次核对明细。"
+              @retry="loadLines"
+            >
+              <ArtTable
+                v-if="lines.length"
+                class="wms-editable-line-table"
+                :data="lines"
+                :columns="lineColumns"
+                :pagination="false"
+                row-key="id"
+                table-layout="fixed"
+              >
+                <template #material="{ row }">
                   <strong
-                    :class="
-                      document.kind === 'gain'
-                        ? 'text-[var(--el-color-success)]'
-                        : 'text-[var(--el-color-warning)]'
-                    "
-                    >{{ document.kind === 'gain' ? '+' : '−'
-                    }}{{ movementQuantity(item, document.kind) }}</strong
+                    class="block truncate"
+                    :title="row.material?.description || row.material?.materialName || ''"
+                    >{{ row.material?.description || row.material?.materialName || '物料' }}</strong
                   >
                   <small
-                    v-if="movementArea(item, document.kind) !== null"
-                    class="mt-0.5 block text-[var(--el-text-color-secondary)]"
+                    class="block truncate text-[var(--el-text-color-secondary)]"
+                    :title="
+                      [row.material?.materialCode, row.material?.specificationModel]
+                        .filter(Boolean)
+                        .join(' · ')
+                    "
+                    >{{
+                      [row.material?.materialCode, row.material?.specificationModel]
+                        .filter(Boolean)
+                        .join(' · ') || '—'
+                    }}</small
                   >
-                    {{ document.kind === 'gain' ? '+' : '−'
-                    }}{{ movementArea(item, document.kind) }}㎡
-                  </small>
-                </div>
-              </li>
-            </ul>
-          </div>
-        </div>
-      </ArtSectionCard>
-      <ArtSectionCard
-        title="盘点表"
-        subtitle="一个库存批次对应一行；项目施工号随来源库存保留。"
-        :error="loadError ? '盘点表加载失败，请重试' : null"
-        :empty="!loading && !loadError && lines.length === 0"
-        empty-title="暂无盘点行"
-        empty-description="生成盘点表后可按库存批次核对明细。"
-        @retry="loadLines"
+                </template>
+                <template #batch="{ row }">{{ row.batch?.batchNo || '批次资料不可用' }}</template>
+                <template #project="{ row }"
+                  >{{ projectName(row.projectId)
+                  }}{{ row.constructionNo ? ` / ${row.constructionNo}` : '' }}</template
+                >
+                <template #countedQuantity="{ row }">
+                  <ElInputNumber
+                    v-if="
+                      plan.status === 'counting' &&
+                      isLegacyPlan &&
+                      hasAuth('WmsCount:Count') &&
+                      !isSerialLine(row)
+                    "
+                    v-model="row.countedQuantity"
+                    :min="0"
+                    :precision="3"
+                    :controls="false"
+                    class="w-full!"
+                  />
+                  <span v-else>{{ row.countedQuantity ?? '待录入' }}</span>
+                </template>
+                <template #countedSerialIds="{ row }">
+                  <ElSelect
+                    v-if="
+                      plan.status === 'counting' &&
+                      isLegacyPlan &&
+                      hasAuth('WmsCount:Count') &&
+                      isSerialLine(row)
+                    "
+                    v-model="row.countedSerialIds"
+                    multiple
+                    filterable
+                    collapse-tags
+                    collapse-tags-tooltip
+                    placeholder="选择原 SN"
+                    class="w-full"
+                    @visible-change="($event) => $event && loadSerialOptions(row)"
+                    @change="syncSerialQuantity(row)"
+                  >
+                    <ElOption
+                      v-for="serial in serialOptions[row.batchId] || []"
+                      :key="serial.id"
+                      :label="serial.serialNo"
+                      :value="serial.id"
+                    />
+                  </ElSelect>
+                  <span v-else>{{ row.countedSerialIds.length || '—' }}</span>
+                </template>
+                <template #newSerialNos="{ row }">
+                  <ElInput
+                    v-if="
+                      plan.status === 'counting' &&
+                      isLegacyPlan &&
+                      hasAuth('WmsCount:Count') &&
+                      isSerialLine(row)
+                    "
+                    :model-value="serialDraft[row.id] || ''"
+                    placeholder="新增 SN，逗号分隔"
+                    @update:model-value="onNewSerialsChange(row, $event)"
+                  />
+                  <span v-else>{{ row.newSerialNos.join('、') || '—' }}</span>
+                </template>
+                <template #variance="{ row }">
+                  <ElTag size="small" :type="hasVariance(row) ? 'warning' : 'info'">
+                    {{ hasVariance(row) ? '有差异' : '相符' }}
+                  </ElTag>
+                </template>
+                <template #gain="{ row }">
+                  <span
+                    class="tabular-nums"
+                    :class="countLineVariance(row)?.gain ? 'text-[var(--el-color-success)]' : ''"
+                    >{{ countLineVariance(row)?.gain ?? '—' }}</span
+                  >
+                </template>
+                <template #loss="{ row }">
+                  <span
+                    class="tabular-nums"
+                    :class="countLineVariance(row)?.loss ? 'text-[var(--el-color-warning)]' : ''"
+                    >{{ countLineVariance(row)?.loss ?? '—' }}</span
+                  >
+                </template>
+                <template #operation="{ row }"
+                  ><ElButton
+                    v-if="plan.status === 'counting' && isLegacyPlan"
+                    v-auth="'WmsCount:Count'"
+                    link
+                    type="primary"
+                    :loading="savingLineId === row.id"
+                    @click="saveLine(row)"
+                    >保存实盘</ElButton
+                  ><span v-else>已记账</span></template
+                >
+              </ArtTable>
+            </ArtSectionCard></div
+          ></ElTabPane
+        ></ElTabs
       >
-        <ElScrollbar v-if="lines.length">
-          <ArtTable
-            class="wms-editable-line-table"
-            :data="lines"
-            :columns="lineColumns"
-            :pagination="false"
-            row-key="id"
-            table-layout="fixed"
-          >
-            <template #material="{ row }">
-              <strong
-                class="block truncate"
-                :title="row.material?.description || row.material?.materialName || ''"
-                >{{ row.material?.description || row.material?.materialName || '物料' }}</strong
-              >
-              <small
-                class="block truncate text-[var(--el-text-color-secondary)]"
-                :title="
-                  [row.material?.materialCode, row.material?.specificationModel]
-                    .filter(Boolean)
-                    .join(' · ')
-                "
-                >{{
-                  [row.material?.materialCode, row.material?.specificationModel]
-                    .filter(Boolean)
-                    .join(' · ') || '—'
-                }}</small
-              >
-            </template>
-            <template #batch="{ row }">{{ row.batch?.batchNo || '批次资料不可用' }}</template>
-            <template #project="{ row }"
-              >{{ projectName(row.projectId)
-              }}{{ row.constructionNo ? ` / ${row.constructionNo}` : '' }}</template
-            >
-            <template #countedQuantity="{ row }">
-              <ElInputNumber
-                v-if="
-                  plan.status === 'counting' &&
-                  isLegacyPlan &&
-                  hasAuth('WmsCount:Count') &&
-                  !isSerialLine(row)
-                "
-                v-model="row.countedQuantity"
-                :min="0"
-                :precision="3"
-                :controls="false"
-                class="w-full!"
-              />
-              <span v-else>{{ row.countedQuantity ?? '待录入' }}</span>
-            </template>
-            <template #countedSerialIds="{ row }">
-              <ElSelect
-                v-if="
-                  plan.status === 'counting' &&
-                  isLegacyPlan &&
-                  hasAuth('WmsCount:Count') &&
-                  isSerialLine(row)
-                "
-                v-model="row.countedSerialIds"
-                multiple
-                filterable
-                collapse-tags
-                collapse-tags-tooltip
-                placeholder="选择原 SN"
-                class="w-full"
-                @visible-change="($event) => $event && loadSerialOptions(row)"
-                @change="syncSerialQuantity(row)"
-              >
-                <ElOption
-                  v-for="serial in serialOptions[row.batchId] || []"
-                  :key="serial.id"
-                  :label="serial.serialNo"
-                  :value="serial.id"
-                />
-              </ElSelect>
-              <span v-else>{{ row.countedSerialIds.length || '—' }}</span>
-            </template>
-            <template #newSerialNos="{ row }">
-              <ElInput
-                v-if="
-                  plan.status === 'counting' &&
-                  isLegacyPlan &&
-                  hasAuth('WmsCount:Count') &&
-                  isSerialLine(row)
-                "
-                :model-value="serialDraft[row.id] || ''"
-                placeholder="新增 SN，逗号分隔"
-                @update:model-value="onNewSerialsChange(row, $event)"
-              />
-              <span v-else>{{ row.newSerialNos.join('、') || '—' }}</span>
-            </template>
-            <template #variance="{ row }">
-              <ElTag size="small" :type="hasVariance(row) ? 'warning' : 'info'">
-                {{ hasVariance(row) ? '有差异' : '相符' }}
-              </ElTag>
-            </template>
-            <template #gain="{ row }">
-              <span
-                class="tabular-nums"
-                :class="countLineVariance(row)?.gain ? 'text-[var(--el-color-success)]' : ''"
-                >{{ countLineVariance(row)?.gain ?? '—' }}</span
-              >
-            </template>
-            <template #loss="{ row }">
-              <span
-                class="tabular-nums"
-                :class="countLineVariance(row)?.loss ? 'text-[var(--el-color-warning)]' : ''"
-                >{{ countLineVariance(row)?.loss ?? '—' }}</span
-              >
-            </template>
-            <template #operation="{ row }"
-              ><ElButton
-                v-if="plan.status === 'counting' && isLegacyPlan"
-                v-auth="'WmsCount:Count'"
-                link
-                type="primary"
-                :loading="savingLineId === row.id"
-                @click="saveLine(row)"
-                >保存实盘</ElButton
-              ><span v-else>已记账</span></template
-            >
-          </ArtTable>
-        </ElScrollbar>
-      </ArtSectionCard>
     </div>
   </ArtDrawer>
 </template>
@@ -296,6 +312,7 @@
   const emit = defineEmits<{ success: [] }>()
   const { hasAuth } = useAuth()
   const { confirmAction } = useArtFeedback()
+  const activeDetailTab = ref('section1')
   const drawerRef = ref<ArtDrawerExpose<Context>>()
   const plan = shallowRef<WmsCountPlan>()
   const isLegacyPlan = computed(() => !plan.value?.organizationId)
@@ -513,6 +530,7 @@
     }
   }
   async function handleOpen(data: Context): Promise<void> {
+    activeDetailTab.value = 'section1'
     openVersion++
     savingLineId.value = null
     posting.value = false

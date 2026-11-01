@@ -18,8 +18,7 @@
       </BusinessWorkspaceHeader>
       <ArtTableQuery
         ref="tableRef"
-        :model-value="search"
-        @update:model-value="replaceReactiveModel(search, $event)"
+        v-model="search"
         :api-fn="fetchRows"
         :search-items="searchItems"
         :columns-factory="columnsFactory"
@@ -45,7 +44,6 @@
 
 <script setup lang="tsx">
   import { wmsDocumentClassificationColumns } from '@/utils/business/wms-document-columns'
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { useRouteDocumentDrawer } from '@/hooks/core/useRouteDocumentDrawer'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
@@ -138,13 +136,18 @@
   }
   const drawerRef = ref<InstanceType<typeof InitialStockDrawer>>()
   const workingId = ref<string>()
-  const search = reactive({
+  const search = ref({
     displayMode: 'document' as 'document' | 'line',
     organizationId: '',
     status: '',
     keyword: ''
   })
-  const displayMode = toRef(search, 'displayMode')
+  const displayMode = computed({
+    get: () => search.value.displayMode,
+    set: (value) => {
+      search.value.displayMode = value
+    }
+  })
   watch(displayMode, () => void refresh())
   const displayModeOptions = useDictionaryOptions('commonDocumentDisplayMode')
 
@@ -214,7 +217,7 @@
               ...page,
               tenantId: effectiveTenantId.value || undefined
             }),
-          { ...search, current: 1, size: 500 }
+          { ...search.value, current: 1, size: 500 }
         )
         return documents.flatMap((document) =>
           document.lines.map((line) => ({

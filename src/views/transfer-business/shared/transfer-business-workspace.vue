@@ -24,8 +24,7 @@
       </ElAlert>
       <ArtTableQuery
         ref="tableRef"
-        :model-value="search"
-        @update:model-value="replaceReactiveModel(search, $event)"
+        v-model="search"
         @selection-change="onSelectionChange"
         :api-fn="fetchRows"
         :search-items="searchItems"
@@ -137,7 +136,6 @@
 <script setup lang="tsx">
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { useRoute, useRouter } from 'vue-router'
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { uniq, uniqBy } from 'lodash-es'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
@@ -261,7 +259,7 @@
     'wms_transfer_business_document',
     '调拨单'
   )
-  const search = reactive({
+  const search = ref({
     displayMode: 'document' as 'document' | 'line',
     status: '',
     documentTypeCode: '',
@@ -271,7 +269,12 @@
     materialCode: '',
     keyword: ''
   })
-  const displayMode = toRef(search, 'displayMode')
+  const displayMode = computed({
+    get: () => search.value.displayMode,
+    set: (value) => {
+      search.value.displayMode = value
+    }
+  })
   watch(displayMode, () => void refresh())
   const displayModeOptions = useDictionaryOptions('commonDocumentDisplayMode')
   const statusLabels = { draft: '暂存', submitted: '已提交', approved: '已审核' } as const
@@ -690,7 +693,7 @@
       buttonProps: { type: 'warning', plain: true },
       exportFilename: title.value,
       exportData: async () =>
-        (await fetchRows({ ...search, current: 1, size: 500, exportAll: true })).data.map(
+        (await fetchRows({ ...search.value, current: 1, size: 500, exportAll: true })).data.map(
           (row) => ({
             ...row,
             statusLabel: statusLabels[row.status],

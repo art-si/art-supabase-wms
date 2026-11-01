@@ -19,8 +19,7 @@
       </ElAlert>
       <ArtTableQuery
         ref="tableRef"
-        :model-value="search"
-        @update:model-value="replaceReactiveModel(search, $event)"
+        v-model="search"
         :api-fn="fetchRows"
         :search-items="searchItems"
         :columns-factory="columnsFactory"
@@ -43,7 +42,6 @@
 
 <script setup lang="tsx">
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
-  import { replaceReactiveModel } from '@/utils/form/model'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import ArtTableQuery, {
     type ArtTableQueryExpose,
@@ -81,7 +79,7 @@
   const sections = ref<WmsProjectSection[]>([])
   const organizationTree = ref<Api.SystemManage.OrganizationListItem[]>([])
   const optionError = ref(false)
-  const search = reactive({
+  const search = ref({
     displayMode: 'document' as 'document' | 'line',
     status: '',
     documentTypeId: '',
@@ -94,7 +92,12 @@
     constructionNo: '',
     keyword: ''
   })
-  const displayMode = toRef(search, 'displayMode')
+  const displayMode = computed({
+    get: () => search.value.displayMode,
+    set: (value) => {
+      search.value.displayMode = value
+    }
+  })
   watch(displayMode, () => void tableRef.value?.refreshContext())
   const displayModeOptions = useDictionaryOptions('commonDocumentDisplayMode')
   const reviewStatusOptions = useDictionaryOptions('commonDocumentReviewStatus')
@@ -195,7 +198,7 @@
         options: projects.value
           .filter((item) => !filterTenantId.value || item.tenantId === filterTenantId.value)
           .map((item) => ({ label: `${item.projectName} · ${item.projectCode}`, value: item.id })),
-        onChange: () => (search.constructionNo = '')
+        onChange: () => (search.value.constructionNo = '')
       }
     },
     {
@@ -205,10 +208,10 @@
       props: {
         clearable: true,
         filterable: true,
-        disabled: !search.projectId,
-        placeholder: search.projectId ? '全部施工号' : '请先选择项目',
+        disabled: !search.value.projectId,
+        placeholder: search.value.projectId ? '全部施工号' : '请先选择项目',
         options: sections.value
-          .filter((item) => item.projectId === search.projectId)
+          .filter((item) => item.projectId === search.value.projectId)
           .map((item) => ({
             label: `${item.constructionNo} · ${item.sectionName}`,
             value: item.constructionNo

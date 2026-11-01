@@ -46,8 +46,7 @@
 
           <ArtTableQuery
             ref="tableRef"
-            :model-value="search"
-            @update:model-value="replaceReactiveModel(search, $event)"
+            v-model="search"
             class="min-w-0"
             :api-fn="fetchRows"
             :search-items="searchItems"
@@ -74,7 +73,6 @@
 
 <script setup lang="tsx">
   import { formatWmsMovementType } from '@/utils/wms/movement-display'
-  import { replaceReactiveModel } from '@/utils/form/model'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import BusinessWorkspaceHeader from '@/components/business/business-workspace-header/index.vue'
   import BusinessTableWorkspaceActions from '@/components/business/business-table-workspace-actions/index.vue'
@@ -165,7 +163,7 @@
   const selectedLocationKey = ref('all')
   let locationRequest = 0
   let reportRequest = 0
-  const search = reactive<Partial<WmsInventoryReportQuery>>({
+  const search = ref<Partial<WmsInventoryReportQuery>>({
     dateRange: [],
     materialCode: '',
     materialDescription: '',
@@ -236,19 +234,19 @@
 
   function selectLocation(node: LocationSelection): void {
     selectedLocationKey.value = node.key
-    search.warehouseId = node.warehouseId
-    search.zoneId = node.zoneId
-    search.unzoned = node.unzoned
-    search.binId = node.binId
+    search.value.warehouseId = node.warehouseId
+    search.value.zoneId = node.zoneId
+    search.value.unzoned = node.unzoned
+    search.value.binId = node.binId
     void tableRef.value?.getData()
   }
 
   function resetLocation(): void {
     selectedLocationKey.value = 'all'
-    search.warehouseId = undefined
-    search.zoneId = undefined
-    search.unzoned = false
-    search.binId = undefined
+    search.value.warehouseId = undefined
+    search.value.zoneId = undefined
+    search.value.unzoned = false
+    search.value.binId = undefined
   }
 
   async function loadLocations(): Promise<void> {
@@ -382,8 +380,8 @@
   }
 
   function columnsFactory(): ColumnOption<WmsInventoryReportRow>[] {
-    const selected = search.summaryValues?.length
-      ? search.summaryValues
+    const selected = search.value.summaryValues?.length
+      ? search.value.summaryValues
       : (['inventoryQuantity', 'basicQuantity'] as WmsInventorySummaryValue[])
     const columns: ColumnOption<WmsInventoryReportRow>[] = [
       {
@@ -500,7 +498,7 @@
     }
     if (props.kind === 'stock') {
       columns.push({
-        prop: `quantity-${selected.join('-')}`,
+        prop: 'quantity',
         label: '数量',
         children: selected.map((key) =>
           quantityColumn(
@@ -515,25 +513,49 @@
       const periods =
         props.kind === 'ledger'
           ? [
-              { label: '期初', value: (row: WmsInventoryReportRow) => row.openingQuantity },
-              { label: '入库', value: (row: WmsInventoryReportRow) => row.inboundQuantity },
-              { label: '出库', value: (row: WmsInventoryReportRow) => row.outboundQuantity },
-              { label: '结存', value: (row: WmsInventoryReportRow) => row.closingQuantity }
+              {
+                key: 'opening',
+                label: '期初',
+                value: (row: WmsInventoryReportRow) => row.openingQuantity
+              },
+              {
+                key: 'inbound',
+                label: '入库',
+                value: (row: WmsInventoryReportRow) => row.inboundQuantity
+              },
+              {
+                key: 'outbound',
+                label: '出库',
+                value: (row: WmsInventoryReportRow) => row.outboundQuantity
+              },
+              {
+                key: 'closing',
+                label: '结存',
+                value: (row: WmsInventoryReportRow) => row.closingQuantity
+              }
             ]
           : [
-              { label: '入库', value: (row: WmsInventoryReportRow) => row.inboundQuantity },
-              { label: '出库', value: (row: WmsInventoryReportRow) => row.outboundQuantity }
+              {
+                key: 'inbound',
+                label: '入库',
+                value: (row: WmsInventoryReportRow) => row.inboundQuantity
+              },
+              {
+                key: 'outbound',
+                label: '出库',
+                value: (row: WmsInventoryReportRow) => row.outboundQuantity
+              }
             ]
       columns.push(
         ...periods.map((period) => ({
-          prop: `${period.label}-${selected.join('-')}`,
+          prop: `quantity-${period.key}`,
           label: period.label,
           children: selected.map((key) =>
             quantityColumn(
               summaryOptions.find((option) => option.value === key)?.label || key,
               key,
               period.value,
-              period.label
+              period.key
             )
           )
         }))
@@ -546,7 +568,7 @@
       auxiliaryQuantity2: { prop: 'auxiliaryUnit2', label: '辅助单位(2)' }
     } as const
     columns.push({
-      prop: `measurementUnits-${selected.join('-')}`,
+      prop: 'measurementUnits',
       label: '计量单位',
       children: selected.map((key) => ({
         ...unitByQuantity[key],

@@ -14,114 +14,113 @@
         组件序列号、仓库或库位加载失败，请重试后继续添加。
         <ElButton class="ml-2" size="small" @click="retryBatch">重新加载</ElButton>
       </ElAlert>
-      <ArtSectionCard
-        title="来源组件"
-        :subtitle="`已选 ${components.length} 条；至少两条，最多 50 条，同一批次只能添加一次。`"
+      <ArtForm
+        ref="formRef"
+        v-model:active-tab="activeTab"
+        class="px-0! pt-0!"
+        v-model="form"
+        :items="items"
+        :rules="rules"
+        :span="12"
+        :gutter="20"
+        label-position="top"
       >
-        <template #actions>
-          <ElTag v-if="firstBatch" type="success" size="small">
-            {{ firstBatch.warehouse?.warehouseName }} · {{ projectName
-            }}{{ firstBatch.constructionNo ? ` / ${firstBatch.constructionNo}` : '' }}
-          </ElTag>
+        <template #targetMaterialId>
+          <ArtTableSingleSelect
+            :model-value="form.targetMaterialId || undefined"
+            :api-fn="materialApi"
+            :selected-data="selectedMaterial"
+            :columns="materialColumns"
+            title="选择成品物料"
+            subtitle="成品物料须不同于所有来源组件"
+            placeholder="选择成品物料"
+            search-placeholder="输入物料编码或名称"
+            label-key="materialName"
+            :show-pagination="true"
+            :page-size="20"
+            :disabled="!firstBatch"
+            @update:selected-data="onMaterialSelected"
+            @update:model-value="form.targetMaterialId = String($event || '')"
+          />
         </template>
-        <ArtTableSingleSelect
-          :key="selectKey"
-          :model-value="undefined"
-          :api-fn="batchApi"
-          :selected-data="[]"
-          :columns="batchColumns"
-          title="添加来源批次"
-          subtitle="首次选择后锁定仓库、库存组织、项目施工号及货权"
-          placeholder="选择一个库存批次加入组件"
-          search-placeholder="输入批号或备注"
-          empty-text="当前范围暂无可用来源批次"
-          empty-description="检查租户及库存范围，或清空批号搜索后重试；组装需要至少两个归属一致的库存批次。"
-          label-key="batchLabel"
-          :show-pagination="true"
-          :page-size="20"
-          :disabled="components.length >= 50"
-          @update:selected-data="onBatchSelected"
-        />
-        <div v-if="components.length" class="mt-3 divide-y divide-[var(--el-border-color-light)]">
-          <div
-            v-for="item in components"
-            :key="item.batch.id"
-            class="flex min-w-0 flex-wrap items-center gap-3 py-3"
+        <template #sourceComponents
+          ><ArtSectionCard
+            title="来源组件"
+            :subtitle="`已选 ${components.length} 条；至少两条，最多 50 条，同一批次只能添加一次。`"
           >
-            <div class="min-w-0 flex-1">
-              <strong
-                class="block truncate text-sm"
-                :title="item.batch.material?.materialName || '物料'"
-              >
-                {{ item.batch.material?.materialName || '物料' }}
-              </strong>
-              <p class="mt-1 truncate text-xs text-[var(--el-text-color-secondary)]">
-                {{ item.batch.batchNo }} · {{ item.batch.bin?.binCode || '仓库直存' }} · 可见在库
-                {{ item.batch.quantity }}
-              </p>
-            </div>
-            <ElInputNumber
-              v-model="item.quantity"
-              :min="0.001"
-              :max="item.batch.quantity"
-              :precision="3"
-              :controls="false"
-              class="w-28!"
-              :aria-label="`${item.batch.batchNo} 用量`"
-            />
-            <ElButton
-              text
-              type="danger"
-              :aria-label="`移除 ${item.batch.batchNo}`"
-              @click="removeBatch(item.batch.id)"
-              >移除</ElButton
-            >
-          </div>
-        </div>
-        <ArtEmptyState
-          v-else
-          title="先添加来源批次"
-          description="选择至少两个不同批次，再填写成品物料与数量。"
-          size="compact"
-          :visual-size="84"
-          class="min-h-40"
-        />
-      </ArtSectionCard>
-      <ArtSectionCard
-        title="成品入库"
-        subtitle="选择成品物料，填写本次组装数量、目标库位和批次属性。"
-      >
-        <ArtForm
-          ref="formRef"
-          v-model="form"
-          :items="items"
-          :rules="rules"
-          :span="12"
-          :gutter="20"
-          label-position="top"
-          :show-reset="false"
-          :show-submit="false"
-        >
-          <template #targetMaterialId>
+            <template #actions>
+              <ElTag v-if="firstBatch" type="success" size="small">
+                {{ firstBatch.warehouse?.warehouseName }} · {{ projectName
+                }}{{ firstBatch.constructionNo ? ` / ${firstBatch.constructionNo}` : '' }}
+              </ElTag>
+            </template>
             <ArtTableSingleSelect
-              :model-value="form.targetMaterialId || undefined"
-              :api-fn="materialApi"
-              :selected-data="selectedMaterial"
-              :columns="materialColumns"
-              title="选择成品物料"
-              subtitle="成品物料须不同于所有来源组件"
-              placeholder="选择成品物料"
-              search-placeholder="输入物料编码或名称"
-              label-key="materialName"
+              :key="selectKey"
+              :model-value="undefined"
+              :api-fn="batchApi"
+              :selected-data="[]"
+              :columns="batchColumns"
+              title="添加来源批次"
+              subtitle="首次选择后锁定仓库、库存组织、项目施工号及货权"
+              placeholder="选择一个库存批次加入组件"
+              search-placeholder="输入批号或备注"
+              empty-text="当前范围暂无可用来源批次"
+              empty-description="检查租户及库存范围，或清空批号搜索后重试；组装需要至少两个归属一致的库存批次。"
+              label-key="batchLabel"
               :show-pagination="true"
               :page-size="20"
-              :disabled="!firstBatch"
-              @update:selected-data="onMaterialSelected"
-              @update:model-value="form.targetMaterialId = String($event || '')"
+              :disabled="components.length >= 50"
+              @update:selected-data="onBatchSelected"
             />
-          </template>
-        </ArtForm>
-      </ArtSectionCard>
+            <div
+              v-if="components.length"
+              class="mt-3 divide-y divide-[var(--el-border-color-light)]"
+            >
+              <div
+                v-for="item in components"
+                :key="item.batch.id"
+                class="flex min-w-0 flex-wrap items-center gap-3 py-3"
+              >
+                <div class="min-w-0 flex-1">
+                  <strong
+                    class="block truncate text-sm"
+                    :title="item.batch.material?.materialName || '物料'"
+                  >
+                    {{ item.batch.material?.materialName || '物料' }}
+                  </strong>
+                  <p class="mt-1 truncate text-xs text-[var(--el-text-color-secondary)]">
+                    {{ item.batch.batchNo }} · {{ item.batch.bin?.binCode || '仓库直存' }} ·
+                    可见在库
+                    {{ item.batch.quantity }}
+                  </p>
+                </div>
+                <ElInputNumber
+                  v-model="item.quantity"
+                  :min="0.001"
+                  :max="item.batch.quantity"
+                  :precision="3"
+                  :controls="false"
+                  class="w-28!"
+                  :aria-label="`${item.batch.batchNo} 用量`"
+                />
+                <ElButton
+                  text
+                  type="danger"
+                  :aria-label="`移除 ${item.batch.batchNo}`"
+                  @click="removeBatch(item.batch.id)"
+                  >移除</ElButton
+                >
+              </div>
+            </div>
+            <ArtEmptyState
+              v-else
+              title="先添加来源批次"
+              description="选择至少两个不同批次，再填写成品物料与数量。"
+              size="compact"
+              :visual-size="84"
+              class="min-h-40"
+            /> </ArtSectionCard></template
+      ></ArtForm>
     </div>
   </ArtDialog>
 </template>
@@ -207,7 +206,11 @@
     { prop: 'materialName', label: '物料名称', minWidth: 210 },
     { prop: 'specificationModel', label: '规格型号', minWidth: 150 }
   ]
+  const activeTab = ref('sourceSection')
   const items = computed<FormItem[]>(() => [
+    { key: 'sourceSection', label: '来源组件', type: 'tab' },
+    { key: 'sourceComponents', label: '', type: 'slot', span: 24 },
+    { key: 'targetSection', label: '成品入库', type: 'tab' },
     {
       key: 'documentNo',
       label: '组装单号',
@@ -400,19 +403,23 @@
   async function submit(): Promise<boolean> {
     try {
       if (loadError.value || components.value.length < 2) {
+        await formRef.value?.focusField('sourceComponents')
         ElMessage.warning('请添加至少两条有效组件')
         return false
       }
       if (!(await validateArtFormForSubmit(formRef.value))) return false
       if (components.value.some((item) => !item.quantity || item.quantity > item.batch.quantity)) {
+        await formRef.value?.focusField('sourceComponents')
         ElMessage.warning('组件用量须大于零且不能超过在库')
         return false
       }
       if (components.value.some((item) => item.batch.materialId === form.value.targetMaterialId)) {
+        await formRef.value?.focusField('targetMaterialId')
         ElMessage.warning('成品物料不能同时作为来源组件')
         return false
       }
       if (selectedMaterial.value[0]?.serialManagementEnabled) {
+        await formRef.value?.focusField('targetMaterialId')
         ElMessage.warning('SN 成品请通过 MES 装配工单办理')
         return false
       }
@@ -442,6 +449,7 @@
     }
   }
   async function handleOpen(data: Context): Promise<void> {
+    activeTab.value = 'sourceSection'
     failedBatch.value = null
     context.value = data
     components.value = []

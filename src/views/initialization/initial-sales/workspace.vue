@@ -18,8 +18,7 @@
       </BusinessWorkspaceHeader>
       <ArtTableQuery
         ref="tableRef"
-        :model-value="search"
-        @update:model-value="replaceReactiveModel(search, $event)"
+        v-model="search"
         :api-fn="fetchRows"
         :search-items="searchItems"
         :columns-factory="columnsFactory"
@@ -100,7 +99,6 @@
   import WmsAssetCapitalizationDialog from '@/components/business/wms-asset-capitalization-dialog/index.vue'
   import { wmsDocumentClassificationColumns } from '@/utils/business/wms-document-columns'
   import { useWmsInitialObligationPush } from '@/hooks/business/useWmsInitialObligationPush'
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { useRouteDocumentDrawer } from '@/hooks/core/useRouteDocumentDrawer'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
@@ -546,7 +544,7 @@
     }
   } as const
   const permission = computed(() => permissionCodes[props.kind])
-  const search = reactive({
+  const search = ref({
     displayMode: 'document' as 'document' | 'line',
     status: '',
     customer: '',
@@ -554,7 +552,12 @@
     materialDescription: '',
     materialCode: ''
   })
-  const displayMode = toRef(search, 'displayMode')
+  const displayMode = computed({
+    get: () => search.value.displayMode,
+    set: (value) => {
+      search.value.displayMode = value
+    }
+  })
   watch(displayMode, () => void refresh())
   const displayModeOptions = useDictionaryOptions('commonDocumentDisplayMode')
   const searchItems: SearchFormItem[] = [
@@ -811,7 +814,7 @@
       buttonProps: { type: 'warning', plain: true },
       exportFilename: title.value,
       exportData: async () =>
-        (await fetchRows({ ...search, current: 1, size: 500, exportAll: true })).data.map(
+        (await fetchRows({ ...search.value, current: 1, size: 500, exportAll: true })).data.map(
           (row) => ({ ...row, status: statusLabel(row.status) })
         ),
       exportColumns: [

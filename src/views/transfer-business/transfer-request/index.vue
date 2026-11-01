@@ -22,8 +22,7 @@
       </ElAlert>
       <ArtTableQuery
         ref="tableRef"
-        :model-value="search"
-        @update:model-value="replaceReactiveModel(search, $event)"
+        v-model="search"
         :api-fn="fetchRows"
         :search-items="searchItems"
         :columns-factory="columnsFactory"
@@ -102,7 +101,6 @@
 <script setup lang="tsx">
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { uniqBy } from 'lodash-es'
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { useRouter } from 'vue-router'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { WMS_STOCK_TYPE_LABELS } from '@/utils/wms/stock-type'
@@ -208,7 +206,7 @@
   const documentTypes = ref<WmsInitializationOption[]>([])
   const optionError = ref(false)
   let optionsLoadVersion = 0
-  const search = reactive({
+  const search = ref({
     displayMode: 'document' as 'document' | 'line',
     status: '',
     documentTypeCode: '',
@@ -218,7 +216,12 @@
     materialCode: '',
     keyword: ''
   })
-  const displayMode = toRef(search, 'displayMode')
+  const displayMode = computed({
+    get: () => search.value.displayMode,
+    set: (value) => {
+      search.value.displayMode = value
+    }
+  })
   watch(displayMode, () => void refresh())
   const displayModeOptions = useDictionaryOptions('commonDocumentDisplayMode')
   const statusLabels = { draft: '暂存', submitted: '已提交', approved: '已审核' } as const
@@ -517,7 +520,7 @@
       buttonProps: { type: 'warning', plain: true },
       exportFilename: '调拨申请单',
       exportData: async () =>
-        (await fetchRows({ ...search, current: 1, size: 500, exportAll: true })).data.map(
+        (await fetchRows({ ...search.value, current: 1, size: 500, exportAll: true })).data.map(
           (row) => ({ ...row, status: statusLabels[row.status] })
         ),
       exportColumns: [

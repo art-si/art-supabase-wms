@@ -17,8 +17,7 @@
       </BusinessWorkspaceHeader>
       <ArtTableQuery
         ref="tableRef"
-        :model-value="search"
-        @update:model-value="replaceReactiveModel(search, $event)"
+        v-model="search"
         :api-fn="fetchRows"
         :search-items="searchItems"
         :columns-factory="columnsFactory"
@@ -45,7 +44,6 @@
 
 <script setup lang="tsx">
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { WMS_STOCK_TYPE_LABELS } from '@/utils/wms/stock-type'
   import { ElMessage, ElTag } from 'element-plus'
@@ -172,7 +170,7 @@
     defective: '不良',
     frozen: '冻结'
   }
-  const search = reactive({
+  const search = ref({
     displayMode: 'document' as 'document' | 'line',
     status: '',
     projectName: '',
@@ -180,7 +178,12 @@
     materialCode: '',
     keyword: ''
   })
-  const displayMode = toRef(search, 'displayMode')
+  const displayMode = computed({
+    get: () => search.value.displayMode,
+    set: (value) => {
+      search.value.displayMode = value
+    }
+  })
   watch(displayMode, () => void refresh())
   const displayModeOptions = useDictionaryOptions('commonDocumentDisplayMode')
   const searchItems: SearchFormItem[] = [
@@ -349,7 +352,7 @@
       buttonProps: { type: 'warning', plain: true },
       exportFilename: title.value,
       exportData: async () =>
-        (await fetchRows({ ...search, current: 1, size: 500, exportAll: true })).data.map(
+        (await fetchRows({ ...search.value, current: 1, size: 500, exportAll: true })).data.map(
           (row) => ({ ...row, status: statusLabels[row.status] })
         ),
       exportColumns: [

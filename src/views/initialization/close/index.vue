@@ -18,8 +18,7 @@
 
       <ArtTableQuery
         ref="tableRef"
-        :model-value="search"
-        @update:model-value="replaceReactiveModel(search, $event)"
+        v-model="search"
         :api-fn="fetchRows"
         :search-items="searchItems"
         :columns-factory="columnsFactory"
@@ -94,7 +93,6 @@
 
 <script setup lang="tsx">
   import WmsInitializationReconciliation from '@/components/business/wms-initialization-reconciliation/index.vue'
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { useRouter } from 'vue-router'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { ElButton, ElMessage, ElTag } from 'element-plus'
@@ -149,7 +147,7 @@
   const pendingError = ref('')
   const pendingCloseFailure = ref('')
   let pendingRequestId = 0
-  const search = reactive({ keyword: '', status: '' })
+  const search = ref({ keyword: '', status: '' })
 
   const pendingPages: Record<string, { label: string; name: string; permission: string }> = {
     stock: { label: '初始库存单', name: 'WmsInitialStock', permission: 'WmsInitialStock:View' },

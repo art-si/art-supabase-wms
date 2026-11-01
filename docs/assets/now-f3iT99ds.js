@@ -1,1 +1,0 @@
-import{tt as e}from"./_baseForOwn-CerGzgWQ.js";var t=function(){return e.Date.now()};export{t};

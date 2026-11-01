@@ -1,5 +1,5 @@
 <template>
-  <ArtDialog ref="dialogRef" size="xl">
+  <ArtDialog ref="dialogRef" size="xl" content-height="min(620px, 70vh)">
     <div class="min-w-0 space-y-4">
       <ArtEntitySummary
         icon="ri:survey-line"
@@ -13,14 +13,13 @@
       </ElAlert>
       <ArtForm
         ref="formRef"
+        v-model:active-tab="activeTab"
         v-model="form"
         :items="items"
         :rules="rules"
         :span="12"
         :gutter="20"
         label-position="top"
-        :show-reset="false"
-        :show-submit="false"
         scroll-to-error
       >
         <template #materialIds>
@@ -56,6 +55,8 @@
   import ArtMaterialSelect from '@/components/business/art-material-select/index.vue'
   import type { DataSelectFetchParams } from '@/components/core/forms/art-data-select/types'
   import { normalizeNullableText } from '@/utils/form/normalize'
+  import TreeUtils from '@/utils/tree'
+  import { buildOrganizationSelectTree } from '@/utils/organization-options'
   import {
     createWmsCountPlanV2,
     fetchWmsBins,
@@ -80,7 +81,9 @@
   const emit = defineEmits<{ success: [] }>()
   const dialogRef = ref<ArtDialogExpose<Context>>()
   const formRef = ref<InstanceType<typeof ArtForm>>()
+  const activeTab = ref('identitySection')
   const context = shallowRef<Context>()
+  const organizationTreeUtils = new TreeUtils({ parentKey: 'parentId' })
   const { defaultWriteTenantId } = useTenantScopeFormPolicy()
   const countMethodOptions = useDictionaryOptions('wmsCountMethod')
   const backupOptions = useDictionaryOptions('wmsCountBackupCondition')
@@ -177,7 +180,7 @@
     }
   }
   const items = computed<FormItem[]>(() => [
-    { key: 'identitySection', label: '基本信息', type: 'divider', span: 24 },
+    { key: 'identitySection', label: '基本信息', type: 'tab' },
     {
       key: 'documentNo',
       label: '方案编号',
@@ -188,13 +191,26 @@
     {
       key: 'organizationId',
       label: '库存组织',
-      type: 'select',
+      type: 'treeSelect',
       span: 12,
-      options: availableOrganizations.value.map((row) => ({
-        label: `${row.organizationName} · ${row.organizationCode}`,
-        value: row.id
-      })),
-      props: { filterable: true, placeholder: '选择库存组织', onChange: onOrganizationChange },
+      options: buildOrganizationSelectTree(
+        organizationTreeUtils.listToTree(
+          (context.value?.organizations ?? []).filter(
+            (row) => !context.value?.tenantId || row.tenantId === context.value.tenantId
+          )
+        ),
+        availableOrganizations.value
+      ),
+      valueField: 'id',
+      labelField: 'name',
+      labelFn: (row) => `${row.name ?? ''} · ${row.code ?? ''}`,
+      props: {
+        filterable: true,
+        checkStrictly: true,
+        renderAfterExpand: false,
+        placeholder: '选择库存组织',
+        onChange: onOrganizationChange
+      },
       description: '每个方案仅针对一个库存组织。'
     },
     {
@@ -235,7 +251,7 @@
           }
         ]
       : []),
-    { key: 'parameterSection', label: '盘点参数', type: 'divider', span: 24 },
+    { key: 'parameterSection', label: '盘点参数', type: 'tab' },
     {
       key: 'countQuantityDefault',
       label: '盘点数量默认值',
@@ -269,7 +285,7 @@
       span: 12,
       description: '盘点表增加复盘数量，最终差异按复盘结果计算。'
     },
-    { key: 'scopeSection', label: '盘点范围', type: 'divider', span: 24 },
+    { key: 'scopeSection', label: '盘点范围', type: 'tab' },
     {
       key: 'warehouseIds',
       label: '仓库',
@@ -382,6 +398,7 @@
     }
   }
   async function handleOpen(data: Context): Promise<void> {
+    activeTab.value = 'identitySection'
     context.value = data
     bins.value = []
     binsError.value = false

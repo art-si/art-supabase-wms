@@ -26,438 +26,416 @@
       <ElAlert v-if="openData?.importIntent" type="info" :closable="false" show-icon>
         先核对申请组织和申请日期，再在“物料明细”点击“导入明细”；导入后核对调出、调入组织和仓储信息再保存。
       </ElAlert>
-      <ArtSectionCard title="单据表头" subtitle="编号按月生成；审核后可下推调拨业务。">
-        <ArtDescriptions
-          v-if="mode === 'view'"
-          class="document-header-descriptions"
-          :data="viewData"
-          :items="viewItems"
-          :columns="2"
-          :label-width="120"
-        />
-        <ArtForm
-          v-else
-          ref="formRef"
-          v-model="form"
-          :items="headerItems"
-          :rules="rules"
-          :span="12"
-          :gutter="20"
-          label-position="top"
-          :show-reset="false"
-          :show-submit="false"
-        >
-          <template #applicantUserId>
-            <ArtUserSelect
-              :model-value="form.applicantUserId || undefined"
-              :options="applicantOptions"
-              placeholder="选择申请账号"
-              @update:model-value="onApplicantUserChange"
-            />
-            <p
-              v-if="form.applicantId && !form.applicantUserId"
-              class="mt-1 text-xs text-[var(--el-text-color-secondary)]"
-            >
-              历史员工申请人：{{
-                documentRows[0]?.applicantName || '未找到员工资料'
-              }}；选择账号后替换。
-            </p>
-          </template>
-        </ArtForm>
-      </ArtSectionCard>
-
-      <ArtSectionCard
-        title="物料明细"
-        :subtitle="
-          mode === 'view'
-            ? `共 ${lines.length} 行；行号按 10 递增。`
-            : `共 ${lines.length} 行；导入必填列：物料编码、数量；可选列：批号、备注。`
-        "
-        :empty="!lines.length"
-        empty-title="请选择物料"
-        empty-description="支持一次多选物料，编码、规格与默认单位自动带入。"
+      <ArtForm
+        ref="formRef"
+        v-model:active-tab="activeTab"
+        class="px-0! pt-0!"
+        v-model="form"
+        :items="formItems"
+        :rules="rules"
+        :span="12"
+        :gutter="20"
+        label-position="top"
       >
-        <template #actions>
-          <div class="flex flex-wrap items-center justify-end gap-2">
-            <ArtExcelImport
-              v-if="mode !== 'view'"
-              v-auth="'WmsTransfer:Import'"
-              icon="ri:file-upload-line"
-              :context-key="openData"
-              :disabled="importing || parsing"
-              :button-props="{ type: 'success', plain: true, loading: importing || parsing }"
-              @parsing-change="onImportParsing"
-              @import-success="importLines"
-              @import-error="
-                notifyFriendlyError($event, '文件读取失败，请检查 Excel 格式后重新选择')
-              "
-              >导入明细</ArtExcelImport
-            >
-            <TransferStockPicker
-              class="w-auto!"
-              v-if="mode !== 'view'"
-              :model-value="selectedStockBatchIds"
-              :selected-data="selectedStockBatches"
-              :tenant-id="context?.tenantId"
-              :projects="projects"
-              :units="units"
-              multiple
-              @update:selected-data="onStockSelected"
-            >
-              <template #trigger="{ open }">
-                <ElButton type="primary" @click="open">
-                  <ArtSvgIcon icon="ri:add-line" />添加物料
-                </ElButton>
-              </template>
-            </TransferStockPicker>
-          </div>
-        </template>
-        <ArtTable
-          v-if="mode === 'view'"
-          :data="documentRows"
-          :pagination="false"
-          :show-table-header="false"
-          row-key="lineId"
-          table-layout="fixed"
-          class="transfer-line-table"
-        >
-          <ElTableColumn prop="lineNo" label="行号" width="68" :fixed="isMobile ? false : 'left'" />
-          <ElTableColumn label="物料描述" min-width="220" :fixed="isMobile ? false : 'left'">
-            <template #default="{ row }">
-              <strong class="block whitespace-normal break-words">{{
-                row.materialDescription || row.materialName
-              }}</strong>
-              <small class="text-[var(--el-text-color-secondary)]"
-                >{{ row.materialCode }} · {{ row.specificationModel || '无规格' }}</small
-              >
-            </template>
-          </ElTableColumn>
-          <ElTableColumn
-            prop="projectName"
-            label="项目名称"
-            min-width="160"
-            show-overflow-tooltip
+        <template #headerSummary
+          ><ArtDescriptions
+            class="document-header-descriptions"
+            :data="viewData"
+            :items="viewItems"
+            :columns="2"
+            :label-width="120"
+        /></template>
+        <template #applicantUserId>
+          <ArtUserSelect
+            :model-value="form.applicantUserId || undefined"
+            :options="applicantOptions"
+            placeholder="选择申请账号"
+            @update:model-value="onApplicantUserChange"
           />
-          <ElTableColumn prop="constructionNo" label="施工号" min-width="115" />
-          <ElTableColumn prop="inventoryUnitName" label="库存单位" width="140"
-            ><template #default="{ row }">{{
-              formatUnitDisplayName(row.inventoryUnitName)
-            }}</template></ElTableColumn
+          <p
+            v-if="form.applicantId && !form.applicantUserId"
+            class="mt-1 text-xs text-[var(--el-text-color-secondary)]"
           >
-          <ElTableColumn label="数量" width="160" align="right"
-            ><template #default="{ row }"
-              ><strong class="whitespace-nowrap tabular-nums">{{
-                numberText(row.quantity)
-              }}</strong></template
-            ></ElTableColumn
+            历史员工申请人：{{
+              documentRows[0]?.applicantName || '未找到员工资料'
+            }}；选择账号后替换。
+          </p>
+        </template>
+
+        <template #lineItems
+          ><ArtSectionCard
+            title="物料明细"
+            :subtitle="
+              mode === 'view'
+                ? `共 ${lines.length} 行；行号按 10 递增。`
+                : `共 ${lines.length} 行；导入必填列：物料编码、数量；可选列：批号、备注。`
+            "
+            :empty="!lines.length"
+            empty-title="请选择物料"
+            empty-description="支持一次多选物料，编码、规格与默认单位自动带入。"
           >
-          <ElTableColumn prop="baseUnitName" label="基本单位" width="140"
-            ><template #default="{ row }">{{
-              formatUnitDisplayName(row.baseUnitName)
-            }}</template></ElTableColumn
-          >
-          <ElTableColumn label="基本数量" width="160" align="right"
-            ><template #default="{ row }">{{
-              numberText(row.baseQuantity)
-            }}</template></ElTableColumn
-          >
-          <ElTableColumn prop="batchNo" label="批号" min-width="120" />
-          <ElTableColumn prop="sourceOrganizationName" label="调出组织" min-width="150" />
-          <ElTableColumn prop="sourceWarehouseName" label="调出仓库" min-width="150" />
-          <ElTableColumn prop="sourceBinName" label="调出仓位" min-width="120" />
-          <ElTableColumn prop="targetOrganizationName" label="调入组织" min-width="150" />
-          <ElTableColumn prop="targetWarehouseName" label="调入仓库" min-width="150" />
-          <ElTableColumn prop="targetBinName" label="调入仓位" min-width="120" />
-          <ElTableColumn label="货主类型" width="105"
-            ><template #default="{ row }">{{
-              ownerTypeLabel(row.ownerType)
-            }}</template></ElTableColumn
-          >
-          <ElTableColumn label="库存类型" width="110"
-            ><template #default="{ row }">{{
-              stockTypeLabel(row.stockType)
-            }}</template></ElTableColumn
-          >
-          <ElTableColumn label="库存状态" width="105"
-            ><template #default="{ row }">{{
-              stockStatusLabel(row.stockStatus)
-            }}</template></ElTableColumn
-          >
-          <ElTableColumn label="赠品" width="72" align="center"
-            ><template #default="{ row }">{{ row.gift ? '✓' : '—' }}</template></ElTableColumn
-          >
-          <ElTableColumn prop="auxiliaryUnitName" label="辅助单位" width="140"
-            ><template #default="{ row }">{{
-              formatUnitDisplayName(row.auxiliaryUnitName)
-            }}</template></ElTableColumn
-          >
-          <ElTableColumn prop="auxiliaryQuantity" label="辅助数量" width="160" align="right" />
-          <ElTableColumn prop="auxiliaryUnit2Name" label="辅助单位2" width="110" />
-          <ElTableColumn prop="auxiliaryQuantity2" label="辅助数量2" width="160" align="right" />
-          <ElTableColumn prop="productionDate" label="生产日期" width="115" />
-          <ElTableColumn prop="expiryDate" label="有效期至" width="115" />
-          <ElTableColumn prop="trackingNo" label="跟踪号" min-width="125" />
-          <ElTableColumn prop="sourceDocument" label="来源单据" min-width="130" />
-          <ElTableColumn prop="sourceLineNo" label="源行号" width="95" />
-          <ElTableColumn prop="lineRemark" label="备注" min-width="150" show-overflow-tooltip />
-        </ArtTable>
-        <ArtTable
-          v-else
-          :data="lines"
-          :pagination="false"
-          :show-table-header="false"
-          row-key="key"
-          table-layout="fixed"
-          class="transfer-line-table"
-        >
-          <ElTableColumn label="行号" width="68" :fixed="isMobile ? false : 'left'">
-            <template #default="{ $index }">{{ ($index + 1) * 10 }}</template>
-          </ElTableColumn>
-          <ElTableColumn label="物料描述" min-width="210" :fixed="isMobile ? false : 'left'">
-            <template #default="{ row }">
-              <strong class="block truncate">{{
-                row.material?.description || row.material?.materialName
-              }}</strong>
-              <small class="text-[var(--el-text-color-secondary)]"
-                >{{ row.material?.materialCode }} ·
-                {{ row.material?.specificationModel || '无规格' }}</small
-              >
+            <template #actions>
+              <div class="flex flex-wrap items-center justify-end gap-2">
+                <ArtExcelImport
+                  v-if="mode !== 'view'"
+                  v-auth="'WmsTransfer:Import'"
+                  icon="ri:file-upload-line"
+                  :context-key="openData"
+                  :disabled="importing || parsing"
+                  :button-props="{ type: 'success', plain: true, loading: importing || parsing }"
+                  @parsing-change="onImportParsing"
+                  @import-success="importLines"
+                  @import-error="
+                    notifyFriendlyError($event, '文件读取失败，请检查 Excel 格式后重新选择')
+                  "
+                  >导入明细</ArtExcelImport
+                >
+                <TransferStockPicker
+                  class="w-auto!"
+                  v-if="mode !== 'view'"
+                  :model-value="selectedStockBatchIds"
+                  :selected-data="selectedStockBatches"
+                  :tenant-id="context?.tenantId"
+                  :projects="projects"
+                  :units="units"
+                  multiple
+                  @update:selected-data="onStockSelected"
+                >
+                  <template #trigger="{ open }">
+                    <ElButton type="primary" @click="open">
+                      <ArtSvgIcon icon="ri:add-line" />添加物料
+                    </ElButton>
+                  </template>
+                </TransferStockPicker>
+              </div>
             </template>
-          </ElTableColumn>
-          <ElTableColumn label="项目名称" min-width="170">
-            <template #default="{ row }">
-              <ElSelect
-                v-model="row.projectId"
-                clearable
-                filterable
-                :disabled="false"
-                placeholder="选择项目"
-                @change="detachStockBatch(row)"
-              >
-                <ElOption
-                  v-for="item in projects"
-                  :key="item.id"
-                  :label="`${item.projectName} · ${item.projectCode}`"
-                  :value="item.id"
-                />
-              </ElSelect>
-            </template>
-          </ElTableColumn>
-          <ElTableColumn label="施工号" min-width="130"
-            ><template #default="{ row }"
-              ><ElInput v-model="row.constructionNo" @change="detachStockBatch(row)" /></template
-          ></ElTableColumn>
-          <ElTableColumn label="库存单位" min-width="140">
-            <template #default="{ row }"
-              ><ElSelect v-model="row.inventoryUnitId" filterable
-                ><ElOption
-                  v-for="unit in units"
-                  :key="unit.id"
-                  :label="formatUnitDisplayName(unit.unitName)"
-                  :value="unit.id" /></ElSelect
-            ></template>
-          </ElTableColumn>
-          <ElTableColumn label="数量" min-width="180"
-            ><template #default="{ row }"
-              ><ElInputNumber
-                v-model="row.quantity"
-                :min="0.0001"
-                :precision="4"
-                :controls="false"
-                :disabled="false"
-                class="w-full!" /></template
-          ></ElTableColumn>
-          <ElTableColumn label="基本数量" min-width="160"
-            ><template #default="{ row }"
-              ><span class="whitespace-nowrap tabular-nums">{{
-                baseQuantityForLine(row)?.toFixed(4) || '—'
-              }}</span></template
-            ></ElTableColumn
-          >
-          <ElTableColumn label="批号" min-width="140"
-            ><template #default="{ row }"
-              ><ElInput v-model="row.batchNo" @change="detachStockBatch(row)" /></template
-          ></ElTableColumn>
-          <ElTableColumn label="调出组织 *" min-width="190"
-            ><template #default="{ row }"
-              ><ElTreeSelect
-                v-model="row.sourceOrganizationId"
-                :data="organizationSelectTree"
-                node-key="id"
-                :props="organizationTreeProps"
-                filterable
-                check-strictly
-                default-expand-all
-                :render-after-expand="false"
-                :disabled="false"
-                @change="onSourceOrganizationChange(row)" /></template
-          ></ElTableColumn>
-          <ElTableColumn label="调出仓库" min-width="170"
-            ><template #default="{ row }"
-              ><ElSelect
-                v-model="row.sourceWarehouseId"
-                filterable
-                :disabled="false"
-                @change="onSourceWarehouseChange(row)"
-                ><ElOption
-                  v-for="item in warehouseOptions(row.sourceOrganizationId)"
-                  :key="item.id"
-                  :label="item.warehouseName"
-                  :value="item.id" /></ElSelect></template
-          ></ElTableColumn>
-          <ElTableColumn label="调出仓位" min-width="170"
-            ><template #default="{ row }"
-              ><ElSelect
-                v-model="row.sourceBinId"
-                clearable
-                filterable
-                :disabled="!row.sourceWarehouseId"
-                @change="detachStockBatch(row)"
-                ><ElOption
-                  v-for="item in row.sourceBins"
-                  :key="item.id"
-                  :label="`${item.binCode} · ${item.binName}`"
-                  :value="item.id" /></ElSelect></template
-          ></ElTableColumn>
-          <ElTableColumn label="调入组织 *" min-width="190"
-            ><template #default="{ row }"
-              ><ElTreeSelect
-                v-model="row.targetOrganizationId"
-                :data="organizationSelectTree"
-                node-key="id"
-                :props="organizationTreeProps"
-                filterable
-                check-strictly
-                default-expand-all
-                :render-after-expand="false"
-                :disabled="false"
-                @change="onTargetOrganizationChange(row)" /></template
-          ></ElTableColumn>
-          <ElTableColumn label="调入仓库" min-width="170"
-            ><template #default="{ row }"
-              ><ElSelect
-                v-model="row.targetWarehouseId"
-                filterable
-                :disabled="false"
-                @change="loadTargetBins(row)"
-                ><ElOption
-                  v-for="item in warehouseOptions(row.targetOrganizationId)"
-                  :key="item.id"
-                  :label="item.warehouseName"
-                  :value="item.id" /></ElSelect></template
-          ></ElTableColumn>
-          <ElTableColumn label="调入仓位" min-width="170"
-            ><template #default="{ row }"
-              ><ElSelect
-                v-model="row.targetBinId"
-                clearable
-                filterable
-                :disabled="!row.targetWarehouseId"
-                ><ElOption
-                  v-for="item in row.targetBins"
-                  :key="item.id"
-                  :label="`${item.binCode} · ${item.binName}`"
-                  :value="item.id" /></ElSelect></template
-          ></ElTableColumn>
-          <ElTableColumn label="货主类型" min-width="155"
-            ><template #default="{ row }"
-              ><ElSelect
-                v-model="row.ownerType"
-                :disabled="!!row.stockBatchId"
-                @change="row.ownerId = null"
-                ><template #label>{{
-                  ownerTypes.find((item) => item.value === row.ownerType)?.label || '自有'
-                }}</template
-                ><ElOption
-                  v-for="option in ownerTypes"
-                  :key="option.value"
-                  :label="option.label"
-                  :value="option.value" /></ElSelect></template
-          ></ElTableColumn>
-          <ElTableColumn label="货主" min-width="185">
-            <template #default="{ row }">
-              <span v-if="row.stockBatchId || row.ownerType === 'self'">{{
-                formatWmsOwnerName(row.ownerType, row.ownerId, suppliers, customers)
-              }}</span>
-              <ArtTableSingleSelect
-                v-else
-                :model-value="row.ownerId || undefined"
-                :data="row.ownerType === 'supplier' ? suppliers : customers"
-                :columns="ownerColumns"
-                row-key="id"
-                label-key="name"
-                description-key="code"
-                title="选择货主"
-                @update:model-value="row.ownerId = String($event || '') || null"
+            <ArtTable
+              v-if="mode === 'view'"
+              :data="documentRows"
+              :pagination="false"
+              :show-table-header="false"
+              row-key="lineId"
+              table-layout="fixed"
+              class="transfer-line-table"
+            >
+              <ElTableColumn
+                prop="lineNo"
+                label="行号"
+                width="68"
+                :fixed="isMobile ? false : 'left'"
               />
-            </template>
-          </ElTableColumn>
-          <ElTableColumn label="库存类型" min-width="155"
-            ><template #default="{ row }"
-              ><ElSelect v-model="row.stockType" :disabled="!!row.stockBatchId"
-                ><template #label>{{ stockTypeLabel(row.stockType) }}</template
-                ><ElOption
-                  v-for="item in stockTypes"
-                  :key="item.value"
-                  :label="item.label"
-                  :value="item.value" /></ElSelect></template
-          ></ElTableColumn>
-          <ElTableColumn label="库存状态" min-width="155"
-            ><template #default="{ row }"
-              ><ElSelect v-model="row.stockStatus" :disabled="!!row.stockBatchId"
-                ><template #label
-                  ><ArtDictDisplay
-                    :value="row.stockStatus"
-                    dict-code="wmsStockStatus"
-                    display="text" /></template
-                ><ElOption
-                  v-for="option in stockStatuses"
-                  :key="option.value"
-                  :label="option.label"
-                  :value="option.value" /></ElSelect></template
-          ></ElTableColumn>
-          <ElTableColumn label="赠品" width="86" align="center"
-            ><template #default="{ row }"><ElCheckbox v-model="row.gift" /></template
-          ></ElTableColumn>
-          <ElTableColumn label="生产日期" min-width="190"
-            ><template #default="{ row }"
-              ><ElDatePicker
-                v-model="row.productionDate"
-                value-format="YYYY-MM-DD"
-                :disabled="!!row.stockBatchId" /></template
-          ></ElTableColumn>
-          <ElTableColumn label="有效期至" min-width="190"
-            ><template #default="{ row }"
-              ><ElDatePicker
-                v-model="row.expiryDate"
-                value-format="YYYY-MM-DD"
-                :disabled="!!row.stockBatchId" /></template
-          ></ElTableColumn>
-          <ElTableColumn label="跟踪号" min-width="140"
-            ><template #default="{ row }"
-              ><ElInput v-model="row.trackingNo" :disabled="!!row.stockBatchId" /></template
-          ></ElTableColumn>
-          <ElTableColumn label="来源单据" min-width="150"
-            ><template #default="{ row }"><ElInput v-model="row.sourceDocument" /></template
-          ></ElTableColumn>
-          <ElTableColumn label="源行号" min-width="110"
-            ><template #default="{ row }"><ElInput v-model="row.sourceLineNo" /></template
-          ></ElTableColumn>
-          <ElTableColumn label="备注" min-width="160"
-            ><template #default="{ row }"><ElInput v-model="row.remark" /></template
-          ></ElTableColumn>
-          <ElTableColumn label="操作" width="82" :fixed="isMobile ? false : 'right'"
-            ><template #default="{ row }"
-              ><ElButton link type="danger" @click="removeLine(row.key)">移除</ElButton></template
-            ></ElTableColumn
-          >
-        </ArtTable>
-      </ArtSectionCard>
+              <ElTableColumn label="物料描述" min-width="220" :fixed="isMobile ? false : 'left'">
+                <template #default="{ row }">
+                  <strong class="block whitespace-normal break-words">{{
+                    row.materialDescription || row.materialName
+                  }}</strong>
+                  <small class="text-[var(--el-text-color-secondary)]"
+                    >{{ row.materialCode }} · {{ row.specificationModel || '无规格' }}</small
+                  >
+                </template>
+              </ElTableColumn>
+              <ElTableColumn
+                prop="projectName"
+                label="项目名称"
+                min-width="160"
+                show-overflow-tooltip
+              />
+              <ElTableColumn prop="constructionNo" label="施工号" min-width="115" />
+              <ElTableColumn prop="inventoryUnitName" label="库存单位" width="140"
+                ><template #default="{ row }">{{
+                  formatUnitDisplayName(row.inventoryUnitName)
+                }}</template></ElTableColumn
+              >
+              <ElTableColumn label="数量" width="160" align="right"
+                ><template #default="{ row }"
+                  ><strong class="whitespace-nowrap tabular-nums">{{
+                    numberText(row.quantity)
+                  }}</strong></template
+                ></ElTableColumn
+              >
+              <ElTableColumn prop="baseUnitName" label="基本单位" width="140"
+                ><template #default="{ row }">{{
+                  formatUnitDisplayName(row.baseUnitName)
+                }}</template></ElTableColumn
+              >
+              <ElTableColumn label="基本数量" width="160" align="right"
+                ><template #default="{ row }">{{
+                  numberText(row.baseQuantity)
+                }}</template></ElTableColumn
+              >
+              <ElTableColumn prop="batchNo" label="批号" min-width="120" />
+              <ElTableColumn prop="sourceOrganizationName" label="调出组织" min-width="150" />
+              <ElTableColumn prop="sourceWarehouseName" label="调出仓库" min-width="150" />
+              <ElTableColumn prop="sourceBinName" label="调出仓位" min-width="120" />
+              <ElTableColumn prop="targetOrganizationName" label="调入组织" min-width="150" />
+              <ElTableColumn prop="targetWarehouseName" label="调入仓库" min-width="150" />
+              <ElTableColumn prop="targetBinName" label="调入仓位" min-width="120" />
+              <ElTableColumn label="货主类型" width="105"
+                ><template #default="{ row }">{{
+                  ownerTypeLabel(row.ownerType)
+                }}</template></ElTableColumn
+              >
+              <ElTableColumn label="库存类型" width="110"
+                ><template #default="{ row }">{{
+                  stockTypeLabel(row.stockType)
+                }}</template></ElTableColumn
+              >
+              <ElTableColumn label="库存状态" width="105"
+                ><template #default="{ row }">{{
+                  stockStatusLabel(row.stockStatus)
+                }}</template></ElTableColumn
+              >
+              <ElTableColumn label="赠品" width="72" align="center"
+                ><template #default="{ row }">{{ row.gift ? '✓' : '—' }}</template></ElTableColumn
+              >
+              <ElTableColumn prop="auxiliaryUnitName" label="辅助单位" width="140"
+                ><template #default="{ row }">{{
+                  formatUnitDisplayName(row.auxiliaryUnitName)
+                }}</template></ElTableColumn
+              >
+              <ElTableColumn prop="auxiliaryQuantity" label="辅助数量" width="160" align="right" />
+              <ElTableColumn prop="auxiliaryUnit2Name" label="辅助单位2" width="110" />
+              <ElTableColumn
+                prop="auxiliaryQuantity2"
+                label="辅助数量2"
+                width="160"
+                align="right"
+              />
+              <ElTableColumn prop="productionDate" label="生产日期" width="115" />
+              <ElTableColumn prop="expiryDate" label="有效期至" width="115" />
+              <ElTableColumn prop="trackingNo" label="跟踪号" min-width="125" />
+              <ElTableColumn prop="sourceDocument" label="来源单据" min-width="130" />
+              <ElTableColumn prop="sourceLineNo" label="源行号" width="95" />
+              <ElTableColumn prop="lineRemark" label="备注" min-width="150" show-overflow-tooltip />
+            </ArtTable>
+            <ArtTable
+              ref="lineTableRef"
+              :columns="editableColumns"
+              v-else
+              :data="lines"
+              :pagination="false"
+              :show-table-header="false"
+              row-key="key"
+              table-layout="fixed"
+              class="transfer-line-table"
+            >
+              <template #lineNumber="{ $index }">{{ ($index + 1) * 10 }}</template>
+              <template #materialId="{ row }">
+                <strong class="block truncate">{{
+                  row.material?.description || row.material?.materialName
+                }}</strong>
+                <small class="text-[var(--el-text-color-secondary)]"
+                  >{{ row.material?.materialCode }} ·
+                  {{ row.material?.specificationModel || '无规格' }}</small
+                >
+              </template>
+              <template #projectId="{ row }">
+                <ElSelect
+                  v-model="row.projectId"
+                  clearable
+                  filterable
+                  :disabled="false"
+                  placeholder="选择项目"
+                  @change="detachStockBatch(row)"
+                >
+                  <ElOption
+                    v-for="item in projects"
+                    :key="item.id"
+                    :label="`${item.projectName} · ${item.projectCode}`"
+                    :value="item.id"
+                  />
+                </ElSelect>
+              </template>
+              <template #constructionNo="{ row }"
+                ><ElInput v-model="row.constructionNo" @change="detachStockBatch(row)"
+              /></template>
+              <template #inventoryUnitId="{ row }"
+                ><ElSelect v-model="row.inventoryUnitId" filterable
+                  ><ElOption
+                    v-for="unit in units"
+                    :key="unit.id"
+                    :label="formatUnitDisplayName(unit.unitName)"
+                    :value="unit.id" /></ElSelect
+              ></template>
+              <template #quantity="{ row }"
+                ><ElInputNumber
+                  v-model="row.quantity"
+                  :min="0.0001"
+                  :precision="4"
+                  :controls="false"
+                  :disabled="false"
+                  class="w-full!"
+              /></template>
+              <template #baseQuantity="{ row }"
+                ><span class="whitespace-nowrap tabular-nums">{{
+                  baseQuantityForLine(row)?.toFixed(4) || '—'
+                }}</span></template
+              >
+              <template #batchNo="{ row }"
+                ><ElInput v-model="row.batchNo" @change="detachStockBatch(row)"
+              /></template>
+              <template #sourceOrganizationId="{ row }"
+                ><ElTreeSelect
+                  v-model="row.sourceOrganizationId"
+                  :data="organizationSelectTree"
+                  node-key="id"
+                  :props="organizationTreeProps"
+                  filterable
+                  check-strictly
+                  default-expand-all
+                  :render-after-expand="false"
+                  :disabled="false"
+                  @change="onSourceOrganizationChange(row)"
+              /></template>
+              <template #sourceWarehouseId="{ row }"
+                ><ElSelect
+                  v-model="row.sourceWarehouseId"
+                  filterable
+                  :disabled="false"
+                  @change="onSourceWarehouseChange(row)"
+                  ><ElOption
+                    v-for="item in warehouseOptions(row.sourceOrganizationId)"
+                    :key="item.id"
+                    :label="item.warehouseName"
+                    :value="item.id" /></ElSelect
+              ></template>
+              <template #sourceBinId="{ row }"
+                ><ElSelect
+                  v-model="row.sourceBinId"
+                  clearable
+                  filterable
+                  :disabled="!row.sourceWarehouseId"
+                  @change="detachStockBatch(row)"
+                  ><ElOption
+                    v-for="item in row.sourceBins"
+                    :key="item.id"
+                    :label="`${item.binCode} · ${item.binName}`"
+                    :value="item.id" /></ElSelect
+              ></template>
+              <template #targetOrganizationId="{ row }"
+                ><ElTreeSelect
+                  v-model="row.targetOrganizationId"
+                  :data="organizationSelectTree"
+                  node-key="id"
+                  :props="organizationTreeProps"
+                  filterable
+                  check-strictly
+                  default-expand-all
+                  :render-after-expand="false"
+                  :disabled="false"
+                  @change="onTargetOrganizationChange(row)"
+              /></template>
+              <template #targetWarehouseId="{ row }"
+                ><ElSelect
+                  v-model="row.targetWarehouseId"
+                  filterable
+                  :disabled="false"
+                  @change="loadTargetBins(row)"
+                  ><ElOption
+                    v-for="item in warehouseOptions(row.targetOrganizationId)"
+                    :key="item.id"
+                    :label="item.warehouseName"
+                    :value="item.id" /></ElSelect
+              ></template>
+              <template #targetBinId="{ row }"
+                ><ElSelect
+                  v-model="row.targetBinId"
+                  clearable
+                  filterable
+                  :disabled="!row.targetWarehouseId"
+                  ><ElOption
+                    v-for="item in row.targetBins"
+                    :key="item.id"
+                    :label="`${item.binCode} · ${item.binName}`"
+                    :value="item.id" /></ElSelect
+              ></template>
+              <template #ownerType="{ row }"
+                ><ElSelect
+                  v-model="row.ownerType"
+                  :disabled="!!row.stockBatchId"
+                  @change="row.ownerId = null"
+                  ><template #label>{{
+                    ownerTypes.find((item) => item.value === row.ownerType)?.label || '自有'
+                  }}</template
+                  ><ElOption
+                    v-for="option in ownerTypes"
+                    :key="option.value"
+                    :label="option.label"
+                    :value="option.value" /></ElSelect
+              ></template>
+              <template #ownerId="{ row }">
+                <span v-if="row.stockBatchId || row.ownerType === 'self'">{{
+                  formatWmsOwnerName(row.ownerType, row.ownerId, suppliers, customers)
+                }}</span>
+                <ArtTableSingleSelect
+                  v-else
+                  :model-value="row.ownerId || undefined"
+                  :data="row.ownerType === 'supplier' ? suppliers : customers"
+                  :columns="ownerColumns"
+                  row-key="id"
+                  label-key="name"
+                  description-key="code"
+                  title="选择货主"
+                  @update:model-value="row.ownerId = String($event || '') || null"
+                />
+              </template>
+              <template #stockType="{ row }"
+                ><ElSelect v-model="row.stockType" :disabled="!!row.stockBatchId"
+                  ><template #label>{{ stockTypeLabel(row.stockType) }}</template
+                  ><ElOption
+                    v-for="item in stockTypes"
+                    :key="item.value"
+                    :label="item.label"
+                    :value="item.value" /></ElSelect
+              ></template>
+              <template #stockStatus="{ row }"
+                ><ElSelect v-model="row.stockStatus" :disabled="!!row.stockBatchId"
+                  ><template #label
+                    ><ArtDictDisplay
+                      :value="row.stockStatus"
+                      dict-code="wmsStockStatus"
+                      display="text" /></template
+                  ><ElOption
+                    v-for="option in stockStatuses"
+                    :key="option.value"
+                    :label="option.label"
+                    :value="option.value" /></ElSelect
+              ></template>
+              <template #gift="{ row }"><ElCheckbox v-model="row.gift" /></template>
+              <template #productionDate="{ row }"
+                ><ElDatePicker
+                  v-model="row.productionDate"
+                  value-format="YYYY-MM-DD"
+                  :disabled="!!row.stockBatchId"
+              /></template>
+              <template #expiryDate="{ row }"
+                ><ElDatePicker
+                  v-model="row.expiryDate"
+                  value-format="YYYY-MM-DD"
+                  :disabled="!!row.stockBatchId"
+              /></template>
+              <template #trackingNo="{ row }"
+                ><ElInput v-model="row.trackingNo" :disabled="!!row.stockBatchId"
+              /></template>
+              <template #sourceDocument="{ row }"
+                ><ElInput v-model="row.sourceDocument"
+              /></template>
+              <template #sourceLineNo="{ row }"><ElInput v-model="row.sourceLineNo" /></template>
+              <template #remark="{ row }"><ElInput v-model="row.remark" /></template>
+              <template #operation="{ row }"
+                ><ElButton link type="danger" @click="removeLine(row.key)">移除</ElButton></template
+              >
+            </ArtTable>
+          </ArtSectionCard></template
+        >
+      </ArtForm>
     </div>
   </ArtDrawer>
 </template>
 
 <script setup lang="ts">
+  import { buildOrganizationSelectTree } from '@/utils/organization-options'
+  import TreeUtils from '@/utils/tree'
   import { uniqBy } from 'lodash-es'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { convertWmsMaterialQuantity } from '@/utils/wms/material-quantity'
@@ -478,7 +456,8 @@
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import { prepareWmsMaterialImport } from '../../../shared/material-import'
   import ArtExcelImport from '@/components/core/forms/art-excel-import/index.vue'
-  import ArtTable from '@/components/core/tables/art-table/index.vue'
+  import ArtTable, { type ArtTableExpose } from '@/components/core/tables/art-table/index.vue'
+  import type { ColumnOption } from '@/types'
   import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
   import ArtUserSelect from '@/components/core/forms/art-user-select/index.vue'
   import type {
@@ -593,6 +572,117 @@
   const openData = shallowRef<OpenData>()
   let loadRequest = 0
   const lines = ref<DraftLine[]>([])
+  const lineTableRef = ref<ArtTableExpose<DraftLine>>()
+  const editableColumns = computed<ColumnOption<DraftLine>[]>(() => [
+    {
+      prop: 'lineNumber',
+      label: '行号',
+      width: 68,
+      fixed: isMobile.value ? false : 'left',
+      useSlot: true
+    },
+    {
+      prop: 'materialId',
+      label: '物料描述',
+      minWidth: 210,
+      fixed: isMobile.value ? false : 'left',
+      useSlot: true
+    },
+    { prop: 'projectId', label: '项目名称', minWidth: 170, useSlot: true },
+    { prop: 'constructionNo', label: '施工号', minWidth: 130, useSlot: true },
+    {
+      prop: 'inventoryUnitId',
+      label: '库存单位',
+      minWidth: 140,
+      useSlot: true,
+      required: true,
+      headerTooltip: '必填，须已配置物料库存单位到基本单位的有效换算关系。',
+      rules: {
+        validator: ({ row }) => {
+          if (!Number.isFinite(row.quantity) || row.quantity <= 0) return true
+          const quantity = baseQuantityForLine(row)
+          return quantity !== null && quantity > 0
+        },
+        message: ({ rowIndex }) => `第 ${rowIndex + 1} 行物料单位缺少有效换算关系`
+      }
+    },
+    {
+      prop: 'quantity',
+      label: '数量',
+      minWidth: 180,
+      useSlot: true,
+      required: true,
+      headerTooltip: '填写大于零的调拨数量，最多 4 位小数。',
+      rules: {
+        validator: ({ row }) => Number.isFinite(row.quantity) && row.quantity > 0,
+        message: ({ rowIndex }) => `第 ${rowIndex + 1} 行数量必须大于零`
+      }
+    },
+    { prop: 'baseQuantity', label: '基本数量', minWidth: 160, useSlot: true },
+    { prop: 'batchNo', label: '批号', minWidth: 140, useSlot: true },
+    {
+      prop: 'sourceOrganizationId',
+      label: '调出组织',
+      minWidth: 190,
+      useSlot: true,
+      required: true,
+      headerTooltip: '必填，选择物料调出的库存组织。'
+    },
+    {
+      prop: 'sourceWarehouseId',
+      label: '调出仓库',
+      minWidth: 170,
+      useSlot: true,
+      required: true,
+      headerTooltip: '必填，仓库必须属于本行调出组织。'
+    },
+    { prop: 'sourceBinId', label: '调出仓位', minWidth: 170, useSlot: true },
+    {
+      prop: 'targetOrganizationId',
+      label: '调入组织',
+      minWidth: 190,
+      useSlot: true,
+      required: true,
+      headerTooltip: '必填，选择物料调入的库存组织。'
+    },
+    {
+      prop: 'targetWarehouseId',
+      label: '调入仓库',
+      minWidth: 170,
+      useSlot: true,
+      required: true,
+      headerTooltip: '必填，仓库必须属于本行调入组织。'
+    },
+    { prop: 'targetBinId', label: '调入仓位', minWidth: 170, useSlot: true },
+    { prop: 'ownerType', label: '货主类型', minWidth: 155, useSlot: true },
+    {
+      prop: 'ownerId',
+      label: '货主',
+      minWidth: 185,
+      useSlot: true,
+      headerTooltip: '供应商或客户货主必须选择对应的业务主体。',
+      rules: {
+        validator: ({ row }) => row.ownerType === 'self' || Boolean(row.ownerId),
+        message: ({ rowIndex }) => `第 ${rowIndex + 1} 行请选择供应商或客户货主`
+      }
+    },
+    { prop: 'stockType', label: '库存类型', minWidth: 155, useSlot: true },
+    { prop: 'stockStatus', label: '库存状态', minWidth: 155, useSlot: true },
+    { prop: 'gift', label: '赠品', width: 86, align: 'center', useSlot: true },
+    { prop: 'productionDate', label: '生产日期', minWidth: 190, useSlot: true },
+    { prop: 'expiryDate', label: '有效期至', minWidth: 190, useSlot: true },
+    { prop: 'trackingNo', label: '跟踪号', minWidth: 140, useSlot: true },
+    { prop: 'sourceDocument', label: '来源单据', minWidth: 150, useSlot: true },
+    { prop: 'sourceLineNo', label: '源行号', minWidth: 110, useSlot: true },
+    { prop: 'remark', label: '备注', minWidth: 160, useSlot: true },
+    {
+      prop: 'operation',
+      label: '操作',
+      width: 82,
+      fixed: isMobile.value ? false : 'right',
+      useSlot: true
+    }
+  ])
   const importing = ref(false)
   const parsing = ref(false)
   const documentRows = ref<WmsTransferRequestRow[]>([])
@@ -622,19 +712,17 @@
     }))
   )
   const availableOrganizations = computed(() => organizations.value.filter((row) => row.enabledOn))
+  const organizationTreeUtils = new TreeUtils()
   const businessMenuId = ref('')
-  type OrganizationSelectNode = WmsInventoryOrganization & {
-    organizationLabel: string
-  }
-  const organizationSelectTree = computed<OrganizationSelectNode[]>(() =>
-    availableOrganizations.value.map((node) => ({
-      ...node,
-      organizationLabel: `${node.organizationName} · ${node.organizationCode}`
-    }))
+  const organizationSelectTree = computed(() =>
+    organizationTreeUtils.mapTree(
+      buildOrganizationSelectTree(departmentTree.value, availableOrganizations.value),
+      (node) => ({ ...node, label: `${node.name} · ${node.code}` })
+    )
   )
   const organizationTreeProps = {
     value: 'id',
-    label: 'organizationLabel',
+    label: 'label',
     children: 'children'
   }
   const form = ref({
@@ -693,17 +781,26 @@
     { key: 'pushedMode', label: '下推状态', field: 'pushedMode', span: 2 },
     { key: 'remark', label: '备注', field: 'remark', span: 2 }
   ]
+  const activeTab = ref('headerSection')
+  const formItems = computed<FormItem[]>(() => [
+    { key: 'headerSection', label: '单据表头', type: 'tab' },
+    ...(mode.value === 'view'
+      ? [{ key: 'headerSummary', label: '', type: 'slot', span: 24 } as FormItem]
+      : headerItems.value),
+    { key: 'linesSection', label: '物料明细', type: 'tab' },
+    { key: 'lineItems', label: '', type: 'slot', span: 24 }
+  ])
   const headerItems = computed<FormItem[]>(() => [
     { key: 'documentNo', label: '单据编号', type: 'input', props: { disabled: true } },
     {
       key: 'organizationId',
       label: '申请组织',
       type: 'treeSelect',
-      options: availableOrganizations.value,
+      options: organizationSelectTree.value,
       valueField: 'id',
-      labelField: 'organizationName',
+      labelField: 'name',
       childrenField: 'children',
-      labelFn: (row) => `${row.organizationName ?? ''} · ${row.organizationCode ?? ''}`,
+      labelFn: (row) => `${row.name ?? ''} · ${row.code ?? ''}`,
       props: {
         filterable: true,
         checkStrictly: true,
@@ -1185,34 +1282,15 @@
     if (loadError.value || importing.value || parsing.value) return false
     try {
       if (!(await validateArtFormForSubmit(formRef.value))) return false
+      activeTab.value = 'linesSection'
+      await nextTick()
       if (!lines.value.length) {
         ElMessage.warning('请至少选择一条物料')
         return false
       }
-      if (
-        lines.value.some(
-          (row) =>
-            !row.inventoryUnitId ||
-            row.quantity <= 0 ||
-            !row.sourceOrganizationId ||
-            !row.sourceWarehouseId ||
-            !row.targetOrganizationId ||
-            !row.targetWarehouseId
-        )
-      ) {
-        ElMessage.warning('请完整填写物料、数量、调出和调入信息')
-        return false
-      }
-      const invalidUnitIndex = lines.value.findIndex((row) => {
-        const baseQuantity = baseQuantityForLine(row)
-        return baseQuantity === null || baseQuantity <= 0
-      })
-      if (invalidUnitIndex >= 0) {
-        ElMessage.warning(`第 ${invalidUnitIndex + 1} 行物料单位缺少有效换算关系`)
-        return false
-      }
-      if (lines.value.some((row) => row.ownerType !== 'self' && !row.ownerId)) {
-        ElMessage.warning('供应商或客户货主须选择对应的货主')
+      const validation = await lineTableRef.value?.validate()
+      if (!validation?.valid) {
+        if (validation?.firstError) ElMessage.warning(validation.firstError.message)
         return false
       }
       await saveWmsTransferRequest({
@@ -1263,6 +1341,7 @@
     }
   }
   async function handleOpen(data: OpenData) {
+    activeTab.value = 'headerSection'
     loadRequest += 1
     importing.value = false
     parsing.value = false

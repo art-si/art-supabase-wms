@@ -19,298 +19,331 @@
         </template>
       </ArtEntitySummary>
 
-      <ArtSectionCard title="基本信息" subtitle="方案和账存口径由系统带入，盘点表不能手工新增。">
-        <ArtDescriptions :data="sheet" :items="descriptionItems" :columns="3" label-width="124px" />
-      </ArtSectionCard>
-
-      <ElAlert v-if="sheet.plan?.status === 'draft'" type="info" :closable="false" show-icon>
-        盘点方案待审核；审核通过后可录入盘点结果。
-      </ElAlert>
-      <ElAlert v-else-if="sheet.status === 'submitted'" type="warning" :closable="false" show-icon>
-        盘点表已提交，审核前可退回修改；审核将自动生成盘盈盘亏流水。
-      </ElAlert>
-      <ElAlert v-else-if="sheet.status === 'approved'" type="success" :closable="false" show-icon>
-        {{
-          sheet.plan?.completionStatus === 'completed'
-            ? '盘点表已审核并记账；方案全部完成，盘点冻结已解除。'
-            : '本张盘点表已审核并记账；其他盘点表完成后解除冻结。'
-        }}
-      </ElAlert>
-
-      <ArtSectionCard
-        title="库管与盘点人员"
-        :subtitle="
-          sheet.recountEnabled
-            ? '选择执行人员；复盘须由另一位员工完成。'
-            : '选择库管和盘点执行人员。'
-        "
-      >
-        <template #actions>
-          <ElButton
-            v-if="canEditHeader"
-            v-auth="'WmsCountSheet:Count'"
-            type="primary"
-            plain
-            :loading="headerSaving"
-            @click="saveHeader"
-            >保存人员信息</ElButton
-          >
-        </template>
-        <ElAlert v-if="departmentError" type="warning" :closable="false" show-icon class="mb-3">
-          库管部门加载失败。<ElButton link type="primary" @click="loadDepartments"
-            >重新加载</ElButton
-          >
-        </ElAlert>
-        <ArtForm
-          v-if="canEditHeader"
-          v-model="headerForm"
-          :items="headerItems"
-          :span="8"
-          :gutter="20"
-          label-position="top"
-          :show-reset="false"
-          :show-submit="false"
-        >
-          <template #keeperDepartmentId>
-            <ElSelect
-              v-model="headerForm.keeperDepartmentId"
-              filterable
-              clearable
-              :disabled="departmentError"
-              placeholder="选择库管部门"
-              class="w-full"
+      <ElTabs v-model="activeDetailTab"
+        ><ElTabPane name="section0" label="基本信息" :lazy="false"
+          ><div class="space-y-4"
+            ><ArtSectionCard
+              title="基本信息"
+              subtitle="方案和账存口径由系统带入，盘点表不能手工新增。"
             >
-              <ElOption
-                v-for="row in departments"
-                :key="row.id"
-                :value="row.id"
-                :label="`${row.organizationName} · ${row.organizationCode}`"
+              <ArtDescriptions
+                :data="sheet"
+                :items="descriptionItems"
+                :columns="3"
+                label-width="124px"
               />
-            </ElSelect>
-          </template>
-          <template #keeperEmployeeId>
-            <ArtEmployeeSelect
-              v-model="headerForm.keeperEmployeeId"
-              v-model:selected-data="selectedKeeper"
-              :tenant-id="sheet.tenantId"
-              :api-fn="fetchWmsCountEmployeeOptions"
-              :display-fields="['organization', 'jobTitle', 'employmentStatus']"
-              placeholder="选择仓管员"
-            />
-          </template>
-          <template #counterEmployeeId>
-            <ArtEmployeeSelect
-              v-model="headerForm.counterEmployeeId"
-              v-model:selected-data="selectedCounter"
-              :tenant-id="sheet.tenantId"
-              :api-fn="fetchWmsCountEmployeeOptions"
-              :display-fields="['organization', 'jobTitle', 'employmentStatus']"
-              placeholder="选择盘点人"
-            />
-          </template>
-        </ArtForm>
-        <ArtDescriptions
-          v-else
-          :data="sheet"
-          :items="staffDescriptionItems"
-          :columns="3"
-          label-width="100px"
-        />
-        <div v-if="sheet.recountEnabled && canEditLines" class="mt-3 min-w-0 max-w-sm">
-          <span class="mb-1 block text-sm text-[var(--el-text-color-regular)]">本次复盘人</span>
-          <ArtEmployeeSelect
-            v-model="recheckerEmployeeId"
-            v-model:selected-data="selectedRechecker"
-            :tenant-id="sheet.tenantId"
-            :api-fn="fetchWmsCountEmployeeOptions"
-            :display-fields="['organization', 'jobTitle', 'employmentStatus']"
-            placeholder="选择与初盘不同的员工"
-          />
-        </div>
-      </ArtSectionCard>
+            </ArtSectionCard>
 
-      <div class="grid gap-3 sm:grid-cols-3">
-        <div class="rounded-xl bg-[var(--el-fill-color-light)] p-4">
-          <small class="text-[var(--el-text-color-secondary)]">应盘明细</small>
-          <strong class="mt-1 block text-xl tabular-nums">{{ savedLines.length }}</strong>
-        </div>
-        <div class="rounded-xl bg-[var(--el-fill-color-light)] p-4">
-          <small class="text-[var(--el-text-color-secondary)]">已完成初盘</small>
-          <strong class="mt-1 block text-xl tabular-nums"
-            >{{ initialCount }} / {{ savedLines.length }}</strong
-          >
-        </div>
-        <div class="rounded-xl bg-[var(--el-fill-color-light)] p-4">
-          <small class="text-[var(--el-text-color-secondary)]">{{
-            sheet.recountEnabled ? '已完成复盘' : '有差异明细'
-          }}</small>
-          <strong class="mt-1 block text-xl tabular-nums">{{
-            sheet.recountEnabled ? `${recountCount} / ${savedLines.length}` : varianceCount
-          }}</strong>
-        </div>
-      </div>
-
-      <ArtSectionCard
-        title="物料明细"
-        subtitle="行号按 10 递增；账存、调整和盘盈盘亏由系统计算。"
-        :loading="linesLoading"
-        :error="linesError ? '盘点明细加载失败，请重试' : null"
-        :empty="!linesLoading && !linesError && !lines.length"
-        empty-title="暂无盘点明细"
-        empty-description="可在方案审核后新增账外物料，或重新生成包含库存的盘点方案。"
-        @retry="loadLines"
-      >
-        <template #actions>
-          <ElButton
-            v-if="canEditLines"
-            v-auth="'WmsCountSheet:AddLine'"
-            type="primary"
-            plain
-            @click="openAddLine"
-            >新增账外物料</ElButton
-          >
-        </template>
-        <ElScrollbar v-if="lines.length">
-          <ArtTable
-            ref="lineTableRef"
-            class="wms-editable-line-table"
-            :data="lines"
-            :columns="lineColumns"
-            :pagination="false"
-            row-key="id"
-            table-layout="fixed"
-          >
-            <template #material="{ row }">
-              <strong
-                class="block truncate"
-                :title="row.material?.description || row.material?.materialName || ''"
-              >
-                {{ row.material?.description || row.material?.materialName || '物料' }}
-              </strong>
-              <small class="block truncate text-[var(--el-text-color-secondary)]">
-                {{ row.material?.materialCode || '—' }}
-                {{
-                  row.material?.specificationModel ? ` · ${row.material.specificationModel}` : ''
-                }}
-              </small>
-            </template>
-            <template #batch="{ row }">
-              {{ row.batch?.batchNo || (row.manualEntry ? '账外新增' : '—') }}
-            </template>
-            <template #project="{ row }">
-              {{ projectLabel(row.projectId)
-              }}{{ row.constructionNo ? ` / ${row.constructionNo}` : '' }}
-            </template>
-            <template #countedQuantity="{ row }">
-              <ElInputNumber
-                v-if="canEditLines && hasAuth('WmsCountSheet:Count') && !isSerial(row)"
-                v-model="row.countedQuantity"
-                :min="0"
-                :max="999999999999"
-                :precision="3"
-                :controls="false"
-                class="w-full!"
-              />
-              <span v-else class="tabular-nums">{{
-                savedLine(row.id)?.countedQuantity ?? '待录入'
-              }}</span>
-            </template>
-            <template #recountQuantity="{ row }">
-              <ElInputNumber
-                v-if="canEditLines && hasAuth('WmsCountSheet:Recount') && !isSerial(row)"
-                v-model="row.recountQuantity"
-                :min="0"
-                :max="999999999999"
-                :precision="3"
-                :controls="false"
-                :disabled="savedLine(row.id)?.countedQuantity == null"
-                class="w-full!"
-              />
-              <span v-else class="tabular-nums">{{
-                savedLine(row.id)?.recountQuantity ?? '待录入'
-              }}</span>
-            </template>
-            <template #gain="{ row }">
-              <span
-                class="tabular-nums"
-                :class="varianceFor(row)?.gain ? 'text-[var(--el-color-success)]' : ''"
-              >
-                {{ varianceFor(row)?.gain ?? '—' }}
-              </span>
-            </template>
-            <template #loss="{ row }">
-              <span
-                class="tabular-nums"
-                :class="varianceFor(row)?.loss ? 'text-[var(--el-color-warning)]' : ''"
-              >
-                {{ varianceFor(row)?.loss ?? '—' }}
-              </span>
-            </template>
-            <template #serial="{ row }">
-              <template v-if="isSerial(row)">
+            <ElAlert v-if="sheet.plan?.status === 'draft'" type="info" :closable="false" show-icon>
+              盘点方案待审核；审核通过后可录入盘点结果。
+            </ElAlert>
+            <ElAlert
+              v-else-if="sheet.status === 'submitted'"
+              type="warning"
+              :closable="false"
+              show-icon
+            >
+              盘点表已提交，审核前可退回修改；审核将自动生成盘盈盘亏流水。
+            </ElAlert>
+            <ElAlert
+              v-else-if="sheet.status === 'approved'"
+              type="success"
+              :closable="false"
+              show-icon
+            >
+              {{
+                sheet.plan?.completionStatus === 'completed'
+                  ? '盘点表已审核并记账；方案全部完成，盘点冻结已解除。'
+                  : '本张盘点表已审核并记账；其他盘点表完成后解除冻结。'
+              }}
+            </ElAlert>
+          </div>
+          <div class="space-y-4"
+            ><ArtSectionCard
+              title="库管与盘点人员"
+              :subtitle="
+                sheet.recountEnabled
+                  ? '选择执行人员；复盘须由另一位员工完成。'
+                  : '选择库管和盘点执行人员。'
+              "
+            >
+              <template #actions>
                 <ElButton
-                  v-auth="canEditLines ? 'WmsCountSheet:Count' : 'WmsCountSheet:View'"
-                  link
+                  v-if="canEditHeader"
+                  v-auth="'WmsCountSheet:Count'"
                   type="primary"
-                  @click="openSerial(row, !canEditLines && sheet.recountEnabled)"
-                  >{{ canEditLines ? '录入 / 查看 SN' : '查看序列号' }}</ElButton
+                  plain
+                  :loading="headerSaving"
+                  @click="saveHeader"
+                  >保存人员信息</ElButton
                 >
               </template>
-              <span v-else>—</span>
-            </template>
-            <template #operation="{ row }">
-              <BusinessTableRowActions v-if="canEditLines">
-                <template v-if="!isSerial(row)">
-                  <ElButton
-                    v-auth="'WmsCountSheet:Count'"
-                    link
-                    type="primary"
-                    :loading="savingLineId === row.id"
-                    @click="saveLine(row, false)"
-                    >保存初盘</ElButton
-                  >
-                  <ElButton
-                    v-if="sheet.recountEnabled"
-                    v-auth="'WmsCountSheet:Recount'"
-                    link
-                    type="primary"
-                    :loading="savingLineId === row.id"
-                    @click="saveLine(row, true)"
-                    >保存复盘</ElButton
-                  >
+              <ElAlert
+                v-if="departmentError"
+                type="warning"
+                :closable="false"
+                show-icon
+                class="mb-3"
+              >
+                库管部门加载失败。<ElButton link type="primary" @click="loadDepartments"
+                  >重新加载</ElButton
+                >
+              </ElAlert>
+              <ArtForm
+                v-if="canEditHeader"
+                v-model="headerForm"
+                :items="headerItems"
+                :span="8"
+                :gutter="20"
+                label-position="top"
+              >
+                <template #keeperDepartmentId>
+                  <ElTreeSelect
+                    v-model="headerForm.keeperDepartmentId"
+                    :data="departmentOptions"
+                    :props="{ label: 'label', children: 'children' }"
+                    node-key="id"
+                    filterable
+                    clearable
+                    check-strictly
+                    :render-after-expand="false"
+                    :disabled="departmentError"
+                    placeholder="选择库管部门"
+                    class="w-full"
+                  />
                 </template>
-                <ElButton
-                  v-else-if="sheet.recountEnabled"
-                  v-auth="'WmsCountSheet:Recount'"
-                  link
-                  type="primary"
-                  @click="openSerial(row, true)"
-                  >录入复盘 SN</ElButton
+                <template #keeperEmployeeId>
+                  <ArtEmployeeSelect
+                    v-model="headerForm.keeperEmployeeId"
+                    v-model:selected-data="selectedKeeper"
+                    :tenant-id="sheet.tenantId"
+                    :api-fn="fetchWmsCountEmployeeOptions"
+                    :display-fields="['organization', 'jobTitle', 'employmentStatus']"
+                    placeholder="选择仓管员"
+                  />
+                </template>
+                <template #counterEmployeeId>
+                  <ArtEmployeeSelect
+                    v-model="headerForm.counterEmployeeId"
+                    v-model:selected-data="selectedCounter"
+                    :tenant-id="sheet.tenantId"
+                    :api-fn="fetchWmsCountEmployeeOptions"
+                    :display-fields="['organization', 'jobTitle', 'employmentStatus']"
+                    placeholder="选择盘点人"
+                  />
+                </template>
+              </ArtForm>
+              <ArtDescriptions
+                v-else
+                :data="sheet"
+                :items="staffDescriptionItems"
+                :columns="3"
+                label-width="100px"
+              />
+              <div v-if="sheet.recountEnabled && canEditLines" class="mt-3 min-w-0 max-w-sm">
+                <span class="mb-1 block text-sm text-[var(--el-text-color-regular)]"
+                  >本次复盘人</span
                 >
-                <ElButton
-                  v-if="!row.manualEntry"
-                  v-auth="'WmsCountSheet:Adjust'"
-                  link
-                  type="primary"
-                  @click="openAdjustment(row)"
-                  >选单调整</ElButton
+                <ArtEmployeeSelect
+                  v-model="recheckerEmployeeId"
+                  v-model:selected-data="selectedRechecker"
+                  :tenant-id="sheet.tenantId"
+                  :api-fn="fetchWmsCountEmployeeOptions"
+                  :display-fields="['organization', 'jobTitle', 'employmentStatus']"
+                  placeholder="选择与初盘不同的员工"
+                />
+              </div>
+            </ArtSectionCard>
+
+            <div class="grid gap-3 sm:grid-cols-3">
+              <div class="rounded-xl bg-[var(--el-fill-color-light)] p-4">
+                <small class="text-[var(--el-text-color-secondary)]">应盘明细</small>
+                <strong class="mt-1 block text-xl tabular-nums">{{ savedLines.length }}</strong>
+              </div>
+              <div class="rounded-xl bg-[var(--el-fill-color-light)] p-4">
+                <small class="text-[var(--el-text-color-secondary)]">已完成初盘</small>
+                <strong class="mt-1 block text-xl tabular-nums"
+                  >{{ initialCount }} / {{ savedLines.length }}</strong
                 >
-              </BusinessTableRowActions>
-              <span v-else>{{ sheet.status === 'approved' ? '已记账' : '只读' }}</span>
-            </template>
-          </ArtTable>
-        </ElScrollbar>
-        <template #empty-action>
-          <ElButton
-            v-if="canEditLines"
-            v-auth="'WmsCountSheet:AddLine'"
-            type="primary"
-            plain
-            @click="openAddLine"
-            >新增账外物料</ElButton
-          >
-        </template>
-      </ArtSectionCard>
+              </div>
+              <div class="rounded-xl bg-[var(--el-fill-color-light)] p-4">
+                <small class="text-[var(--el-text-color-secondary)]">{{
+                  sheet.recountEnabled ? '已完成复盘' : '有差异明细'
+                }}</small>
+                <strong class="mt-1 block text-xl tabular-nums">{{
+                  sheet.recountEnabled ? `${recountCount} / ${savedLines.length}` : varianceCount
+                }}</strong>
+              </div>
+            </div>
+          </div></ElTabPane
+        >
+        <ElTabPane name="section2" label="物料明细" :lazy="false"
+          ><div class="space-y-4"
+            ><ArtSectionCard
+              title="物料明细"
+              subtitle="行号按 10 递增；账存、调整和盘盈盘亏由系统计算。"
+              :loading="linesLoading"
+              :error="linesError ? '盘点明细加载失败，请重试' : null"
+              :empty="!linesLoading && !linesError && !lines.length"
+              empty-title="暂无盘点明细"
+              empty-description="可在方案审核后新增账外物料，或重新生成包含库存的盘点方案。"
+              @retry="loadLines"
+            >
+              <template #actions>
+                <ElButton
+                  v-if="canEditLines"
+                  v-auth="'WmsCountSheet:AddLine'"
+                  type="primary"
+                  plain
+                  @click="openAddLine"
+                  >新增账外物料</ElButton
+                >
+              </template>
+              <ArtTable
+                v-if="lines.length"
+                ref="lineTableRef"
+                class="wms-editable-line-table"
+                :data="lines"
+                :columns="lineColumns"
+                :pagination="false"
+                row-key="id"
+                table-layout="fixed"
+              >
+                <template #material="{ row }">
+                  <strong
+                    class="block truncate"
+                    :title="row.material?.description || row.material?.materialName || ''"
+                  >
+                    {{ row.material?.description || row.material?.materialName || '物料' }}
+                  </strong>
+                  <small class="block truncate text-[var(--el-text-color-secondary)]">
+                    {{ row.material?.materialCode || '—' }}
+                    {{
+                      row.material?.specificationModel
+                        ? ` · ${row.material.specificationModel}`
+                        : ''
+                    }}
+                  </small>
+                </template>
+                <template #batch="{ row }">
+                  {{ row.batch?.batchNo || (row.manualEntry ? '账外新增' : '—') }}
+                </template>
+                <template #project="{ row }">
+                  {{ projectLabel(row.projectId)
+                  }}{{ row.constructionNo ? ` / ${row.constructionNo}` : '' }}
+                </template>
+                <template #countedQuantity="{ row }">
+                  <ElInputNumber
+                    v-if="canEditLines && hasAuth('WmsCountSheet:Count') && !isSerial(row)"
+                    v-model="row.countedQuantity"
+                    :min="0"
+                    :max="999999999999"
+                    :precision="3"
+                    :controls="false"
+                    class="w-full!"
+                  />
+                  <span v-else class="tabular-nums">{{
+                    savedLine(row.id)?.countedQuantity ?? '待录入'
+                  }}</span>
+                </template>
+                <template #recountQuantity="{ row }">
+                  <ElInputNumber
+                    v-if="canEditLines && hasAuth('WmsCountSheet:Recount') && !isSerial(row)"
+                    v-model="row.recountQuantity"
+                    :min="0"
+                    :max="999999999999"
+                    :precision="3"
+                    :controls="false"
+                    :disabled="savedLine(row.id)?.countedQuantity == null"
+                    class="w-full!"
+                  />
+                  <span v-else class="tabular-nums">{{
+                    savedLine(row.id)?.recountQuantity ?? '待录入'
+                  }}</span>
+                </template>
+                <template #gain="{ row }">
+                  <span
+                    class="tabular-nums"
+                    :class="varianceFor(row)?.gain ? 'text-[var(--el-color-success)]' : ''"
+                  >
+                    {{ varianceFor(row)?.gain ?? '—' }}
+                  </span>
+                </template>
+                <template #loss="{ row }">
+                  <span
+                    class="tabular-nums"
+                    :class="varianceFor(row)?.loss ? 'text-[var(--el-color-warning)]' : ''"
+                  >
+                    {{ varianceFor(row)?.loss ?? '—' }}
+                  </span>
+                </template>
+                <template #serial="{ row }">
+                  <template v-if="isSerial(row)">
+                    <ElButton
+                      v-auth="canEditLines ? 'WmsCountSheet:Count' : 'WmsCountSheet:View'"
+                      link
+                      type="primary"
+                      @click="openSerial(row, !canEditLines && sheet.recountEnabled)"
+                      >{{ canEditLines ? '录入 / 查看 SN' : '查看序列号' }}</ElButton
+                    >
+                  </template>
+                  <span v-else>—</span>
+                </template>
+                <template #operation="{ row }">
+                  <BusinessTableRowActions v-if="canEditLines">
+                    <template v-if="!isSerial(row)">
+                      <ElButton
+                        v-auth="'WmsCountSheet:Count'"
+                        link
+                        type="primary"
+                        :loading="savingLineId === row.id"
+                        @click="saveLine(row, false)"
+                        >保存初盘</ElButton
+                      >
+                      <ElButton
+                        v-if="sheet.recountEnabled"
+                        v-auth="'WmsCountSheet:Recount'"
+                        link
+                        type="primary"
+                        :loading="savingLineId === row.id"
+                        @click="saveLine(row, true)"
+                        >保存复盘</ElButton
+                      >
+                    </template>
+                    <ElButton
+                      v-else-if="sheet.recountEnabled"
+                      v-auth="'WmsCountSheet:Recount'"
+                      link
+                      type="primary"
+                      @click="openSerial(row, true)"
+                      >录入复盘 SN</ElButton
+                    >
+                    <ElButton
+                      v-if="!row.manualEntry"
+                      v-auth="'WmsCountSheet:Adjust'"
+                      link
+                      type="primary"
+                      @click="openAdjustment(row)"
+                      >选单调整</ElButton
+                    >
+                  </BusinessTableRowActions>
+                  <span v-else>{{ sheet.status === 'approved' ? '已记账' : '只读' }}</span>
+                </template>
+              </ArtTable>
+              <template #empty-action>
+                <ElButton
+                  v-if="canEditLines"
+                  v-auth="'WmsCountSheet:AddLine'"
+                  type="primary"
+                  plain
+                  @click="openAddLine"
+                  >新增账外物料</ElButton
+                >
+              </template>
+            </ArtSectionCard></div
+          ></ElTabPane
+        ></ElTabs
+      >
 
       <div v-if="sheet.plan?.status === 'counting'" class="flex flex-wrap justify-end gap-2">
         <ElButton
@@ -344,6 +377,7 @@
 
 <script setup lang="ts">
   import { ElMessage } from 'element-plus'
+  import TreeUtils from '@/utils/tree'
   import { useAuth } from '@/hooks/core/useAuth'
   import { notifyFriendlyError, useArtFeedback } from '@/hooks/core/useArtFeedback'
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
@@ -383,6 +417,7 @@
   const emit = defineEmits<{ success: [] }>()
   const { hasAuth } = useAuth()
   const { confirmAction } = useArtFeedback()
+  const activeDetailTab = ref('section0')
   const drawerRef = ref<ArtDrawerExpose<WmsCountSheet>>()
   const addLineRef = ref<InstanceType<typeof CountSheetAddLineDialog>>()
   const serialRef = ref<InstanceType<typeof CountSheetSerialDialog>>()
@@ -393,6 +428,15 @@
   const lines = ref<WmsCountLine[]>([])
   const projects = ref<WmsProject[]>([])
   const departments = ref<WmsCountDepartmentOption[]>([])
+  const departmentTreeUtils = new TreeUtils({ parentKey: 'parentId' })
+  const departmentOptions = computed(() =>
+    departmentTreeUtils.listToTree(
+      departments.value.map((row) => ({
+        ...row,
+        label: `${row.organizationName} · ${row.organizationCode}`
+      }))
+    )
+  )
   const departmentError = ref(false)
   const loading = ref(false)
   const linesLoading = ref(false)
@@ -753,6 +797,7 @@
     }
   }
   async function handleOpen(target: WmsCountSheet): Promise<void> {
+    activeDetailTab.value = 'section0'
     openVersion++
     sheet.value = target
     lines.value = []

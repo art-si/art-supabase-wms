@@ -1,0 +1,1 @@
+import{Jn as e,nr as t,xr as n}from"./supabase-adyVcRTj.js";import{t as r}from"./workspace-t7tH0l5i.js";var i=t({name:`WmsCountLoss`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{kind:`loss`}))}});export{i as default};

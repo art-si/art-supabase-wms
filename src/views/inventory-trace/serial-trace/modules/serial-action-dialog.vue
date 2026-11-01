@@ -26,15 +26,7 @@
         error-description="请重新加载候选记录后办理，当前操作不会提交。"
         @retry="loadCandidates"
       />
-      <ArtForm
-        ref="formRef"
-        v-model="form"
-        :items="items"
-        :rules="rules"
-        :show-reset="false"
-        :show-submit="false"
-        label-position="top"
-      />
+      <ArtForm ref="formRef" v-model="form" :items="items" :rules="rules" label-position="top" />
       <ElAlert
         v-if="context?.action === 'reserve'"
         type="info"

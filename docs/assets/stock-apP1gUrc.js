@@ -1,0 +1,1 @@
+import{Jn as e,nr as t,xr as n}from"./supabase-adyVcRTj.js";import{t as r}from"./inventory-report-workspace-883MQqIk.js";var i=t({name:`WmsStock`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{kind:`stock`}))}});export{i as default};

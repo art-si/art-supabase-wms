@@ -16,16 +16,7 @@
         库位加载失败，请重新加载后办理。
         <ElButton link type="primary" @click="loadBins">重新加载</ElButton>
       </ElAlert>
-      <ArtForm
-        ref="formRef"
-        :model-value="form"
-        @update:model-value="replaceReactiveModel(form, $event)"
-        :items="items"
-        :rules="rules"
-        label-position="top"
-        :show-reset="false"
-        :show-submit="false"
-      >
+      <ArtForm ref="formRef" v-model="form" :items="items" :rules="rules" label-position="top">
         <template #targetBinId>
           <WmsBinPicker
             v-model="form.targetBinId"
@@ -47,7 +38,6 @@
 </template>
 
 <script setup lang="ts">
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
@@ -65,7 +55,7 @@
   const loadError = ref(false)
   let generation = 0
   watch(loadError, (disabled) => dialogRef.value?.setOptions({ confirmDisabled: disabled }))
-  const form = reactive<{ targetBinId: string | null }>({ targetBinId: null })
+  const form = ref<{ targetBinId: string | null }>({ targetBinId: null })
   const items = computed<FormItem[]>(() => [
     {
       key: 'targetBinId',
@@ -86,7 +76,7 @@
     try {
       if (!(await validateArtFormForSubmit(formRef.value))) return false
       if (!document.value || loadError.value) return false
-      await receiveWmsTransfer(document.value.id, form.targetBinId || null)
+      await receiveWmsTransfer(document.value.id, form.value.targetBinId || null)
       emit('success')
       return true
     } catch (error) {
@@ -98,7 +88,7 @@
     generation++
     document.value = row
     bins.value = []
-    form.targetBinId = null
+    form.value.targetBinId = null
     loadError.value = false
     await dialogRef.value?.handleOpen(row, {
       title: '确认调拨入库',

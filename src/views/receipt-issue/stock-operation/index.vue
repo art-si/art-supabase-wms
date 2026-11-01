@@ -69,15 +69,12 @@
             </form>
             <ArtForm
               ref="formRef"
-              :model-value="form"
-              @update:model-value="replaceReactiveModel(form, $event)"
+              v-model="form"
               :items="formItems"
               :rules="rules"
               :span="12"
               :gutter="20"
               label-position="top"
-              :show-reset="false"
-              :show-submit="false"
               root-class="wms-stock-operation-form"
             >
               <template #binId>
@@ -266,7 +263,8 @@
 
 <script setup lang="ts">
   import { RouterLink } from 'vue-router'
-  import { replaceReactiveModel } from '@/utils/form/model'
+  import TreeUtils from '@/utils/tree'
+  import { buildOrganizationSelectTree } from '@/utils/organization-options'
   import { ElMessage } from 'element-plus'
   import { omit } from 'lodash-es'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
@@ -275,7 +273,10 @@
   import ArtDescriptions from '@/components/core/base/art-descriptions/index.vue'
   import type { ArtDescriptionItem } from '@/components/core/base/art-descriptions/types'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
-  import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
+  import ArtForm, {
+    type FormItem,
+    type FormItemOption
+  } from '@/components/core/forms/art-form/index.vue'
   import ArtMaterialSelect from '@/components/business/art-material-select/index.vue'
   import WmsBinPicker from '@wms/views/shared/wms-bin-picker.vue'
   import { normalizeNullableText } from '@/utils/form/normalize'
@@ -337,6 +338,7 @@
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const warehouses = ref<WmsWarehouse[]>([])
   const organizations = ref<WmsInventoryOrganization[]>([])
+  const organizationTreeUtils = new TreeUtils({ parentKey: 'parentId' })
   const documentTypes = ref<WmsInitializationOption[]>([])
   const businessTypes = ref<WmsInitializationOption[]>([])
   const directTransferMenuId = ref('')
@@ -368,7 +370,7 @@
     sourceConstructionNo?: string | null
   }
   const PUBLIC_SCOPE = '__public__'
-  const form = reactive<StockOperationForm>({ movementType: 'purchase_in', quantity: 1 })
+  const form = ref<StockOperationForm>({ movementType: 'purchase_in', quantity: 1 })
   const availableOrganizations = computed(() =>
     organizations.value.filter(
       (row) =>
@@ -378,30 +380,31 @@
   )
   const availableBusinessTypes = computed(() =>
     businessTypes.value.filter((row) =>
-      isWmsBusinessTypeAvailable(row, form.documentTypeId || '', directTransferMenuId.value)
+      isWmsBusinessTypeAvailable(row, form.value.documentTypeId || '', directTransferMenuId.value)
     )
   )
   function onDocumentTypeChange(): void {
-    if (!availableBusinessTypes.value.some((row) => row.id === form.businessTypeId))
-      form.businessTypeId = availableBusinessTypes.value.find((row) => row.isDefault)?.id || null
+    if (!availableBusinessTypes.value.some((row) => row.id === form.value.businessTypeId))
+      form.value.businessTypeId =
+        availableBusinessTypes.value.find((row) => row.isDefault)?.id || null
   }
-  const isInbound = computed(() => form.movementType.endsWith('_in'))
+  const isInbound = computed(() => form.value.movementType.endsWith('_in'))
   const selectedWarehouse = computed(() =>
-    warehouses.value.find((row) => row.id === form.warehouseId)
+    warehouses.value.find((row) => row.id === form.value.warehouseId)
   )
   const targetWarehouse = computed(() =>
-    warehouses.value.find((row) => row.id === form.targetWarehouseId)
+    warehouses.value.find((row) => row.id === form.value.targetWarehouseId)
   )
   const selectedShippingNotice = computed(() =>
-    shippingNotices.value.find((row) => row.id === form.shippingNoticeId)
+    shippingNotices.value.find((row) => row.id === form.value.shippingNoticeId)
   )
   const selectedShippingLine = computed(() =>
-    selectedShippingNotice.value?.lines.find((row) => row.lineId === form.shippingLineId)
+    selectedShippingNotice.value?.lines.find((row) => row.lineId === form.value.shippingLineId)
   )
   const selectedProductionOrder = computed(() =>
-    workOrders.value.find((row) => row.id === form.workOrderId)
+    workOrders.value.find((row) => row.id === form.value.workOrderId)
   )
-  const selectedPack = computed(() => packs.value.find((row) => row.id === form.packId))
+  const selectedPack = computed(() => packs.value.find((row) => row.id === form.value.packId))
   const selectedPackPieces = computed(
     () => selectedPack.value?.items.reduce((total, item) => total + Number(item.pieces), 0) || 0
   )
@@ -444,12 +447,14 @@
       return selectedBatch.value
         ? `${sourceProjectName.value}${selectedBatch.value.constructionNo ? ` / ${selectedBatch.value.constructionNo}` : ''}`
         : '随来源批次'
-    const name = projects.value.find((row) => row.id === form.projectId)?.projectName
-    return name ? `${name}${form.constructionNo ? ` / ${form.constructionNo}` : ''}` : '公共库存'
+    const name = projects.value.find((row) => row.id === form.value.projectId)?.projectName
+    return name
+      ? `${name}${form.value.constructionNo ? ` / ${form.value.constructionNo}` : ''}`
+      : '公共库存'
   })
   const scanScopeLabel = computed(() => {
-    if (form.movementType === 'sales_out') return shippingScopeLabel.value
-    if (form.movementType === 'production_in') {
+    if (form.value.movementType === 'sales_out') return shippingScopeLabel.value
+    if (form.value.movementType === 'production_in') {
       const order = selectedProductionOrder.value
       if (!order) return '选择 MES 工单后自动带入'
       const project = projects.value.find((row) => row.id === order.projectId)
@@ -458,10 +463,10 @@
         : '公共库存'
     }
     if (selectedBatch.value) return scopeLabel.value
-    if (!isInbound.value && form.sourceProjectId) {
-      if (form.sourceProjectId === PUBLIC_SCOPE) return '公共库存'
-      const project = projects.value.find((row) => row.id === form.sourceProjectId)
-      return `${project?.projectName || '项目库存'}${form.sourceConstructionNo ? ` / ${form.sourceConstructionNo}` : ''}`
+    if (!isInbound.value && form.value.sourceProjectId) {
+      if (form.value.sourceProjectId === PUBLIC_SCOPE) return '公共库存'
+      const project = projects.value.find((row) => row.id === form.value.sourceProjectId)
+      return `${project?.projectName || '项目库存'}${form.value.sourceConstructionNo ? ` / ${form.value.sourceConstructionNo}` : ''}`
     }
     return scopeLabel.value
   })
@@ -489,18 +494,19 @@
   })
   const movementLabel = computed(
     () =>
-      movementOptions.value.find((item) => item.value === form.movementType)?.label || '库存业务'
+      movementOptions.value.find((item) => item.value === form.value.movementType)?.label ||
+      '库存业务'
   )
   const reviewItems = computed<ArtDescriptionItem[]>(() => [
     { key: 'movementType', label: '作业类型', value: movementLabel.value },
     { key: 'warehouse', label: '仓库', value: selectedWarehouse.value?.warehouseName || '待选择' },
     { key: 'scope', label: '项目归属', value: scopeLabel.value },
-    { key: 'quantity', label: '数量', value: form.quantity || '待填写' }
+    { key: 'quantity', label: '数量', value: form.value.quantity || '待填写' }
   ])
   const operationPermission = computed(() =>
     isInbound.value
       ? 'WmsStockOperation:Receive'
-      : form.movementType === 'transfer'
+      : form.value.movementType === 'transfer'
         ? 'WmsStockOperation:Transfer'
         : 'WmsStockOperation:Issue'
   )
@@ -513,11 +519,13 @@
     )
   )
   const activeSections = computed(() =>
-    sections.value.filter((row) => row.projectId === form.projectId && row.status === 'active')
+    sections.value.filter(
+      (row) => row.projectId === form.value.projectId && row.status === 'active'
+    )
   )
   const sourceSections = computed(() =>
     sections.value.filter(
-      (row) => row.projectId === form.sourceProjectId && row.status === 'active'
+      (row) => row.projectId === form.value.sourceProjectId && row.status === 'active'
     )
   )
   const batchColumns: DataSelectColumn[] = [
@@ -536,13 +544,13 @@
     },
     {
       key: 'referenceNo',
-      label: form.movementType === 'sales_out' ? '发货通知单号' : '业务单号',
+      label: form.value.movementType === 'sales_out' ? '发货通知单号' : '业务单号',
       type: 'input',
       props: {
         maxlength: 80,
-        disabled: form.movementType === 'sales_out',
+        disabled: form.value.movementType === 'sales_out',
         placeholder:
-          form.movementType === 'sales_out'
+          form.value.movementType === 'sales_out'
             ? '选择发货通知单后自动带入'
             : '采购、生产或内部业务单号'
       }
@@ -560,7 +568,7 @@
         .map((row) => ({ label: `${row.warehouseName} · ${row.warehouseCode}`, value: row.id })),
       props: { filterable: true, onChange: onWarehouseChange }
     },
-    ...(form.movementType === 'transfer'
+    ...(form.value.movementType === 'transfer'
       ? [
           {
             key: 'documentTypeId',
@@ -584,13 +592,13 @@
             })),
             props: {
               filterable: true,
-              disabled: !form.documentTypeId,
+              disabled: !form.value.documentTypeId,
               placeholder: '选择对应的业务类型'
             }
           }
         ]
       : []),
-    ...(form.movementType === 'production_in'
+    ...(form.value.movementType === 'production_in'
       ? [
           {
             key: 'workOrderId',
@@ -613,7 +621,7 @@
           }
         ]
       : []),
-    ...(form.movementType === 'other_out'
+    ...(form.value.movementType === 'other_out'
       ? [
           {
             key: 'workOrderId',
@@ -634,7 +642,7 @@
           }
         ]
       : []),
-    ...(form.movementType === 'sales_out'
+    ...(form.value.movementType === 'sales_out'
       ? [
           {
             key: 'shippingNoticeId',
@@ -694,7 +702,7 @@
                 : '可留空或手工填写批号'
             }
           },
-          ...(form.movementType === 'production_in'
+          ...(form.value.movementType === 'production_in'
             ? [
                 {
                   key: 'packId',
@@ -728,7 +736,10 @@
             key: 'projectId',
             label: '归属项目',
             type: 'select' as const,
-            options: (form.movementType === 'production_in' ? projects.value : activeProjects.value)
+            options: (form.value.movementType === 'production_in'
+              ? projects.value
+              : activeProjects.value
+            )
               .filter((row) => row.tenantId === selectedWarehouse.value?.tenantId)
               .map((row) => ({
                 label: `${row.projectName} · ${row.projectCode}`,
@@ -737,11 +748,11 @@
             props: {
               clearable: true,
               filterable: true,
-              disabled: form.movementType === 'production_in',
+              disabled: form.value.movementType === 'production_in',
               placeholder: '留空为公共库存',
               onChange: () => {
-                form.constructionNo = null
-                form.workOrderId = null
+                form.value.constructionNo = null
+                form.value.workOrderId = null
               }
             }
           },
@@ -756,8 +767,8 @@
             props: {
               clearable: true,
               filterable: true,
-              disabled: !form.projectId || form.movementType === 'production_in',
-              placeholder: form.projectId ? '选择施工号' : '公共库存无施工号'
+              disabled: !form.value.projectId || form.value.movementType === 'production_in',
+              placeholder: form.value.projectId ? '选择施工号' : '公共库存无施工号'
             }
           },
           {
@@ -795,7 +806,7 @@
             : [])
         ]
       : [
-          ...(form.movementType === 'other_out' || form.movementType === 'transfer'
+          ...(form.value.movementType === 'other_out' || form.value.movementType === 'transfer'
             ? [
                 {
                   key: 'sourceProjectId',
@@ -826,7 +837,8 @@
                   props: {
                     clearable: true,
                     filterable: true,
-                    disabled: !form.sourceProjectId || form.sourceProjectId === PUBLIC_SCOPE,
+                    disabled:
+                      !form.value.sourceProjectId || form.value.sourceProjectId === PUBLIC_SCOPE,
                     placeholder: '全部施工号',
                     onChange: resetSourceSelection
                   }
@@ -844,7 +856,8 @@
                   options: serials.value
                     .filter(
                       (row) =>
-                        !row.reservedWorkOrderId || row.reservedWorkOrderId === form.workOrderId
+                        !row.reservedWorkOrderId ||
+                        row.reservedWorkOrderId === form.value.workOrderId
                     )
                     .map((row) => ({ label: row.serialNo, value: row.id })),
                   props: {
@@ -857,7 +870,7 @@
                 }
               ]
             : []),
-          ...(form.movementType === 'transfer'
+          ...(form.value.movementType === 'transfer'
             ? [
                 {
                   key: 'targetWarehouseId',
@@ -868,14 +881,23 @@
                 {
                   key: 'targetOrganizationId',
                   label: '目标库存组织',
-                  type: 'select' as const,
-                  options: availableOrganizations.value.map((row) => ({
-                    label: `${row.organizationName} · ${row.organizationCode}`,
-                    value: row.id
-                  })),
+                  type: 'treeSelect' as const,
+                  options: buildOrganizationSelectTree(
+                    organizationTreeUtils.listToTree(
+                      organizations.value.filter(
+                        (row) => row.tenantId === selectedWarehouse.value?.tenantId
+                      )
+                    ),
+                    availableOrganizations.value
+                  ),
+                  valueField: 'id',
+                  labelField: 'name',
+                  labelFn: (row: FormItemOption) => `${row.name ?? ''} · ${row.code ?? ''}`,
                   props: {
                     filterable: true,
-                    disabled: !form.targetWarehouseId,
+                    checkStrictly: true,
+                    renderAfterExpand: false,
+                    disabled: !form.value.targetWarehouseId,
                     placeholder: '选择已启用库存的目标组织'
                   },
                   help: '同仓跨组织可直接调拨；组织变化会记录在库存流水。'
@@ -904,9 +926,9 @@
       props: {
         min: 0.001,
         max:
-          form.movementType === 'sales_out' && selectedShippingLine.value
+          form.value.movementType === 'sales_out' && selectedShippingLine.value
             ? shippingRemaining.value
-            : form.movementType === 'production_in' && selectedProductionOrder.value
+            : form.value.movementType === 'production_in' && selectedProductionOrder.value
               ? productionRemaining.value
               : undefined,
         precision: 3,
@@ -914,9 +936,9 @@
         class: 'w-full!'
       },
       help:
-        form.movementType === 'sales_out' && selectedShippingLine.value
+        form.value.movementType === 'sales_out' && selectedShippingLine.value
           ? `该发货行尚需出库 ${shippingRemaining.value}`
-          : form.movementType === 'production_in' && selectedProductionOrder.value
+          : form.value.movementType === 'production_in' && selectedProductionOrder.value
             ? `该工单已报工未入库 ${productionRemaining.value}`
             : undefined
     },
@@ -939,15 +961,15 @@
       ? [{ required: true, message: '请选择来源批次', trigger: 'change' }]
       : [],
     shippingNoticeId:
-      form.movementType === 'sales_out'
+      form.value.movementType === 'sales_out'
         ? [{ required: true, message: '请选择发货通知单', trigger: 'change' }]
         : [],
     shippingLineId:
-      form.movementType === 'sales_out'
+      form.value.movementType === 'sales_out'
         ? [{ required: true, message: '请选择发货物料行', trigger: 'change' }]
         : [],
     workOrderId:
-      form.movementType === 'production_in'
+      form.value.movementType === 'production_in'
         ? [{ required: true, message: '请选择 MES 工单', trigger: 'change' }]
         : [],
     binId:
@@ -955,27 +977,27 @@
         ? [{ required: true, message: '请选择库位', trigger: 'change' }]
         : [],
     constructionNo:
-      isInbound.value && form.projectId
+      isInbound.value && form.value.projectId
         ? [{ required: true, message: '请选择施工号', trigger: 'change' }]
         : [],
     targetWarehouseId:
-      form.movementType === 'transfer'
+      form.value.movementType === 'transfer'
         ? [{ required: true, message: '请选择目标仓库', trigger: 'change' }]
         : [],
     documentTypeId:
-      form.movementType === 'transfer'
+      form.value.movementType === 'transfer'
         ? [{ required: true, message: '请选择单据类型', trigger: 'change' }]
         : [],
     businessTypeId:
-      form.movementType === 'transfer'
+      form.value.movementType === 'transfer'
         ? [{ required: true, message: '请选择业务类型', trigger: 'change' }]
         : [],
     targetOrganizationId:
-      form.movementType === 'transfer'
+      form.value.movementType === 'transfer'
         ? [{ required: true, message: '请选择目标库存组织', trigger: 'change' }]
         : [],
     targetBinId:
-      form.movementType === 'transfer' && targetWarehouse.value?.enableLocations
+      form.value.movementType === 'transfer' && targetWarehouse.value?.enableLocations
         ? [{ required: true, message: '请选择目标库位', trigger: 'change' }]
         : [],
     quantity: [
@@ -1008,23 +1030,23 @@
     }
   }
   const scopedBatchQuery = computed<Partial<WmsStockQuery>>(() => ({
-    warehouseId: form.warehouseId || undefined,
+    warehouseId: form.value.warehouseId || undefined,
     materialId:
-      form.movementType === 'sales_out' ? selectedShippingLine.value?.materialId : undefined,
+      form.value.movementType === 'sales_out' ? selectedShippingLine.value?.materialId : undefined,
     projectId:
-      form.movementType === 'sales_out'
+      form.value.movementType === 'sales_out'
         ? selectedShippingNotice.value?.projectId || undefined
-        : form.sourceProjectId && form.sourceProjectId !== PUBLIC_SCOPE
-          ? form.sourceProjectId
+        : form.value.sourceProjectId && form.value.sourceProjectId !== PUBLIC_SCOPE
+          ? form.value.sourceProjectId
           : undefined,
     publicOnly:
-      form.movementType === 'sales_out'
+      form.value.movementType === 'sales_out'
         ? !selectedShippingNotice.value?.projectId
-        : form.sourceProjectId === PUBLIC_SCOPE,
+        : form.value.sourceProjectId === PUBLIC_SCOPE,
     constructionNo:
-      form.movementType === 'sales_out'
+      form.value.movementType === 'sales_out'
         ? shippingConstructionNo.value || undefined
-        : form.sourceConstructionNo || undefined,
+        : form.value.sourceConstructionNo || undefined,
     status: 'normal',
     positiveOnly: true
   }))
@@ -1046,13 +1068,13 @@
   }
   let workOrderSearchRevision = 0
   async function searchWorkOrders(keyword: string): Promise<void> {
-    const warehouseId = form.warehouseId
+    const warehouseId = form.value.warehouseId
     if (!warehouseId) return
     const revision = ++workOrderSearchRevision
     try {
       const rows = await fetchWmsWorkOrderOptions(warehouseId, keyword)
-      if (revision !== workOrderSearchRevision || warehouseId !== form.warehouseId) return
-      const selected = workOrders.value.find((row) => row.id === form.workOrderId)
+      if (revision !== workOrderSearchRevision || warehouseId !== form.value.warehouseId) return
+      const selected = workOrders.value.find((row) => row.id === form.value.workOrderId)
       workOrders.value =
         selected && !rows.some((row) => row.id === selected.id) ? [selected, ...rows] : rows
       loadError.value = false
@@ -1068,14 +1090,14 @@
       row && typeof row.id === 'string' && typeof row.quantity === 'number'
         ? (row as WmsStockBatch & { batchLabel: string })
         : null
-    form.serialIds = []
+    form.value.serialIds = []
     serials.value = []
     serialLoadError.value = false
     if (!selectedBatch.value) return
-    form.batchId = selectedBatch.value.id
-    form.quantity = Math.min(1, selectedBatch.value.quantity)
-    if (form.movementType === 'sales_out')
-      form.quantity = Math.min(form.quantity, shippingRemaining.value)
+    form.value.batchId = selectedBatch.value.id
+    form.value.quantity = Math.min(1, selectedBatch.value.quantity)
+    if (form.value.movementType === 'sales_out')
+      form.value.quantity = Math.min(form.value.quantity, shippingRemaining.value)
     await loadSourceSerials()
   }
   async function loadSourceSerials(): Promise<void> {
@@ -1097,21 +1119,21 @@
   async function applyScan(): Promise<void> {
     const code = scanText.value.trim()
     if (!code || !selectedWarehouse.value || scanning.value) return
-    if (form.movementType === 'sales_out' && !selectedShippingLine.value)
+    if (form.value.movementType === 'sales_out' && !selectedShippingLine.value)
       return void ElMessage.warning('请先选择发货通知单及物料行')
     if (isInbound.value) {
       if (materialSerialEnabled.value) {
         const existing = serialText.value.split(/[\s,，;；]+/).filter(Boolean)
         if (existing.includes(code)) return void ElMessage.warning('该序列号已录入')
-        if (form.packId && existing.length + 1 > selectedPackPieces.value)
+        if (form.value.packId && existing.length + 1 > selectedPackPieces.value)
           return void ElMessage.warning('扫码 SN 数量不能超过确认垛包块数')
         serialText.value = [...existing, code].join('\n')
-        if (!form.packId) form.quantity = existing.length + 1
+        if (!form.value.packId) form.value.quantity = existing.length + 1
         ElMessage.success(`已录入 SN：${code}`)
       } else if (materialBatchEnabled.value) {
         ElMessage.info('该物料的批号将在入库时自动生成')
       } else {
-        form.batchNo = code
+        form.value.batchNo = code
         ElMessage.success(`已带入批号：${code}`)
       }
       scanText.value = ''
@@ -1120,11 +1142,11 @@
     if (selectedBatch.value) {
       const serial = serials.value.find((row) => row.serialNo === code)
       if (serial) {
-        if (serial.reservedWorkOrderId && serial.reservedWorkOrderId !== form.workOrderId)
+        if (serial.reservedWorkOrderId && serial.reservedWorkOrderId !== form.value.workOrderId)
           return void ElMessage.warning('该 SN 已被其他工单预留')
-        if (form.serialIds?.includes(serial.id)) return void ElMessage.warning('该 SN 已选择')
-        form.serialIds = [...(form.serialIds || []), serial.id]
-        form.quantity = form.serialIds.length
+        if (form.value.serialIds?.includes(serial.id)) return void ElMessage.warning('该 SN 已选择')
+        form.value.serialIds = [...(form.value.serialIds || []), serial.id]
+        form.value.quantity = form.value.serialIds.length
         scanText.value = ''
         ElMessage.success(`已选择 SN：${code}`)
         return
@@ -1163,20 +1185,20 @@
   function resetSourceSelection(): void {
     ++serialRequest
     serialLoading.value = false
-    form.batchId = null
-    form.serialIds = []
+    form.value.batchId = null
+    form.value.serialIds = []
     selectedBatch.value = null
     serials.value = []
     serialLoadError.value = false
   }
   function onSourceProjectChange(): void {
-    form.sourceConstructionNo = null
+    form.value.sourceConstructionNo = null
     resetSourceSelection()
   }
   function onIssueWorkOrderChange(): void {
-    const order = workOrders.value.find((row) => row.id === form.workOrderId)
-    form.sourceProjectId = order ? order.projectId || PUBLIC_SCOPE : null
-    form.sourceConstructionNo = order?.constructionNo || null
+    const order = workOrders.value.find((row) => row.id === form.value.workOrderId)
+    form.value.sourceProjectId = order ? order.projectId || PUBLIC_SCOPE : null
+    form.value.sourceConstructionNo = order?.constructionNo || null
     resetSourceSelection()
   }
   let productionPackRevision = 0
@@ -1184,42 +1206,42 @@
     productionPackRevision++
     productionPackLoading.value = false
     resetSourceSelection()
-    form.materialId = null
-    form.workOrderId = null
-    form.packId = null
+    form.value.materialId = null
+    form.value.workOrderId = null
+    form.value.packId = null
     selectedMaterial.value = []
     packs.value = []
   }
   async function onMovementTypeChange(): Promise<void> {
     resetDependent()
-    form.shippingNoticeId = null
-    form.shippingLineId = null
-    form.referenceNo = null
+    form.value.shippingNoticeId = null
+    form.value.shippingLineId = null
+    form.value.referenceNo = null
     shippingNotices.value = []
     await onWarehouseChange()
   }
   async function onProductionOrderChange(): Promise<void> {
     const order = selectedProductionOrder.value
-    form.packId = null
-    form.binId = null
+    form.value.packId = null
+    form.value.binId = null
     packs.value = []
-    form.materialId = order?.materialId || null
-    form.projectId = order?.projectId || null
-    form.constructionNo = order?.constructionNo || null
-    form.referenceNo = order?.workOrderNo || null
-    form.quantity = Math.min(1, productionRemaining.value)
+    form.value.materialId = order?.materialId || null
+    form.value.projectId = order?.projectId || null
+    form.value.constructionNo = order?.constructionNo || null
+    form.value.referenceNo = order?.workOrderNo || null
+    form.value.quantity = Math.min(1, productionRemaining.value)
     requestedWorkOrderId.value = ''
     await loadProductionPacks()
   }
   async function loadProductionPacks(): Promise<void> {
     const revision = ++productionPackRevision
     const order = selectedProductionOrder.value
-    const warehouseId = form.warehouseId
+    const warehouseId = form.value.warehouseId
     const stillCurrent = () =>
       revision === productionPackRevision &&
-      form.movementType === 'production_in' &&
-      form.warehouseId === warehouseId &&
-      form.workOrderId === order?.id
+      form.value.movementType === 'production_in' &&
+      form.value.warehouseId === warehouseId &&
+      form.value.workOrderId === order?.id
     productionPackLoading.value = Boolean(order)
     if (!order) return
     try {
@@ -1235,53 +1257,54 @@
   }
   function onPackChange(): void {
     if (!selectedPack.value) {
-      form.quantity = Math.min(1, productionRemaining.value)
+      form.value.quantity = Math.min(1, productionRemaining.value)
       return
     }
-    form.quantity = selectedPack.value.stockQuantity
-    if (!materialBatchEnabled.value && !form.batchNo) form.batchNo = selectedPack.value.packNo
+    form.value.quantity = selectedPack.value.stockQuantity
+    if (!materialBatchEnabled.value && !form.value.batchNo)
+      form.value.batchNo = selectedPack.value.packNo
   }
   function onShippingNoticeChange(): void {
     resetDependent()
-    form.shippingLineId = null
-    form.referenceNo = selectedShippingNotice.value?.documentNo || null
+    form.value.shippingLineId = null
+    form.value.referenceNo = selectedShippingNotice.value?.documentNo || null
     requestedShippingNoticeId.value = ''
     requestedShippingNoticeUnavailable.value = false
   }
   function onShippingLineChange(): void {
     resetDependent()
-    form.quantity = Math.min(1, shippingRemaining.value)
+    form.value.quantity = Math.min(1, shippingRemaining.value)
   }
   let warehouseOptionsRevision = 0
   async function onWarehouseChange(): Promise<void> {
     requestedShippingNoticeUnavailable.value = false
     workOrderSearchRevision++
     resetDependent()
-    form.binId = null
-    form.targetWarehouseId = null
-    form.targetOrganizationId = null
-    form.documentTypeId = null
-    form.businessTypeId = null
-    form.targetBinId = null
+    form.value.binId = null
+    form.value.targetWarehouseId = null
+    form.value.targetOrganizationId = null
+    form.value.documentTypeId = null
+    form.value.businessTypeId = null
+    form.value.targetBinId = null
     targetBins.value = []
-    form.projectId = null
-    form.constructionNo = null
-    form.sourceProjectId = null
-    form.sourceConstructionNo = null
-    form.shippingNoticeId = null
-    form.shippingLineId = null
-    form.referenceNo = null
+    form.value.projectId = null
+    form.value.constructionNo = null
+    form.value.sourceProjectId = null
+    form.value.sourceConstructionNo = null
+    form.value.shippingNoticeId = null
+    form.value.shippingLineId = null
+    form.value.referenceNo = null
     shippingNotices.value = []
-    const id = form.warehouseId
-    if (form.movementType === 'transfer') {
-      form.targetWarehouseId = id || null
-      form.targetOrganizationId = null
+    const id = form.value.warehouseId
+    if (form.value.movementType === 'transfer') {
+      form.value.targetWarehouseId = id || null
+      form.value.targetOrganizationId = null
     }
     await loadWarehouseOptions()
   }
   async function loadWarehouseOptions(): Promise<void> {
     const revision = ++warehouseOptionsRevision
-    const id = form.warehouseId
+    const id = form.value.warehouseId
     try {
       const [
         binRows,
@@ -1293,14 +1316,14 @@
         menuId
       ] = id
         ? await Promise.all([
-            form.movementType === 'sales_out' ? [] : fetchWmsBins(id),
-            form.movementType === 'production_in' || form.movementType === 'other_out'
+            form.value.movementType === 'sales_out' ? [] : fetchWmsBins(id),
+            form.value.movementType === 'production_in' || form.value.movementType === 'other_out'
               ? fetchWmsWorkOrderOptions(id)
               : [],
-            form.movementType === 'sales_out'
+            form.value.movementType === 'sales_out'
               ? fetchWmsShippingNotices(selectedWarehouse.value?.tenantId || '')
               : [],
-            form.movementType === 'transfer'
+            form.value.movementType === 'transfer'
               ? fetchWmsInventoryOrganizations({
                   tenantId: selectedWarehouse.value?.tenantId,
                   enabled: 'enabled',
@@ -1308,41 +1331,41 @@
                   size: 2000
                 })
               : { data: [] as WmsInventoryOrganization[] },
-            form.movementType === 'transfer'
+            form.value.movementType === 'transfer'
               ? fetchWmsInitialDocumentTypes(
                   selectedWarehouse.value?.tenantId || '',
                   'WmsDirectTransfer'
                 )
               : [],
-            form.movementType === 'transfer'
+            form.value.movementType === 'transfer'
               ? fetchWmsInitialOptions('mdm_business_type', selectedWarehouse.value?.tenantId || '')
               : [],
-            form.movementType === 'transfer' ? fetchWmsInitialMenuId('WmsDirectTransfer') : ''
+            form.value.movementType === 'transfer' ? fetchWmsInitialMenuId('WmsDirectTransfer') : ''
           ])
         : [[], [], [], { data: [] as WmsInventoryOrganization[] }, [], [], '']
-      if (revision !== warehouseOptionsRevision || form.warehouseId !== id) return
+      if (revision !== warehouseOptionsRevision || form.value.warehouseId !== id) return
       sourceBins.value = binRows
-      targetBins.value = form.movementType === 'transfer' ? binRows : []
+      targetBins.value = form.value.movementType === 'transfer' ? binRows : []
       workOrders.value = orderRows
       shippingNotices.value = noticeRows
       organizations.value = organizationResult.data
       documentTypes.value = documentRows
       businessTypes.value = businessRows
       directTransferMenuId.value = menuId
-      if (form.movementType === 'transfer') {
-        if (!availableOrganizations.value.some((row) => row.id === form.targetOrganizationId))
-          form.targetOrganizationId =
+      if (form.value.movementType === 'transfer') {
+        if (!availableOrganizations.value.some((row) => row.id === form.value.targetOrganizationId))
+          form.value.targetOrganizationId =
             availableOrganizations.value.find((row) => row.isDefault)?.id ||
             availableOrganizations.value.find(
               (row) => row.id === selectedWarehouse.value?.organizationId
             )?.id ||
             null
-        if (!documentRows.some((row) => row.id === form.documentTypeId))
-          form.documentTypeId = documentRows.find((row) => row.isDefault)?.id || null
+        if (!documentRows.some((row) => row.id === form.value.documentTypeId))
+          form.value.documentTypeId = documentRows.find((row) => row.isDefault)?.id || null
         onDocumentTypeChange()
       }
       loadError.value = false
-      if (id && form.movementType === 'sales_out' && requestedShippingNoticeId.value) {
+      if (id && form.value.movementType === 'sales_out' && requestedShippingNoticeId.value) {
         const requestedNotice =
           noticeRows.find((row) => row.id === requestedShippingNoticeId.value) ||
           (
@@ -1354,7 +1377,7 @@
         if (requestedNotice) {
           if (!noticeRows.some((row) => row.id === requestedNotice.id))
             shippingNotices.value = [requestedNotice, ...noticeRows]
-          form.shippingNoticeId = requestedNotice.id
+          form.value.shippingNoticeId = requestedNotice.id
           onShippingNoticeChange()
         } else {
           requestedShippingNoticeUnavailable.value = true
@@ -1362,7 +1385,7 @@
       }
       if (
         id &&
-        form.movementType === 'production_in' &&
+        form.value.movementType === 'production_in' &&
         requestedWorkOrderId.value &&
         !orderRows.some((row) => row.id === requestedWorkOrderId.value)
       ) {
@@ -1372,11 +1395,11 @@
         ]
       }
       if (
-        form.movementType === 'production_in' &&
+        form.value.movementType === 'production_in' &&
         requestedWorkOrderId.value &&
         workOrders.value.some((row) => row.id === requestedWorkOrderId.value)
       ) {
-        form.workOrderId = requestedWorkOrderId.value
+        form.value.workOrderId = requestedWorkOrderId.value
         await onProductionOrderChange()
       }
     } catch {
@@ -1396,7 +1419,7 @@
     productionPackRevision++
     productionPackLoading.value = false
     warehouseOptionsRevision++
-    Object.assign(form, {
+    Object.assign(form.value, {
       movementType: 'purchase_in',
       quantity: 1,
       materialId: null,
@@ -1437,7 +1460,7 @@
   const serialText = ref('')
   let materialControlRevision = 0
   async function loadMaterialControl(): Promise<void> {
-    const id = form.materialId
+    const id = form.value.materialId
     const revision = ++materialControlRevision
     materialControlLoading.value = Boolean(id)
     materialControlError.value = false
@@ -1445,16 +1468,16 @@
     materialBatchEnabled.value = false
     try {
       const control = id ? await fetchWmsMaterialControl(id) : null
-      if (revision !== materialControlRevision || form.materialId !== id) return
+      if (revision !== materialControlRevision || form.value.materialId !== id) return
       if (id && !control) throw new Error('当前物料库存规则不可用')
       materialSerialEnabled.value = Boolean(control?.serialManagementEnabled)
       materialBatchEnabled.value = Boolean(control?.batchManagementEnabled)
-      if (materialBatchEnabled.value) form.batchNo = null
+      if (materialBatchEnabled.value) form.value.batchNo = null
     } catch {
-      if (revision !== materialControlRevision || form.materialId !== id) return
+      if (revision !== materialControlRevision || form.value.materialId !== id) return
       materialControlError.value = true
       await nextTick()
-      if (revision === materialControlRevision && form.materialId === id) {
+      if (revision === materialControlRevision && form.value.materialId === id) {
         materialControlFeedbackRef.value?.scrollIntoView({ block: 'nearest', behavior: 'auto' })
       }
     } finally {
@@ -1462,9 +1485,9 @@
     }
   }
   watch(
-    () => form.materialId,
+    () => form.value.materialId,
     () => {
-      form.binId = null
+      form.value.binId = null
       serialText.value = ''
       void loadMaterialControl()
     }
@@ -1491,7 +1514,7 @@
   async function retryOptions(): Promise<void> {
     await loadOptions()
     if (!loadError.value && selectedWarehouse.value) await loadWarehouseOptions()
-    if (!loadError.value && form.movementType === 'production_in') await loadProductionPacks()
+    if (!loadError.value && form.value.movementType === 'production_in') await loadProductionPacks()
   }
   async function submit(): Promise<void> {
     if (
@@ -1505,22 +1528,26 @@
     try {
       await formRef.value?.validate()
       if (!selectedWarehouse.value) return
-      if (isInbound.value && form.projectId && !form.constructionNo)
+      if (isInbound.value && form.value.projectId && !form.value.constructionNo)
         return void ElMessage.warning('请选择项目施工号')
-      if (form.movementType === 'production_in') {
+      if (form.value.movementType === 'production_in') {
         if (!selectedProductionOrder.value)
           return void ElMessage.warning('请选择已报工且待入库的 MES 工单')
         if (
-          form.materialId !== selectedProductionOrder.value.materialId ||
-          (form.projectId || null) !== (selectedProductionOrder.value.projectId || null) ||
-          (form.constructionNo || null) !== (selectedProductionOrder.value.constructionNo || null)
+          form.value.materialId !== selectedProductionOrder.value.materialId ||
+          (form.value.projectId || null) !== (selectedProductionOrder.value.projectId || null) ||
+          (form.value.constructionNo || null) !==
+            (selectedProductionOrder.value.constructionNo || null)
         )
           return void ElMessage.warning('入库物料和项目施工号须与 MES 工单一致')
-        if ((selectedPack.value?.productionQuantity ?? form.quantity) > productionRemaining.value)
+        if (
+          (selectedPack.value?.productionQuantity ?? form.value.quantity) >
+          productionRemaining.value
+        )
           return void ElMessage.warning('入库数量超过工单已报工未入库数量')
         if (
-          form.packId &&
-          (!selectedPack.value || form.quantity !== selectedPack.value.stockQuantity)
+          form.value.packId &&
+          (!selectedPack.value || form.value.quantity !== selectedPack.value.stockQuantity)
         )
           return void ElMessage.warning('排包须按整包面积换算数量入库')
       }
@@ -1529,9 +1556,9 @@
         (!selectedBatch.value || serialLoadError.value || serialLoading.value)
       )
         return void ElMessage.warning('请先选择可用来源批次')
-      if (!isInbound.value && form.quantity > (selectedBatch.value?.quantity || 0))
+      if (!isInbound.value && form.value.quantity > (selectedBatch.value?.quantity || 0))
         return void ElMessage.warning('业务数量超过来源批次在库数量')
-      if (form.movementType === 'sales_out') {
+      if (form.value.movementType === 'sales_out') {
         if (!selectedShippingNotice.value || !selectedShippingLine.value || !selectedBatch.value)
           return void ElMessage.warning('请选择已提交的发货通知单、物料行和来源批次')
         if (selectedShippingNotice.value.projectId && !shippingConstructionNo.value)
@@ -1542,16 +1569,19 @@
           shippingConstructionNo.value !== selectedBatch.value.constructionNo
         )
           return void ElMessage.warning('来源批次的物料或项目施工号与发货明细不一致')
-        if (form.quantity > shippingRemaining.value)
+        if (form.value.quantity > shippingRemaining.value)
           return void ElMessage.warning('出库数量超过发货明细待出数量')
       }
-      if (form.movementType === 'transfer' && form.warehouseId !== form.targetWarehouseId)
+      if (
+        form.value.movementType === 'transfer' &&
+        form.value.warehouseId !== form.value.targetWarehouseId
+      )
         return void ElMessage.warning('直接调拨仅适用于同一仓库，跨仓库请办理分步调拨')
       if (
-        form.movementType === 'transfer' &&
-        form.warehouseId === form.targetWarehouseId &&
-        (selectedBatch.value?.binId || null) === (form.targetBinId || null) &&
-        selectedBatch.value?.organizationId === form.targetOrganizationId
+        form.value.movementType === 'transfer' &&
+        form.value.warehouseId === form.value.targetWarehouseId &&
+        (selectedBatch.value?.binId || null) === (form.value.targetBinId || null) &&
+        selectedBatch.value?.organizationId === form.value.targetOrganizationId
       )
         return void ElMessage.warning('目标仓位与库存组织均未变化')
       const serialNos = serialText.value
@@ -1561,29 +1591,29 @@
       if (
         isInbound.value &&
         materialSerialEnabled.value &&
-        (form.quantity % 1 !== 0 ||
-          serialNos.length !== form.quantity ||
+        (form.value.quantity % 1 !== 0 ||
+          serialNos.length !== form.value.quantity ||
           new Set(serialNos).size !== serialNos.length)
       )
         return void ElMessage.warning('序列号物料须逐件填写唯一 SN，件数与入库数量一致')
       if (
         !isInbound.value &&
         (selectedBatch.value?.material?.serialManagementEnabled || serials.value.length) &&
-        (form.quantity % 1 !== 0 || form.serialIds?.length !== form.quantity)
+        (form.value.quantity % 1 !== 0 || form.value.serialIds?.length !== form.value.quantity)
       )
         return void ElMessage.warning('请选择与业务数量相同的 SN')
       submitting.value = true
       await postWmsInventoryMovement({
-        ...omit(form, ['sourceProjectId', 'sourceConstructionNo']),
-        materialId: isInbound.value ? form.materialId : undefined,
+        ...omit(form.value, ['sourceProjectId', 'sourceConstructionNo']),
+        materialId: isInbound.value ? form.value.materialId : undefined,
         projectId: isInbound.value
-          ? form.projectId || null
+          ? form.value.projectId || null
           : selectedBatch.value?.projectId || null,
         constructionNo: isInbound.value
-          ? form.constructionNo || null
+          ? form.value.constructionNo || null
           : selectedBatch.value?.constructionNo || null,
         serialNos: isInbound.value ? serialNos : [],
-        serialIds: isInbound.value ? [] : form.serialIds || []
+        serialIds: isInbound.value ? [] : form.value.serialIds || []
       })
       resetForm()
     } catch {
@@ -1602,11 +1632,11 @@
       requestedType !== 'transfer'
     )
       return
-    form.movementType = requestedType
+    form.value.movementType = requestedType
     const warehouseId = route.query.warehouseId
     if (typeof warehouseId !== 'string' || !warehouses.value.some((row) => row.id === warehouseId))
       return
-    form.warehouseId = warehouseId
+    form.value.warehouseId = warehouseId
     await onWarehouseChange()
   })
 </script>

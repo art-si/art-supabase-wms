@@ -29,181 +29,174 @@
               : '暂存 → 提交 → 审核记账 → 可按原行退回'
         "
       />
-      <ArtSectionCard
-        title="单据表头"
-        subtitle="编号由系统按月生成三位流水；调出和调入组织均必填。"
-      >
-        <ArtDescriptions
-          v-if="readonly"
-          :data="headerViewData"
-          :items="headerViewItems"
-          :columns="2"
-          :label-width="120"
-          border
-        />
-        <ArtForm
-          v-else
-          ref="headerFormRef"
-          v-model="form"
-          :items="headerItems"
-          :rules="headerRules"
-          :span="12"
-          :gutter="20"
-          label-position="top"
-          :show-reset="false"
-          :show-submit="false"
-        >
-          <template #sourceKeeperId>
-            <ArtEmployeeSelect
-              :model-value="form.sourceKeeperId || undefined"
-              @update:model-value="form.sourceKeeperId = $event || null"
-              :tenant-id="context?.tenantId"
-              :disabled="readonly || isReceipt"
-              placeholder="选择调出仓管员"
-            />
-          </template>
-          <template #targetKeeperId>
-            <ArtEmployeeSelect
-              :model-value="form.targetKeeperId || undefined"
-              @update:model-value="form.targetKeeperId = $event || null"
-              :tenant-id="context?.tenantId"
-              :disabled="readonly || isReceipt"
-              placeholder="选择调入仓管员"
-            />
-          </template>
-        </ArtForm>
-        <div v-if="!readonly && !isReceipt" class="mt-2 flex flex-wrap items-center gap-2">
-          <ElInput
-            v-model="scanText"
-            class="max-w-sm"
-            clearable
-            placeholder="扫码枪回车或输入物料编码"
-            aria-label="PDA 扫码录入"
-            @keyup.enter="scanStock"
-          />
-          <ElButton :loading="scanning" @click="scanStock">
-            <ArtSvgIcon icon="ri:qr-scan-2-line" />扫码录入
-          </ElButton>
-          <span class="text-xs text-[var(--el-text-color-secondary)]">
-            有多个库存批次时请用“添加物料”选择具体批次。
-          </span>
-        </div>
-      </ArtSectionCard>
-      <ArtSectionCard
-        title="调拨明细"
-        :subtitle="`共 ${lines.length} 行，行号按 10 递增；${isReceipt ? '审核收货时入库' : isStep ? '审核时调出并进入在途' : '审核时才实际记账'}。`"
-        :empty="!lines.length"
-        empty-title="暂无调拨物料"
-        empty-description="从即时库存选择一个或多个批次；来源归属随库存带入。"
-      >
-        <template #actions>
-          <div v-if="!readonly && !isReceipt" class="flex flex-wrap items-center justify-end gap-2">
-            <ArtExcelImport
-              v-if="!isStep && !isReturn"
-              v-auth="'WmsDirectTransfer:Import'"
-              icon="ri:file-upload-line"
-              :context-key="context"
-              :disabled="importing || parsing"
-              :button-props="{ type: 'success', plain: true, loading: importing || parsing }"
-              @parsing-change="onImportParsing"
-              @import-success="importStockLines"
-              @import-error="notifyFriendlyError($event, '文件读取失败，请核对 Excel 后重试')"
-              >导入明细</ArtExcelImport
-            >
-            <ElButton v-if="!isReturn" v-auth="'WmsTransfer:Push'" @click="openRequestPicker">
-              <ArtSvgIcon icon="ri:file-list-3-line" />选单
-            </ElButton>
-            <TransferStockPicker
-              :tenant-id="context?.tenantId"
-              :organization-id="form.sourceOrganizationId"
-              :project-id="form.projectId"
-              :projects="projects"
-              :units="units"
-              :model-value="selectedStockIds"
-              :selected-data="selectedStocks"
-              multiple
-              @update:selected-data="onStockSelected"
-            >
-              <template #trigger="{ open }">
-                <ElButton type="primary" @click="open">
-                  <ArtSvgIcon icon="ri:add-line" />添加物料
-                </ElButton>
-              </template>
-            </TransferStockPicker>
-          </div>
-        </template>
-        <ArtTable
-          v-if="lines.length"
-          :data="lines"
-          :pagination="false"
-          :show-table-header="false"
-          row-key="key"
-          table-layout="fixed"
-          class="transfer-business-lines"
-        >
-          <ElTableColumn label="行号" width="70" :fixed="isMobile ? false : 'left'">
-            <template #default="{ $index }">{{ ($index + 1) * 10 }}</template>
-          </ElTableColumn>
-          <ElTableColumn
-            v-for="column in lineColumns"
-            :key="column.key"
-            :label="column.label"
-            :min-width="column.key === 'targetBinId' && isReceipt ? 190 : column.width"
-            :fixed="column.key === 'materialDescription' && !isMobile ? 'left' : false"
-            show-overflow-tooltip
+      <ElTabs v-model="activeDocumentTab">
+        <ElTabPane name="header" label="单据信息">
+          <ArtSectionCard
+            title="单据表头"
+            subtitle="编号由系统按月生成三位流水；调出和调入组织均必填。"
           >
-            <template #default="{ row }">
-              <ElSelect
-                v-if="
-                  column.key === 'targetBinId' &&
-                  isReceipt &&
-                  !readonly &&
-                  receiptBins[row.targetWarehouseId]?.length
-                "
-                v-model="row.targetBinId"
-                class="w-full"
-                clearable
-                filterable
-                placeholder="选择调入仓位"
-                aria-label="调入仓位"
-              >
-                <ElOption
-                  v-for="bin in selectableTargetBins(receiptBins[row.targetWarehouseId] || [], row)"
-                  :key="bin.id"
-                  :label="`${bin.binCode} · ${bin.binName}`"
-                  :value="bin.id"
+            <ArtDescriptions
+              v-if="readonly"
+              :data="headerViewData"
+              :items="headerViewItems"
+              :columns="2"
+              :label-width="120"
+              border
+            />
+            <ArtForm
+              v-else
+              ref="headerFormRef"
+              v-model="form"
+              :items="headerItems"
+              :rules="headerRules"
+              :span="12"
+              :gutter="20"
+              label-position="top"
+            >
+              <template #sourceKeeperId>
+                <ArtEmployeeSelect
+                  :model-value="form.sourceKeeperId || undefined"
+                  @update:model-value="form.sourceKeeperId = $event || null"
+                  :tenant-id="context?.tenantId"
+                  :disabled="readonly || isReceipt"
+                  placeholder="选择调出仓管员"
                 />
-              </ElSelect>
-              <ElCheckbox
-                v-else-if="column.key === 'gift'"
-                :model-value="Boolean(row.gift)"
-                disabled
-                aria-label="赠品"
+              </template>
+              <template #targetKeeperId>
+                <ArtEmployeeSelect
+                  :model-value="form.targetKeeperId || undefined"
+                  @update:model-value="form.targetKeeperId = $event || null"
+                  :tenant-id="context?.tenantId"
+                  :disabled="readonly || isReceipt"
+                  placeholder="选择调入仓管员"
+                />
+              </template>
+            </ArtForm>
+            <div v-if="!readonly && !isReceipt" class="mt-2 flex flex-wrap items-center gap-2">
+              <ElInput
+                v-model="scanText"
+                class="max-w-sm"
+                clearable
+                placeholder="扫码枪回车或输入物料编码"
+                aria-label="PDA 扫码录入"
+                @keyup.enter="scanStock"
               />
-              <span v-else :class="column.numeric ? 'tabular-nums' : ''">{{
-                lineCell(row, column.key)
-              }}</span>
-            </template>
-          </ElTableColumn>
-          <ElTableColumn
-            v-if="!isReceipt"
-            label="操作"
-            width="112"
-            :fixed="isMobile ? false : 'right'"
+              <ElButton :loading="scanning" @click="scanStock">
+                <ArtSvgIcon icon="ri:qr-scan-2-line" />扫码录入
+              </ElButton>
+              <span class="text-xs text-[var(--el-text-color-secondary)]">
+                有多个库存批次时请用“添加物料”选择具体批次。
+              </span>
+            </div>
+          </ArtSectionCard>
+        </ElTabPane>
+        <ElTabPane name="lines" label="调拨明细">
+          <ArtSectionCard
+            title="调拨明细"
+            :subtitle="`共 ${lines.length} 行，行号按 10 递增；${isReceipt ? '审核收货时入库' : isStep ? '审核时调出并进入在途' : '审核时才实际记账'}。`"
+            :empty="!lines.length"
+            empty-title="暂无调拨物料"
+            empty-description="从即时库存选择一个或多个批次；来源归属随库存带入。"
           >
-            <template #default="{ row }">
-              <div class="flex items-center gap-1">
-                <ElButton link type="primary" @click="openLine(row)">{{
-                  readonly ? '查看' : '编辑'
-                }}</ElButton>
-                <ElButton v-if="!readonly" link type="danger" @click="removeLine(row)"
-                  >删除</ElButton
+            <template #actions>
+              <div
+                v-if="!readonly && !isReceipt"
+                class="flex flex-wrap items-center justify-end gap-2"
+              >
+                <ArtExcelImport
+                  v-if="!isStep && !isReturn"
+                  v-auth="'WmsDirectTransfer:Import'"
+                  icon="ri:file-upload-line"
+                  :context-key="context"
+                  :disabled="importing || parsing"
+                  :button-props="{ type: 'success', plain: true, loading: importing || parsing }"
+                  @parsing-change="onImportParsing"
+                  @import-success="importStockLines"
+                  @import-error="notifyFriendlyError($event, '文件读取失败，请核对 Excel 后重试')"
+                  >导入明细</ArtExcelImport
                 >
+                <ElButton v-if="!isReturn" v-auth="'WmsTransfer:Push'" @click="openRequestPicker">
+                  <ArtSvgIcon icon="ri:file-list-3-line" />选单
+                </ElButton>
+                <TransferStockPicker
+                  :tenant-id="context?.tenantId"
+                  :organization-id="form.sourceOrganizationId"
+                  :project-id="form.projectId"
+                  :projects="projects"
+                  :units="units"
+                  :model-value="selectedStockIds"
+                  :selected-data="selectedStocks"
+                  multiple
+                  @update:selected-data="onStockSelected"
+                >
+                  <template #trigger="{ open }">
+                    <ElButton type="primary" @click="open">
+                      <ArtSvgIcon icon="ri:add-line" />添加物料
+                    </ElButton>
+                  </template>
+                </TransferStockPicker>
               </div>
             </template>
-          </ElTableColumn>
-        </ArtTable>
-      </ArtSectionCard>
+            <ArtTable
+              v-if="lines.length"
+              ref="lineTableRef"
+              :data="lines"
+              :columns="tableColumns"
+              :pagination="false"
+              :show-table-header="false"
+              row-key="key"
+              table-layout="fixed"
+              class="transfer-business-lines"
+            >
+              <template v-for="column in lineColumns" :key="column.key" #[column.key]="{ row }">
+                <ElSelect
+                  v-if="
+                    column.key === 'targetBinId' &&
+                    isReceipt &&
+                    !readonly &&
+                    receiptBins[row.targetWarehouseId]?.length
+                  "
+                  v-model="row.targetBinId"
+                  class="w-full"
+                  clearable
+                  filterable
+                  placeholder="选择调入仓位"
+                  aria-label="调入仓位"
+                >
+                  <ElOption
+                    v-for="bin in selectableTargetBins(
+                      receiptBins[row.targetWarehouseId] || [],
+                      row
+                    )"
+                    :key="bin.id"
+                    :label="`${bin.binCode} · ${bin.binName}`"
+                    :value="bin.id"
+                  />
+                </ElSelect>
+                <ElCheckbox
+                  v-else-if="column.key === 'gift'"
+                  :model-value="Boolean(row.gift)"
+                  disabled
+                  aria-label="赠品"
+                />
+                <span v-else :class="column.numeric ? 'tabular-nums' : ''">{{
+                  lineCell(row, column.key)
+                }}</span>
+              </template>
+              <template #operation="{ row }">
+                <div class="flex items-center gap-1">
+                  <ElButton link type="primary" @click="openLine(row)">{{
+                    readonly ? '查看' : '编辑'
+                  }}</ElButton>
+                  <ElButton v-if="!readonly" link type="danger" @click="removeLine(row)"
+                    >删除</ElButton
+                  >
+                </div>
+              </template>
+            </ArtTable>
+          </ArtSectionCard></ElTabPane
+        >
+      </ElTabs>
     </div>
   </ArtDrawer>
 
@@ -215,25 +208,32 @@
         :title="lineForm.materialDescription || '调拨明细'"
         :description="`${lineForm.materialCode || '未选择物料'} · ${lineForm.batchNo || '无批号'}`"
       />
-      <ArtDescriptions
-        v-if="readonly"
-        :data="lineForm"
-        :items="lineViewItems"
-        :columns="2"
-        :label-width="120"
-        border
-      />
+      <ElTabs v-if="readonly" v-model="activeLineTab">
+        <ElTabPane
+          v-for="section in lineViewSections"
+          :key="section.key"
+          :name="section.key"
+          :label="section.label"
+        >
+          <ArtDescriptions
+            :data="lineForm"
+            :items="section.items"
+            :columns="2"
+            :label-width="120"
+            border
+          />
+        </ElTabPane>
+      </ElTabs>
       <ArtForm
         v-else
         ref="lineFormRef"
+        v-model:active-tab="activeLineTab"
         v-model="lineForm"
         :items="lineItems"
         :rules="lineRules"
         :span="12"
         :gutter="20"
         label-position="top"
-        :show-reset="false"
-        :show-submit="false"
       >
         <template #sourceBatchId>
           <TransferStockPicker
@@ -271,8 +271,7 @@
       v-if="requestPickerActive"
       ref="requestTableRef"
       class="mt-4"
-      :model-value="requestSearch"
-      @update:model-value="replaceReactiveModel(requestSearch, $event)"
+      v-model="requestSearch"
       :api-fn="fetchSelectableRequests"
       :search-items="requestSearchItems"
       :columns-factory="requestColumnsFactory"
@@ -289,11 +288,13 @@
 </template>
 
 <script setup lang="ts">
+  import { buildOrganizationSelectTree } from '@/utils/organization-options'
   import { cloneDeep, uniq, uniqBy } from 'lodash-es'
   import dayjs from 'dayjs'
   import { useBreakpoints } from '@vueuse/core'
   import { ElMessage } from 'element-plus'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
+  import { focusFirstInvalidFormField } from '@/utils/form/validation'
   import { normalizeNullableText } from '@/utils/form/normalize'
   import { loadAllLinePages } from '@/utils/business/document-detail-list'
   import {
@@ -312,7 +313,7 @@
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import ArtExcelImport from '@/components/core/forms/art-excel-import/index.vue'
-  import ArtTable from '@/components/core/tables/art-table/index.vue'
+  import ArtTable, { type ArtTableExpose } from '@/components/core/tables/art-table/index.vue'
   import ArtDescriptions from '@/components/core/base/art-descriptions/index.vue'
   import type { ArtDescriptionItem } from '@/components/core/base/art-descriptions/types'
   import { fetchEmployeeReferencesByIds } from '@/api/integration/employees'
@@ -398,6 +399,9 @@
   const emit = defineEmits<{ success: [] }>()
   const drawerRef = ref<ArtDrawerExpose<OpenData>>()
   const lineDialogRef = ref<ArtDialogExpose>()
+  const activeDocumentTab = ref('header')
+  const activeLineTab = ref('material')
+  const lineTableRef = ref<ArtTableExpose<DraftLine>>()
   const headerFormRef = ref<InstanceType<typeof ArtForm>>()
   const lineFormRef = ref<InstanceType<typeof ArtForm>>()
   const headerControlsReady = computed(() => Boolean(headerFormRef.value?.controlsReady))
@@ -626,7 +630,7 @@
   }
   const requestTableRef = ref<ArtTableQueryExpose>()
   const requestPickerActive = ref(false)
-  const requestSearch = reactive({
+  const requestSearch = ref({
     keyword: '',
     materialCode: '',
     materialDescription: '',
@@ -691,7 +695,7 @@
     requestDialogRef.value?.setOptions({ confirmDisabled: selectedRequestRows.value.length === 0 })
   }
   async function openRequestPicker(): Promise<void> {
-    replaceReactiveModel(requestSearch, {
+    replaceReactiveModel(requestSearch.value, {
       keyword: '',
       materialCode: '',
       materialDescription: '',
@@ -817,6 +821,9 @@
   const enabledOrganizations = computed(() =>
     organizations.value.filter((row) => Boolean(row.enabledOn && row.initializationClosedAt))
   )
+  const organizationSelectTree = computed(() =>
+    buildOrganizationSelectTree(departmentTree.value, enabledOrganizations.value)
+  )
   const availableBusinessTypes = computed(() =>
     businessTypes.value.filter((row) =>
       isWmsBusinessTypeAvailable(row, form.value.documentTypeId, menuId.value)
@@ -882,9 +889,9 @@
         key: 'sourceOrganizationId',
         label: '调出组织',
         type: 'treeSelect',
-        options: enabledOrganizations.value,
+        options: organizationSelectTree.value,
         valueField: 'id',
-        labelField: 'organizationName',
+        labelField: 'name',
         childrenField: 'children',
         props: {
           disabled: readonly.value || lines.value.length > 0,
@@ -898,9 +905,9 @@
         key: 'targetOrganizationId',
         label: '调入组织',
         type: 'treeSelect',
-        options: enabledOrganizations.value,
+        options: organizationSelectTree.value,
         valueField: 'id',
-        labelField: 'organizationName',
+        labelField: 'name',
         childrenField: 'children',
         props: {
           disabled: readonly.value || organizationInternal.value,
@@ -1032,6 +1039,91 @@
       'value'
     )
   )
+  const lineTableRules: Record<string, ColumnOption<DraftLine>['rules']> = {
+    quantity: {
+      validator: ({ row }) => Number.isFinite(row.quantity) && row.quantity > 0,
+      message: '调拨数量必须大于 0'
+    },
+    sourceOrganizationId: {
+      validator: ({ row }) => row.sourceOrganizationId === form.value.sourceOrganizationId,
+      message: '调出组织必须与单据表头一致'
+    },
+    targetOrganizationId: {
+      validator: ({ row }) => row.targetOrganizationId === form.value.targetOrganizationId,
+      message: '调入组织必须与单据表头一致'
+    },
+    targetBinId: [
+      {
+        validator: ({ row }) =>
+          (isStep.value && !isReceipt.value) ||
+          !warehouses.value.find((warehouse) => warehouse.id === row.targetWarehouseId)
+            ?.enableLocations ||
+          Boolean(row.targetBinId),
+        message: '调入仓库启用了仓位，请选择调入仓位'
+      },
+      {
+        validator: ({ row }) =>
+          isReceipt.value ||
+          row.sourceWarehouseId !== row.targetWarehouseId ||
+          Boolean(row.sourceBinId && row.targetBinId && row.sourceBinId !== row.targetBinId),
+        message: '同仓调拨时，调出仓位和调入仓位必须不同'
+      }
+    ]
+  }
+  const tableColumns = computed<ColumnOption<DraftLine>[]>(() => [
+    {
+      type: 'index',
+      label: '行号',
+      width: 70,
+      fixed: isMobile.value ? false : 'left',
+      index: (index: number) => (index + 1) * 10
+    },
+    ...lineColumns.map((column): ColumnOption<DraftLine> => {
+      const prop = column.key === 'materialDescription' ? 'materialId' : column.key
+      return {
+        prop,
+        label: column.label,
+        slotName: column.key,
+        useSlot: true,
+        minWidth: column.key === 'targetBinId' && isReceipt.value ? 190 : column.width,
+        fixed: column.key === 'materialDescription' && !isMobile.value ? 'left' : false,
+        showOverflowTooltip: true,
+        required:
+          !readonly.value &&
+          !isReceipt.value &&
+          [
+            'materialId',
+            'quantity',
+            'inventoryUnitId',
+            'sourceOrganizationId',
+            'sourceWarehouseId',
+            'targetOrganizationId',
+            'targetWarehouseId'
+          ].includes(prop),
+        rules:
+          readonly.value || (isReceipt.value && prop !== 'targetBinId')
+            ? undefined
+            : lineTableRules[prop],
+        headerTooltip:
+          prop === 'quantity'
+            ? '调拨数量必须大于 0，单位换算按物料配置执行。'
+            : prop === 'targetBinId'
+              ? '调入仓库启用仓位时必填；同仓调拨的调入、调出仓位必须不同。'
+              : undefined
+      }
+    }),
+    ...(!isReceipt.value
+      ? [
+          {
+            prop: 'operation',
+            label: '操作',
+            width: 112,
+            fixed: isMobile.value ? false : ('right' as const),
+            useSlot: true
+          }
+        ]
+      : [])
+  ])
   const lineColumns: LineColumn[] = [
     { key: 'materialDescription', label: '物料描述', width: 220 },
     { key: 'materialCode', label: '物料编码', width: 125 },
@@ -1097,6 +1189,18 @@
     }
   ]
 
+  const lineWarehouseIndex = lineViewItems.findIndex((item) => item.key === 'sourceOrganizationId')
+  const lineTrackingIndex = lineViewItems.findIndex((item) => item.key === 'auxiliaryQuantity')
+  const lineViewSections = [
+    { key: 'material', label: '物料与数量', items: lineViewItems.slice(0, lineWarehouseIndex) },
+    {
+      key: 'warehousing',
+      label: '仓储与归属',
+      items: lineViewItems.slice(lineWarehouseIndex, lineTrackingIndex)
+    },
+    { key: 'tracking', label: '辅助与跟踪', items: lineViewItems.slice(lineTrackingIndex) }
+  ]
+
   function unitName(id: string | null | undefined): string {
     return units.value.find((row) => row.id === id)?.unitName || '—'
   }
@@ -1147,18 +1251,15 @@
     const unitOptions = units.value.map((row) => ({ label: row.unitName, value: row.id }))
     const orgOptions = uniqBy(
       [
-        ...enabledOrganizations.value.map((row) => ({
-          label: row.organizationName,
-          value: row.id
-        })),
+        ...organizationSelectTree.value,
         ...[
           [lineForm.value.sourceOrganizationId, lineForm.value.sourceOrganizationName],
           [lineForm.value.targetOrganizationId, lineForm.value.targetOrganizationName]
         ]
-          .filter(([id]) => Boolean(id))
-          .map(([value, label]) => ({ value, label: label || '历史库存组织' }))
+          .filter(([id]) => Boolean(id) && !organizations.value.some((row) => row.id === id))
+          .map(([id, name]) => ({ id, name: name || '历史库存组织', disabled: true }))
       ],
-      'value'
+      'id'
     )
     const warehouseOptionsFor = (
       organizationId: string,
@@ -1195,6 +1296,7 @@
       lineForm.value.targetWarehouseName
     )
     return [
+      { key: 'material', label: '物料与数量', type: 'tab' },
       { key: 'sourceBatchId', label: '来源库存批次', type: 'slot', span: 24 },
       { key: 'materialDescription', label: '物料描述', type: 'input', props: { disabled: true } },
       { key: 'materialCode', label: '物料编码', type: 'input', props: { disabled: true } },
@@ -1273,14 +1375,19 @@
         type: 'input',
         props: { disabled: sourceLocked, maxlength: 80 }
       },
+      { key: 'warehousing', label: '仓储与归属', type: 'tab' },
       {
         key: 'sourceOrganizationId',
         label: '调出组织',
-        type: 'select',
+        type: 'treeSelect',
         options: orgOptions,
+        valueField: 'id',
+        labelField: 'name',
         props: {
           disabled: sourceLocked,
           filterable: true,
+          checkStrictly: true,
+          renderAfterExpand: false,
           onChange: onLineSourceOrganizationChange
         }
       },
@@ -1304,11 +1411,15 @@
       {
         key: 'targetOrganizationId',
         label: '调入组织',
-        type: 'select',
+        type: 'treeSelect',
         options: orgOptions,
+        valueField: 'id',
+        labelField: 'name',
         props: {
           disabled: returnLocked || organizationInternal.value,
           filterable: true,
+          checkStrictly: true,
+          renderAfterExpand: false,
           onChange: onLineTargetOrganizationChange
         }
       },
@@ -1352,6 +1463,7 @@
         props: { disabled: true }
       },
       { key: 'keeperId', label: '仓管员', type: 'slot' },
+      { key: 'tracking', label: '辅助与跟踪', type: 'tab' },
       {
         key: 'auxiliaryQuantity',
         label: '辅助数量',
@@ -1769,6 +1881,7 @@
     }
   }
   async function openLine(value: unknown): Promise<void> {
+    activeLineTab.value = 'material'
     const row = value as DraftLine
     lineForm.value = cloneDeep(row)
     try {
@@ -2097,20 +2210,38 @@
   }
   async function save(): Promise<boolean> {
     if (readonly.value || loadError.value) return false
-    if (!(await validateArtFormForSubmit(headerFormRef.value))) return false
+    if (!(await validateArtFormForSubmit(headerFormRef.value))) {
+      activeDocumentTab.value = 'header'
+      await nextTick()
+      const root = headerFormRef.value?.$el
+      if (root instanceof HTMLElement) focusFirstInvalidFormField(shallowRef(root))
+      return false
+    }
     if (!context.value?.tenantId) return false
-    if (isReceipt.value) {
-      if (!form.value.id) return false
-      if (
-        lines.value.some(
-          (line) =>
-            warehouses.value.find((warehouse) => warehouse.id === line.targetWarehouseId)
-              ?.enableLocations && !line.targetBinId
-        )
-      ) {
-        ElMessage.warning('调入仓库启用了仓位，请选择调入仓位')
+    if (lines.value.length) {
+      const validation = await lineTableRef.value?.validate({ focus: false })
+      if (!validation?.valid) {
+        activeDocumentTab.value = 'lines'
+        await nextTick()
+        const fieldError = validation?.firstError
+        if (fieldError) {
+          if (isReceipt.value) await lineTableRef.value?.validateField(fieldError.prop)
+          else {
+            const row = lines.value[fieldError.rowIndex]
+            if (row) {
+              await openLine(row)
+              await lineFormRef.value?.focusField(
+                fieldError.prop === 'materialId' ? 'sourceBatchId' : fieldError.prop
+              )
+            }
+          }
+          ElMessage.warning(fieldError.message)
+        }
         return false
       }
+    }
+    if (isReceipt.value) {
+      if (!form.value.id) return false
       try {
         await updateWmsTransferBusinessReceipt(
           form.value.id,
@@ -2126,53 +2257,8 @@
       }
     }
     if (!lines.value.length) {
+      activeDocumentTab.value = 'lines'
       ElMessage.warning('请至少添加一条调拨物料')
-      return false
-    }
-    if (
-      lines.value.some(
-        (row) =>
-          !row.materialId ||
-          row.quantity <= 0 ||
-          !row.inventoryUnitId ||
-          !row.sourceOrganizationId ||
-          !row.sourceWarehouseId ||
-          !row.targetOrganizationId ||
-          !row.targetWarehouseId
-      )
-    ) {
-      ElMessage.warning('请完整填写物料、数量与调出调入信息')
-      return false
-    }
-    if (
-      lines.value.some(
-        (row) =>
-          row.sourceOrganizationId !== form.value.sourceOrganizationId ||
-          row.targetOrganizationId !== form.value.targetOrganizationId
-      )
-    ) {
-      ElMessage.warning('调拨明细的调出、调入组织必须与单据表头一致')
-      return false
-    }
-    if (
-      lines.value.some(
-        (row) =>
-          row.sourceWarehouseId === row.targetWarehouseId &&
-          (!row.sourceBinId || !row.targetBinId || row.sourceBinId === row.targetBinId)
-      )
-    ) {
-      ElMessage.warning('同仓调拨时，调出仓位和调入仓位必须不同')
-      return false
-    }
-    if (
-      !isStep.value &&
-      lines.value.some(
-        (row) =>
-          warehouses.value.find((warehouse) => warehouse.id === row.targetWarehouseId)
-            ?.enableLocations && !row.targetBinId
-      )
-    ) {
-      ElMessage.warning('调入仓库启用了仓位，请补全调入仓位')
       return false
     }
     try {
@@ -2203,6 +2289,7 @@
     }
   }
   async function handleOpen(opening: OpenData): Promise<void> {
+    activeDocumentTab.value = 'header'
     loadGeneration += 1
     context.value = opening
     form.value = emptyHeader(opening.kind)
@@ -2262,9 +2349,3 @@
   })
   defineExpose({ handleOpen })
 </script>
-
-<style scoped>
-  :deep(.transfer-business-lines .el-table__body-wrapper) {
-    overflow-x: auto;
-  }
-</style>

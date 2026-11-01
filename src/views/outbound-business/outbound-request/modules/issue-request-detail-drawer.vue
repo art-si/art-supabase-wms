@@ -7,111 +7,125 @@
         :title="request.documentNo"
         :description="`${request.workOrder?.workOrderNo || request.workOrderNo || '未关联工单'} · ${request.warehouse?.warehouseName || request.warehouseName || '未填写仓库'} · ${projectName}${request.constructionNo ? ` / ${request.constructionNo}` : ''}`"
       />
-      <ArtSectionCard title="申请信息" subtitle="核对申请范围与领料仓库，再按明细办理出库。">
-        <ArtDescriptions
-          :data="request"
-          :items="descriptionItems"
-          :columns="2"
-          label-width="96px"
-        />
-      </ArtSectionCard>
-      <div class="grid gap-3 sm:grid-cols-3">
-        <div class="rounded-xl bg-[var(--el-fill-color-light)] p-4">
-          <small class="text-[var(--el-text-color-secondary)]">申请物料</small>
-          <strong class="mt-1 block text-xl tabular-nums"
-            >{{ loading || loadError ? '—' : lines.length }} 种</strong
-          >
-        </div>
-        <div class="rounded-xl bg-[var(--el-fill-color-light)] p-4">
-          <small class="text-[var(--el-text-color-secondary)]">待领物料</small>
-          <strong class="mt-1 block text-xl tabular-nums"
-            >{{ loading || loadError ? '—' : pendingMaterialCount }} 种</strong
-          >
-        </div>
-        <div class="rounded-xl bg-[var(--el-fill-color-light)] p-4">
-          <small class="text-[var(--el-text-color-secondary)]">已领完物料</small>
-          <strong class="mt-1 block text-xl tabular-nums"
-            >{{ loading || loadError ? '—' : fulfilledMaterialCount }} 种</strong
-          >
-        </div>
-      </div>
-      <ArtSectionCard
-        title="申请明细"
-        subtitle="同一申请行可以多次选择不同批次；每次出库留下独立流水。"
-        :error="loadError ? '申请明细加载失败，请重试' : null"
-        :empty="!loading && !loadError && !lines.length"
-        empty-title="暂无申请物料"
-        empty-description="添加申请明细后可按批次查看出库记录。"
-        @retry="loadDetail"
-      >
-        <ArtTable
-          :data="lines"
-          :columns="lineColumns"
-          :pagination="false"
-          row-key="id"
-          table-layout="fixed"
-        />
-        <ul class="divide-y divide-[var(--el-border-color-light)]">
-          <li
-            v-for="item in lines"
-            :key="item.id"
-            class="flex min-w-0 flex-wrap items-center gap-3 py-4"
-          >
-            <div class="min-w-0 flex-1">
-              <strong class="block truncate text-sm" :title="item.material?.materialName">{{
-                item.material?.materialName || '物料'
-              }}</strong>
-              <p class="mt-1 break-words text-xs text-[var(--el-text-color-secondary)]">
-                {{ item.material?.materialCode }} · 已领 {{ item.issuedQuantity }} / 申请
-                {{ item.requestedQuantity }}
-                {{ formatUnitDisplayName(item.material?.baseUnit?.unitName, '') }}
-              </p>
+      <ElTabs v-model="activeDetailTab"
+        ><ElTabPane name="section0" label="申请信息" :lazy="false"
+          ><div class="space-y-4"
+            ><ArtSectionCard title="申请信息" subtitle="核对申请范围与领料仓库，再按明细办理出库。">
+              <ArtDescriptions
+                :data="request"
+                :items="descriptionItems"
+                :columns="2"
+                label-width="96px"
+              />
+            </ArtSectionCard>
+            <div class="grid gap-3 sm:grid-cols-3">
+              <div class="rounded-xl bg-[var(--el-fill-color-light)] p-4">
+                <small class="text-[var(--el-text-color-secondary)]">申请物料</small>
+                <strong class="mt-1 block text-xl tabular-nums"
+                  >{{ loading || loadError ? '—' : lines.length }} 种</strong
+                >
+              </div>
+              <div class="rounded-xl bg-[var(--el-fill-color-light)] p-4">
+                <small class="text-[var(--el-text-color-secondary)]">待领物料</small>
+                <strong class="mt-1 block text-xl tabular-nums"
+                  >{{ loading || loadError ? '—' : pendingMaterialCount }} 种</strong
+                >
+              </div>
+              <div class="rounded-xl bg-[var(--el-fill-color-light)] p-4">
+                <small class="text-[var(--el-text-color-secondary)]">已领完物料</small>
+                <strong class="mt-1 block text-xl tabular-nums"
+                  >{{ loading || loadError ? '—' : fulfilledMaterialCount }} 种</strong
+                >
+              </div>
             </div>
-            <ElTag
-              :type="item.issuedQuantity >= item.requestedQuantity ? 'success' : 'info'"
-              size="small"
+          </div></ElTabPane
+        >
+        <ElTabPane name="section1" label="申请明细" :lazy="false"
+          ><div class="space-y-4"
+            ><ArtSectionCard
+              title="申请明细"
+              subtitle="同一申请行可以多次选择不同批次；每次出库留下独立流水。"
+              :error="loadError ? '申请明细加载失败，请重试' : null"
+              :empty="!loading && !loadError && !lines.length"
+              empty-title="暂无申请物料"
+              empty-description="添加申请明细后可按批次查看出库记录。"
+              @retry="loadDetail"
             >
-              待领 {{ Math.max(0, item.requestedQuantity - item.issuedQuantity) }}
-              {{ formatUnitDisplayName(item.material?.baseUnit?.unitName, '') }}
-            </ElTag>
-            <ElButton
-              v-if="canIssue && item.issuedQuantity < item.requestedQuantity"
-              v-auth="'WmsIssueRequest:Issue'"
-              size="small"
-              type="primary"
-              @click="openIssue(item)"
+              <ArtTable
+                :data="lines"
+                :columns="lineColumns"
+                :pagination="false"
+                row-key="id"
+                table-layout="fixed"
+              />
+              <ul class="divide-y divide-[var(--el-border-color-light)]">
+                <li
+                  v-for="item in lines"
+                  :key="item.id"
+                  class="flex min-w-0 flex-wrap items-center gap-3 py-4"
+                >
+                  <div class="min-w-0 flex-1">
+                    <strong class="block truncate text-sm" :title="item.material?.materialName">{{
+                      item.material?.materialName || '物料'
+                    }}</strong>
+                    <p class="mt-1 break-words text-xs text-[var(--el-text-color-secondary)]">
+                      {{ item.material?.materialCode }} · 已领 {{ item.issuedQuantity }} / 申请
+                      {{ item.requestedQuantity }}
+                      {{ formatUnitDisplayName(item.material?.baseUnit?.unitName, '') }}
+                    </p>
+                  </div>
+                  <ElTag
+                    :type="item.issuedQuantity >= item.requestedQuantity ? 'success' : 'info'"
+                    size="small"
+                  >
+                    待领 {{ Math.max(0, item.requestedQuantity - item.issuedQuantity) }}
+                    {{ formatUnitDisplayName(item.material?.baseUnit?.unitName, '') }}
+                  </ElTag>
+                  <ElButton
+                    v-if="canIssue && item.issuedQuantity < item.requestedQuantity"
+                    v-auth="'WmsIssueRequest:Issue'"
+                    size="small"
+                    type="primary"
+                    @click="openIssue(item)"
+                  >
+                    办理领料
+                  </ElButton>
+                </li>
+              </ul>
+            </ArtSectionCard>
+          </div></ElTabPane
+        >
+        <ElTabPane name="section2" label="出库核销记录" :lazy="false"
+          ><div class="space-y-4"
+            ><ArtSectionCard
+              title="出库核销记录"
+              subtitle="批次、数量与库存流水保持一一对应；SN 逐件随流水追溯。"
+              :error="loadError ? '核销记录加载失败，请重试' : null"
+              :empty="!loading && !loadError && !allocations.length"
+              empty-title="尚未办理领料"
+              empty-description="申请审核通过后，按物料和批次办理领料出库。"
+              @retry="loadDetail"
             >
-              办理领料
-            </ElButton>
-          </li>
-        </ul>
-      </ArtSectionCard>
-      <ArtSectionCard
-        title="出库核销记录"
-        subtitle="批次、数量与库存流水保持一一对应；SN 逐件随流水追溯。"
-        :error="loadError ? '核销记录加载失败，请重试' : null"
-        :empty="!loading && !loadError && !allocations.length"
-        empty-title="尚未办理领料"
-        empty-description="申请审核通过后，按物料和批次办理领料出库。"
-        @retry="loadDetail"
+              <ul class="divide-y divide-[var(--el-border-color-light)]">
+                <li
+                  v-for="item in allocations"
+                  :key="item.id"
+                  class="flex min-w-0 flex-wrap items-center justify-between gap-3 py-3 text-sm"
+                >
+                  <div class="min-w-0">
+                    <strong class="block truncate">{{ item.batch?.batchNo || '来源批次' }}</strong>
+                    <span class="text-xs text-[var(--el-text-color-secondary)]">
+                      {{ formatDateTimeValue(item.movement?.occurredAt || item.createdAt) }}
+                      · SN {{ item.serialIds.length }} 件
+                    </span>
+                  </div>
+                  <strong class="tabular-nums">−{{ item.quantity }}</strong>
+                </li>
+              </ul>
+            </ArtSectionCard></div
+          ></ElTabPane
+        ></ElTabs
       >
-        <ul class="divide-y divide-[var(--el-border-color-light)]">
-          <li
-            v-for="item in allocations"
-            :key="item.id"
-            class="flex min-w-0 flex-wrap items-center justify-between gap-3 py-3 text-sm"
-          >
-            <div class="min-w-0">
-              <strong class="block truncate">{{ item.batch?.batchNo || '来源批次' }}</strong>
-              <span class="text-xs text-[var(--el-text-color-secondary)]">
-                {{ formatDateTimeValue(item.movement?.occurredAt || item.createdAt) }}
-                · SN {{ item.serialIds.length }} 件
-              </span>
-            </div>
-            <strong class="tabular-nums">−{{ item.quantity }}</strong>
-          </li>
-        </ul>
-      </ArtSectionCard>
     </div>
     <IssueRequestPostDialog ref="postRef" @success="handleIssueSuccess" />
   </ArtDrawer>
@@ -140,6 +154,7 @@
 
   const emit = defineEmits<{ success: [] }>()
   const { hasAnyAuth } = useAuth()
+  const activeDetailTab = ref('section0')
   const drawerRef = ref<ArtDrawerExpose<WmsIssueRequest>>()
   const postRef = ref<InstanceType<typeof IssueRequestPostDialog>>()
   const request = shallowRef<WmsIssueRequest>()
@@ -264,6 +279,7 @@
     emit('success')
   }
   async function handleOpen(row: WmsIssueRequest, name: string): Promise<void> {
+    activeDetailTab.value = 'section0'
     detailRequest += 1
     request.value = row
     projectName.value = name

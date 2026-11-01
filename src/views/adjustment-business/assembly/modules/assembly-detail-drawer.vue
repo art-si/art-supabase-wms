@@ -7,88 +7,108 @@
         :title="document.documentNo"
         :description="`${document.warehouse?.warehouseName || '仓库'} · ${projectName}${document.constructionNo ? ` / ${document.constructionNo}` : ''}`"
       />
-      <ArtSectionCard title="组装信息" subtitle="来源批次与成品保持同一仓库、项目和施工号归属。">
-        <ArtDescriptions
-          :data="document"
-          :items="descriptionItems"
-          :columns="2"
-          label-width="96px"
-        />
-      </ArtSectionCard>
-      <div class="grid gap-3 sm:grid-cols-3">
-        <div class="rounded-xl bg-[var(--el-fill-color-light)] p-4">
-          <small class="text-[var(--el-text-color-secondary)]">来源组件</small>
-          <strong class="mt-1 block text-xl tabular-nums">{{
-            loading || loadError ? '—' : components.length
-          }}</strong>
-        </div>
-        <div class="rounded-xl bg-[var(--el-fill-color-light)] p-4">
-          <small class="text-[var(--el-text-color-secondary)]">成品数量</small>
-          <strong class="mt-1 block text-xl tabular-nums">{{ document.targetQuantity }}</strong>
-        </div>
-        <div class="rounded-xl bg-[var(--el-fill-color-light)] p-4">
-          <small class="text-[var(--el-text-color-secondary)]">成品面积</small>
-          <strong class="mt-1 block text-xl tabular-nums">{{
-            document.targetAreaSqm ?? '—'
-          }}</strong>
-        </div>
-      </div>
-      <ArtSectionCard
-        title="来源组件"
-        subtitle="每条组件均对应一笔扣减流水；批次号、用量与成本留痕。"
-        :error="loadError ? '组件明细加载失败，请重试' : null"
-        :empty="!loading && !loadError && components.length === 0"
-        empty-title="暂无组件记录"
-        empty-description="录入来源组件后可在此核对批次用量与成本。"
-        @retry="loadComponents"
-      >
-        <ul class="divide-y divide-[var(--el-border-color-light)]">
-          <li
-            v-for="item in components"
-            :key="item.id"
-            class="flex min-w-0 items-center gap-3 py-3"
-          >
-            <div class="min-w-0 flex-1">
-              <strong class="block truncate text-sm" :title="item.material?.materialName">{{
-                item.material?.materialName || '物料'
-              }}</strong>
-              <p class="mt-1 truncate text-xs text-[var(--el-text-color-secondary)]">
-                {{ item.material?.materialCode }} · {{ item.sourceBatch?.batchNo }} ·
-                {{ item.sourceBatch?.bin?.binCode || '仓库直存' }}
-              </p>
-            </div>
-            <span class="shrink-0 font-semibold tabular-nums">−{{ item.quantity }}</span>
-          </li>
-        </ul>
-      </ArtSectionCard>
-      <ArtSectionCard title="成品入库" subtitle="生成独立成品批次，并保留与组装单的关联。">
-        <div class="flex min-w-0 flex-wrap items-center justify-between gap-3 py-2">
-          <div class="min-w-0">
-            <strong class="block truncate" :title="document.targetMaterial?.materialName">{{
-              document.targetMaterial?.materialName || '成品物料'
-            }}</strong>
-            <p class="mt-1 break-words text-xs text-[var(--el-text-color-secondary)]">
-              {{ document.targetMaterial?.materialCode }} · {{ document.targetBatch?.batchNo }} ·
-              {{ document.targetBatch?.bin?.binCode || '仓库直存' }}
-            </p>
-            <p
-              v-if="
-                document.targetBatch?.lengthMm ||
-                document.targetBatch?.widthMm ||
-                document.targetBatch?.thicknessMm
-              "
-              class="mt-1 text-xs text-[var(--el-text-color-secondary)]"
+      <ElTabs v-model="activeDetailTab"
+        ><ElTabPane name="section0" label="组装信息" :lazy="false"
+          ><div class="space-y-4"
+            ><ArtSectionCard
+              title="组装信息"
+              subtitle="来源批次与成品保持同一仓库、项目和施工号归属。"
             >
-              长 {{ document.targetBatch?.lengthMm ?? '—' }} × 宽
-              {{ document.targetBatch?.widthMm ?? '—' }} × 厚
-              {{ document.targetBatch?.thicknessMm ?? '—' }} mm
-            </p>
-          </div>
-          <span class="font-semibold tabular-nums text-[var(--el-color-success)]"
-            >+{{ document.targetQuantity }}</span
-          >
-        </div>
-      </ArtSectionCard>
+              <ArtDescriptions
+                :data="document"
+                :items="descriptionItems"
+                :columns="2"
+                label-width="96px"
+              />
+            </ArtSectionCard>
+            <div class="grid gap-3 sm:grid-cols-3">
+              <div class="rounded-xl bg-[var(--el-fill-color-light)] p-4">
+                <small class="text-[var(--el-text-color-secondary)]">来源组件</small>
+                <strong class="mt-1 block text-xl tabular-nums">{{
+                  loading || loadError ? '—' : components.length
+                }}</strong>
+              </div>
+              <div class="rounded-xl bg-[var(--el-fill-color-light)] p-4">
+                <small class="text-[var(--el-text-color-secondary)]">成品数量</small>
+                <strong class="mt-1 block text-xl tabular-nums">{{
+                  document.targetQuantity
+                }}</strong>
+              </div>
+              <div class="rounded-xl bg-[var(--el-fill-color-light)] p-4">
+                <small class="text-[var(--el-text-color-secondary)]">成品面积</small>
+                <strong class="mt-1 block text-xl tabular-nums">{{
+                  document.targetAreaSqm ?? '—'
+                }}</strong>
+              </div>
+            </div>
+          </div></ElTabPane
+        >
+        <ElTabPane name="section1" label="来源组件" :lazy="false"
+          ><div class="space-y-4"
+            ><ArtSectionCard
+              title="来源组件"
+              subtitle="每条组件均对应一笔扣减流水；批次号、用量与成本留痕。"
+              :error="loadError ? '组件明细加载失败，请重试' : null"
+              :empty="!loading && !loadError && components.length === 0"
+              empty-title="暂无组件记录"
+              empty-description="录入来源组件后可在此核对批次用量与成本。"
+              @retry="loadComponents"
+            >
+              <ul class="divide-y divide-[var(--el-border-color-light)]">
+                <li
+                  v-for="item in components"
+                  :key="item.id"
+                  class="flex min-w-0 items-center gap-3 py-3"
+                >
+                  <div class="min-w-0 flex-1">
+                    <strong class="block truncate text-sm" :title="item.material?.materialName">{{
+                      item.material?.materialName || '物料'
+                    }}</strong>
+                    <p class="mt-1 truncate text-xs text-[var(--el-text-color-secondary)]">
+                      {{ item.material?.materialCode }} · {{ item.sourceBatch?.batchNo }} ·
+                      {{ item.sourceBatch?.bin?.binCode || '仓库直存' }}
+                    </p>
+                  </div>
+                  <span class="shrink-0 font-semibold tabular-nums">−{{ item.quantity }}</span>
+                </li>
+              </ul>
+            </ArtSectionCard>
+          </div></ElTabPane
+        >
+        <ElTabPane name="section2" label="成品入库" :lazy="false"
+          ><div class="space-y-4"
+            ><ArtSectionCard title="成品入库" subtitle="生成独立成品批次，并保留与组装单的关联。">
+              <div class="flex min-w-0 flex-wrap items-center justify-between gap-3 py-2">
+                <div class="min-w-0">
+                  <strong class="block truncate" :title="document.targetMaterial?.materialName">{{
+                    document.targetMaterial?.materialName || '成品物料'
+                  }}</strong>
+                  <p class="mt-1 break-words text-xs text-[var(--el-text-color-secondary)]">
+                    {{ document.targetMaterial?.materialCode }} ·
+                    {{ document.targetBatch?.batchNo }} ·
+                    {{ document.targetBatch?.bin?.binCode || '仓库直存' }}
+                  </p>
+                  <p
+                    v-if="
+                      document.targetBatch?.lengthMm ||
+                      document.targetBatch?.widthMm ||
+                      document.targetBatch?.thicknessMm
+                    "
+                    class="mt-1 text-xs text-[var(--el-text-color-secondary)]"
+                  >
+                    长 {{ document.targetBatch?.lengthMm ?? '—' }} × 宽
+                    {{ document.targetBatch?.widthMm ?? '—' }} × 厚
+                    {{ document.targetBatch?.thicknessMm ?? '—' }} mm
+                  </p>
+                </div>
+                <span class="font-semibold tabular-nums text-[var(--el-color-success)]"
+                  >+{{ document.targetQuantity }}</span
+                >
+              </div>
+            </ArtSectionCard></div
+          ></ElTabPane
+        ></ElTabs
+      >
     </div>
   </ArtDrawer>
 </template>
@@ -106,6 +126,7 @@
     type WmsAssemblyDocument
   } from '@wms/api'
 
+  const activeDetailTab = ref('section0')
   const drawerRef = ref<ArtDrawerExpose<WmsAssemblyDocument>>()
   const document = shallowRef<WmsAssemblyDocument>()
   const projectName = ref('公共库存')
@@ -139,6 +160,7 @@
     }
   }
   async function handleOpen(row: WmsAssemblyDocument, name: string): Promise<void> {
+    activeDetailTab.value = 'section0'
     componentRequest += 1
     document.value = row
     projectName.value = name

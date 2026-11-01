@@ -115,383 +115,242 @@
           isFinished ? '入库数量' : '申请数量、实发数量'
         }}。支持 1 至 500 行，导入后请核对数量、工单和仓储信息。
       </ElAlert>
-      <ArtSectionCard
-        title="单据表头"
-        :subtitle="
-          mode === 'view'
-            ? '单据来源、仓储范围与业务状态'
-            : '仓库决定库存组织及租户；项目选定后自动带入客户。'
-        "
-      >
-        <ArtDescriptions
-          v-if="mode === 'view'"
-          class="production-header-descriptions"
-          :data="headerViewData"
-          :items="headerViewItems"
-          :columns="2"
-          :label-width="120"
-          border
+      <DefineDocumentLines>
+        <ArtSectionCard
+          :title="config.detailLabel"
+          :subtitle="`共 ${lines.length} 行 · ${isFinished ? config.quantityLabel : '申请数量'} ${isFinished ? actualTotal.toFixed(4) : requestedTotal.toFixed(4)}${isFinished ? '' : ` · 实发数量 ${actualTotal.toFixed(4)}`}`"
+          :empty="!lines.length"
+          empty-title="尚未选择物料"
+          :empty-description="
+            props.kind === 'finished_inbound'
+              ? '可按生产工单、排包单或物料编码批量带入。'
+              : props.kind === 'finished_return'
+                ? '从已过账的完工入库明细批量选单。'
+                : props.kind === 'return'
+                  ? '可从已出库领料明细或即时库存批量带入。'
+                  : '可从即时库存或当前生产工单 BOM 批量带入。'
+          "
         >
-          <template #item-status>
-            <ElTag
-              :type="
-                form.status === 'approved'
-                  ? 'success'
-                  : form.status === 'submitted'
-                    ? 'warning'
-                    : 'info'
-              "
-            >
-              {{ documentStatusLabel }}
-            </ElTag>
-          </template>
-          <template #item-materialStatus>
-            <ElTag
-              :type="
-                form.materialStatus === 'fulfilled'
-                  ? 'success'
-                  : form.materialStatus === 'partial'
-                    ? 'warning'
-                    : 'info'
-              "
-            >
-              {{ materialStatusLabel }}
-            </ElTag>
-          </template>
-        </ArtDescriptions>
-        <ArtForm
-          v-else
-          ref="formRef"
-          v-model="form"
-          :items="headerItems"
-          :rules="headerRules"
-          :validate-on-rule-change="false"
-          :span="8"
-          :gutter="18"
-          label-position="top"
-          :show-reset="false"
-          :show-submit="false"
-        >
-          <template #documentNo>
-            <div class="production-readonly-field" :class="{ 'is-placeholder': !form.documentNo }">
-              <ArtSvgIcon icon="ri:hashtag" />
-              <span>{{ form.documentNo || '保存后自动生成' }}</span>
-            </div>
-          </template>
-          <template #projectId>
-            <ArtTableSingleSelect
-              :model-value="form.projectId || undefined"
-              :selected-data="selectedProject"
-              :data="projects"
-              :columns="projectColumns"
-              row-key="id"
-              label-key="projectName"
-              description-key="projectCode"
-              title="参选销售项目"
-              placeholder="选择项目"
-              :disabled="!form.tenantId"
-              @update:selected-data="onProjectSelected"
-            />
-          </template>
-          <template #customerId>
-            <div class="production-readonly-field" :class="{ 'is-placeholder': !customerName }">
-              <ArtSvgIcon icon="ri:building-2-line" />
-              <span>{{ customerName || '选择项目后自动带入' }}</span>
-            </div>
-          </template>
-          <template #applicantId>
-            <ArtEmployeeSelect
-              :model-value="form.applicantId || undefined"
-              :selected-data="selectedApplicant"
-              :tenant-id="form.tenantId || undefined"
-              :title="
-                props.kind === 'issue' || props.kind === 'return' ? '选择领料人' : '选择领料申请人'
-              "
-              :disabled="!form.tenantId"
-              @change="onApplicantChange"
-            />
-          </template>
-          <template #keeperId>
-            <ArtEmployeeSelect
-              :model-value="form.keeperId || undefined"
-              :selected-data="selectedKeeper"
-              :tenant-id="form.tenantId || undefined"
-              title="选择仓管员"
-              :disabled="!form.tenantId"
-              @change="onKeeperChange"
-            />
-          </template>
-          <template #status>
-            <div class="production-readonly-field">
-              <ArtSvgIcon icon="ri:file-list-3-line" />
-              <ElTag
-                size="small"
-                effect="light"
-                :type="
-                  form.status === 'approved'
-                    ? 'success'
-                    : form.status === 'submitted'
-                      ? 'warning'
-                      : 'info'
+          <template #actions>
+            <div v-if="mode !== 'view'" class="flex flex-wrap items-center justify-end gap-2">
+              <TransferStockPicker
+                v-if="props.kind === 'issue' || props.kind === 'return'"
+                :tenant-id="form.tenantId"
+                :projects="projects"
+                :units="units"
+                :model-value="stockPickerIds"
+                :selected-data="stockPickerRows"
+                :disabled="!form.warehouseId"
+                multiple
+                @update:selected-data="addProductionStockRows"
+              >
+                <template #trigger="{ open }">
+                  <ElButton
+                    v-auth="permission.Add"
+                    type="primary"
+                    :disabled="!form.warehouseId"
+                    @click="open"
+                  >
+                    <ArtSvgIcon icon="ri:add-line" />新增
+                  </ElButton>
+                </template>
+              </TransferStockPicker>
+              <ArtTableMultipleSelect
+                v-if="props.kind === 'issue'"
+                ref="bomSelectRef"
+                v-model="bomPickerIds"
+                v-model:selected-data="bomPickerSelected"
+                class="w-auto! shrink-0"
+                title="参选生产工单 BOM 未领料明细"
+                subtitle="仅显示仍有可领数量的 BOM 分录；支持分批领料。"
+                row-key="key"
+                label-key="materialName"
+                :columns="bomColumns"
+                :data="bomPickerData"
+                :disabled="!form.workOrderId"
+                @confirm="addBomRows"
+              >
+                <template #trigger="{ open }">
+                  <ElButton v-auth="permission.Select" :disabled="!form.workOrderId" @click="open"
+                    ><ArtSvgIcon icon="ri:file-list-3-line" />选单</ElButton
+                  >
+                </template>
+              </ArtTableMultipleSelect>
+              <ArtTableMultipleSelect
+                v-if="props.kind === 'return'"
+                v-model="issuePickerIds"
+                v-model:selected-data="issuePickerRows"
+                class="w-auto! shrink-0"
+                title="参选已出库生产领料明细"
+                subtitle="从已出库且尚可退料的领料行批量带入。"
+                search-placeholder="搜索领料单号、工单号或物料编码"
+                row-key="lineId"
+                label-key="documentNo"
+                :columns="issueSourceColumns"
+                :api-fn="issueSourceApi"
+                :disabled="!form.tenantId"
+                @confirm="addIssueRows"
+              >
+                <template #trigger="{ open }">
+                  <ElButton v-auth="permission.Select" :disabled="!form.tenantId" @click="open">
+                    <ArtSvgIcon icon="ri:file-list-3-line" />选单
+                  </ElButton>
+                </template>
+              </ArtTableMultipleSelect>
+              <ArtTableMultipleSelect
+                v-if="props.kind === 'finished_inbound' && form.inboundMode === 'order'"
+                :key="`work-order-${form.warehouseId}-${form.workOrderId}`"
+                v-model="workOrderPickerIds"
+                v-model:selected-data="workOrderPickerRows"
+                class="w-auto! shrink-0"
+                title="参选生产工单"
+                :subtitle="
+                  form.workOrderId
+                    ? '仅显示表头已选生产工单，带入该工单的成品明细。'
+                    : '可批量选择已下达工单，生成对应成品明细。'
                 "
-                >{{ documentStatusLabel }}</ElTag
+                row-key="id"
+                label-key="workOrderNo"
+                :columns="workOrderColumns"
+                :data="finishedWorkOrderOptions"
+                :disabled="!form.warehouseId"
+                @confirm="addWorkOrderRows"
               >
-            </div>
-          </template>
-          <template #materialStatus>
-            <div class="production-readonly-field">
-              <ArtSvgIcon icon="ri:progress-3-line" />
-              <ElTag
-                size="small"
-                effect="light"
-                :type="
-                  form.materialStatus === 'fulfilled'
-                    ? 'success'
-                    : form.materialStatus === 'pending'
-                      ? 'info'
-                      : 'warning'
+                <template #trigger="{ open }">
+                  <ElButton
+                    v-auth="permission.Select"
+                    type="primary"
+                    plain
+                    :disabled="!form.warehouseId"
+                    @click="open"
+                  >
+                    <ArtSvgIcon icon="ri:file-list-3-line" />选生产工单
+                  </ElButton>
+                </template>
+              </ArtTableMultipleSelect>
+              <ArtTableMultipleSelect
+                v-if="props.kind === 'finished_inbound' && form.inboundMode === 'pack'"
+                :key="`pack-${form.warehouseId}-${form.workOrderId}`"
+                v-model="packPickerIds"
+                v-model:selected-data="packPickerRows"
+                class="w-auto! shrink-0"
+                title="参选排包未入库明细"
+                :subtitle="
+                  form.workOrderId
+                    ? '仅显示当前工单已发布、未入库且未被占用的包号；按整包面积带入。'
+                    : '选择生产工单后参选待入库包号；块数、延米与面积同时保留。'
                 "
-                >{{ materialStatusLabel }}</ElTag
+                search-placeholder="搜索包号、板材编号或区域"
+                row-key="id"
+                label-key="packNo"
+                :columns="packColumns"
+                :navigation="packOrderNavigation"
+                :api-fn="packPickerApi"
+                :disabled="!form.warehouseId"
+                @confirm="addPackRows"
               >
+                <template #trigger="{ open }">
+                  <ElButton v-auth="permission.Select" :disabled="!form.warehouseId" @click="open">
+                    <ArtSvgIcon icon="ri:archive-stack-line" />选排包单
+                  </ElButton>
+                </template>
+              </ArtTableMultipleSelect>
+              <ArtTableMultipleSelect
+                v-if="props.kind === 'finished_return'"
+                v-model="inboundSourceIds"
+                v-model:selected-data="inboundSourceRows"
+                class="w-auto! shrink-0"
+                title="参选完工入库明细"
+                subtitle="同一生产工单可多选，退库数量不能超过来源入库数量。"
+                search-placeholder="搜索入库单号、工单号或物料编码"
+                row-key="id"
+                label-key="documentNo"
+                :columns="inboundSourceColumns"
+                :api-fn="inboundSourceApi"
+                :disabled="!form.tenantId"
+                @confirm="addInboundSourceRows"
+              >
+                <template #trigger="{ open }">
+                  <ElButton
+                    v-auth="permission.Select"
+                    type="primary"
+                    plain
+                    :disabled="!form.tenantId"
+                    @click="open"
+                  >
+                    <ArtSvgIcon icon="ri:file-list-3-line" />选单
+                  </ElButton>
+                </template>
+              </ArtTableMultipleSelect>
+              <ArtTableMultipleSelect
+                v-if="props.kind === 'finished_inbound' && form.inboundMode === 'order'"
+                v-model="materialPickerIds"
+                v-model:selected-data="materialPickerRows"
+                class="w-auto! shrink-0"
+                title="数据来源：物料编码"
+                subtitle="按物料编码、名称或描述检索并批量参选。"
+                search-placeholder="搜索物料编码或名称"
+                row-key="id"
+                label-key="materialName"
+                :columns="materialColumns"
+                :navigation="materialNavigation"
+                :api-fn="materialApi"
+                :disabled="!form.tenantId || (isFinished && !form.workOrderId)"
+                @confirm="addMaterialRows"
+              >
+                <template #trigger="{ open }">
+                  <ElButton
+                    v-auth="permission.Add"
+                    :disabled="!form.tenantId || (isFinished && !form.workOrderId)"
+                    @click="open"
+                    ><ArtSvgIcon icon="ri:box-3-line" />{{
+                      isFinished ? '新增物料' : '选择物料'
+                    }}</ElButton
+                  >
+                </template>
+              </ArtTableMultipleSelect>
+              <ElButton
+                v-auth="permission.Copy"
+                :disabled="
+                  selectedLineIndexes.length !== 1 ||
+                  (props.kind === 'finished_inbound' && form.inboundMode === 'pack')
+                "
+                @click="copySelectedLine"
+              >
+                <ArtSvgIcon icon="ri:file-copy-line" />复制
+              </ElButton>
+              <ElButton
+                v-auth="permission.Delete"
+                type="danger"
+                plain
+                :disabled="!selectedLineIndexes.length"
+                @click="deleteSelectedLines"
+              >
+                <ArtSvgIcon icon="ri:delete-bin-line" />批量删除
+              </ElButton>
+              <span
+                v-if="
+                  props.kind !== 'finished_return' &&
+                  !(props.kind === 'finished_inbound' && form.inboundMode === 'pack')
+                "
+                v-auth="permission.Import"
+              >
+                <ArtExcelImport
+                  accept=".xlsx,.xls,.csv"
+                  :context-key="openData"
+                  :disabled="!form.tenantId || importing || parsing"
+                  :button-props="{ type: 'success', plain: true, loading: importing || parsing }"
+                  icon="ri:upload-2-line"
+                  @parsing-change="onImportParsing"
+                  @import-success="importLines"
+                  @import-error="onImportError"
+                  >导入明细</ArtExcelImport
+                >
+              </span>
             </div>
           </template>
-        </ArtForm>
-      </ArtSectionCard>
-      <ArtSectionCard
-        :title="config.detailLabel"
-        :subtitle="`共 ${lines.length} 行 · ${isFinished ? config.quantityLabel : '申请数量'} ${isFinished ? actualTotal.toFixed(4) : requestedTotal.toFixed(4)}${isFinished ? '' : ` · 实发数量 ${actualTotal.toFixed(4)}`}`"
-        :empty="!lines.length"
-        empty-title="尚未选择物料"
-        :empty-description="
-          props.kind === 'finished_inbound'
-            ? '可按生产工单、排包单或物料编码批量带入。'
-            : props.kind === 'finished_return'
-              ? '从已过账的完工入库明细批量选单。'
-              : props.kind === 'return'
-                ? '可从已出库领料明细或即时库存批量带入。'
-                : '可从即时库存或当前生产工单 BOM 批量带入。'
-        "
-      >
-        <template #actions>
-          <div v-if="mode !== 'view'" class="flex flex-wrap items-center justify-end gap-2">
-            <TransferStockPicker
-              v-if="props.kind === 'issue' || props.kind === 'return'"
-              :tenant-id="form.tenantId"
-              :projects="projects"
-              :units="units"
-              :model-value="stockPickerIds"
-              :selected-data="stockPickerRows"
-              :disabled="!form.warehouseId"
-              multiple
-              @update:selected-data="addProductionStockRows"
-            >
-              <template #trigger="{ open }">
-                <ElButton
-                  v-auth="permission.Add"
-                  type="primary"
-                  :disabled="!form.warehouseId"
-                  @click="open"
-                >
-                  <ArtSvgIcon icon="ri:add-line" />新增
-                </ElButton>
-              </template>
-            </TransferStockPicker>
-            <ArtTableMultipleSelect
-              v-if="props.kind === 'issue'"
-              ref="bomSelectRef"
-              v-model="bomPickerIds"
-              v-model:selected-data="bomPickerSelected"
-              class="w-auto! shrink-0"
-              title="参选生产工单 BOM 未领料明细"
-              subtitle="仅显示仍有可领数量的 BOM 分录；支持分批领料。"
-              row-key="key"
-              label-key="materialName"
-              :columns="bomColumns"
-              :data="bomPickerData"
-              :disabled="!form.workOrderId"
-              @confirm="addBomRows"
-            >
-              <template #trigger="{ open }">
-                <ElButton v-auth="permission.Select" :disabled="!form.workOrderId" @click="open"
-                  ><ArtSvgIcon icon="ri:file-list-3-line" />选单</ElButton
-                >
-              </template>
-            </ArtTableMultipleSelect>
-            <ArtTableMultipleSelect
-              v-if="props.kind === 'return'"
-              v-model="issuePickerIds"
-              v-model:selected-data="issuePickerRows"
-              class="w-auto! shrink-0"
-              title="参选已出库生产领料明细"
-              subtitle="从已出库且尚可退料的领料行批量带入。"
-              search-placeholder="搜索领料单号、工单号或物料编码"
-              row-key="lineId"
-              label-key="documentNo"
-              :columns="issueSourceColumns"
-              :api-fn="issueSourceApi"
-              :disabled="!form.tenantId"
-              @confirm="addIssueRows"
-            >
-              <template #trigger="{ open }">
-                <ElButton v-auth="permission.Select" :disabled="!form.tenantId" @click="open">
-                  <ArtSvgIcon icon="ri:file-list-3-line" />选单
-                </ElButton>
-              </template>
-            </ArtTableMultipleSelect>
-            <ArtTableMultipleSelect
-              v-if="props.kind === 'finished_inbound' && form.inboundMode === 'order'"
-              :key="`work-order-${form.warehouseId}-${form.workOrderId}`"
-              v-model="workOrderPickerIds"
-              v-model:selected-data="workOrderPickerRows"
-              class="w-auto! shrink-0"
-              title="参选生产工单"
-              :subtitle="
-                form.workOrderId
-                  ? '仅显示表头已选生产工单，带入该工单的成品明细。'
-                  : '可批量选择已下达工单，生成对应成品明细。'
-              "
-              row-key="id"
-              label-key="workOrderNo"
-              :columns="workOrderColumns"
-              :data="finishedWorkOrderOptions"
-              :disabled="!form.warehouseId"
-              @confirm="addWorkOrderRows"
-            >
-              <template #trigger="{ open }">
-                <ElButton
-                  v-auth="permission.Select"
-                  type="primary"
-                  plain
-                  :disabled="!form.warehouseId"
-                  @click="open"
-                >
-                  <ArtSvgIcon icon="ri:file-list-3-line" />选生产工单
-                </ElButton>
-              </template>
-            </ArtTableMultipleSelect>
-            <ArtTableMultipleSelect
-              v-if="props.kind === 'finished_inbound' && form.inboundMode === 'pack'"
-              :key="`pack-${form.warehouseId}-${form.workOrderId}`"
-              v-model="packPickerIds"
-              v-model:selected-data="packPickerRows"
-              class="w-auto! shrink-0"
-              title="参选排包未入库明细"
-              :subtitle="
-                form.workOrderId
-                  ? '仅显示当前工单已发布、未入库且未被占用的包号；按整包面积带入。'
-                  : '选择生产工单后参选待入库包号；块数、延米与面积同时保留。'
-              "
-              search-placeholder="搜索包号、板材编号或区域"
-              row-key="id"
-              label-key="packNo"
-              :columns="packColumns"
-              :navigation="packOrderNavigation"
-              :api-fn="packPickerApi"
-              :disabled="!form.warehouseId"
-              @confirm="addPackRows"
-            >
-              <template #trigger="{ open }">
-                <ElButton v-auth="permission.Select" :disabled="!form.warehouseId" @click="open">
-                  <ArtSvgIcon icon="ri:archive-stack-line" />选排包单
-                </ElButton>
-              </template>
-            </ArtTableMultipleSelect>
-            <ArtTableMultipleSelect
-              v-if="props.kind === 'finished_return'"
-              v-model="inboundSourceIds"
-              v-model:selected-data="inboundSourceRows"
-              class="w-auto! shrink-0"
-              title="参选完工入库明细"
-              subtitle="同一生产工单可多选，退库数量不能超过来源入库数量。"
-              search-placeholder="搜索入库单号、工单号或物料编码"
-              row-key="id"
-              label-key="documentNo"
-              :columns="inboundSourceColumns"
-              :api-fn="inboundSourceApi"
-              :disabled="!form.tenantId"
-              @confirm="addInboundSourceRows"
-            >
-              <template #trigger="{ open }">
-                <ElButton
-                  v-auth="permission.Select"
-                  type="primary"
-                  plain
-                  :disabled="!form.tenantId"
-                  @click="open"
-                >
-                  <ArtSvgIcon icon="ri:file-list-3-line" />选单
-                </ElButton>
-              </template>
-            </ArtTableMultipleSelect>
-            <ArtTableMultipleSelect
-              v-if="props.kind === 'finished_inbound' && form.inboundMode === 'order'"
-              v-model="materialPickerIds"
-              v-model:selected-data="materialPickerRows"
-              class="w-auto! shrink-0"
-              title="数据来源：物料编码"
-              subtitle="按物料编码、名称或描述检索并批量参选。"
-              search-placeholder="搜索物料编码或名称"
-              row-key="id"
-              label-key="materialName"
-              :columns="materialColumns"
-              :navigation="materialNavigation"
-              :api-fn="materialApi"
-              :disabled="!form.tenantId || (isFinished && !form.workOrderId)"
-              @confirm="addMaterialRows"
-            >
-              <template #trigger="{ open }">
-                <ElButton
-                  v-auth="permission.Add"
-                  :disabled="!form.tenantId || (isFinished && !form.workOrderId)"
-                  @click="open"
-                  ><ArtSvgIcon icon="ri:box-3-line" />{{
-                    isFinished ? '新增物料' : '选择物料'
-                  }}</ElButton
-                >
-              </template>
-            </ArtTableMultipleSelect>
-            <ElButton
-              v-auth="permission.Copy"
-              :disabled="
-                selectedLineIndexes.length !== 1 ||
-                (props.kind === 'finished_inbound' && form.inboundMode === 'pack')
-              "
-              @click="copySelectedLine"
-            >
-              <ArtSvgIcon icon="ri:file-copy-line" />复制
-            </ElButton>
-            <ElButton
-              v-auth="permission.Delete"
-              type="danger"
-              plain
-              :disabled="!selectedLineIndexes.length"
-              @click="deleteSelectedLines"
-            >
-              <ArtSvgIcon icon="ri:delete-bin-line" />批量删除
-            </ElButton>
-            <span
-              v-if="
-                props.kind !== 'finished_return' &&
-                !(props.kind === 'finished_inbound' && form.inboundMode === 'pack')
-              "
-              v-auth="permission.Import"
-            >
-              <ArtExcelImport
-                accept=".xlsx,.xls,.csv"
-                :context-key="openData"
-                :disabled="!form.tenantId || importing || parsing"
-                :button-props="{ type: 'success', plain: true, loading: importing || parsing }"
-                icon="ri:upload-2-line"
-                @parsing-change="onImportParsing"
-                @import-success="importLines"
-                @import-error="onImportError"
-                >导入明细</ArtExcelImport
-              >
-            </span>
-          </div>
-        </template>
-        <ElScrollbar v-if="lines.length">
           <ArtTable
+            v-if="lines.length"
             ref="lineTableRef"
             class="wms-editable-line-table"
             :data="lines"
@@ -794,8 +653,156 @@
               </BusinessTableRowActions>
             </template>
           </ArtTable>
-        </ElScrollbar>
-      </ArtSectionCard>
+        </ArtSectionCard>
+      </DefineDocumentLines>
+      <ElTabs v-if="mode === 'view'" v-model="activeTab">
+        <ElTabPane name="identity" label="单据信息">
+          <ArtSectionCard
+            title="单据表头"
+            :subtitle="
+              mode === 'view'
+                ? '单据来源、仓储范围与业务状态'
+                : '仓库决定库存组织及租户；项目选定后自动带入客户。'
+            "
+          >
+            <ArtDescriptions
+              v-if="mode === 'view'"
+              class="production-header-descriptions"
+              :data="headerViewData"
+              :items="headerViewItems"
+              :columns="2"
+              :label-width="120"
+              border
+            >
+              <template #item-status>
+                <ElTag
+                  :type="
+                    form.status === 'approved'
+                      ? 'success'
+                      : form.status === 'submitted'
+                        ? 'warning'
+                        : 'info'
+                  "
+                >
+                  {{ documentStatusLabel }}
+                </ElTag>
+              </template>
+              <template #item-materialStatus>
+                <ElTag
+                  :type="
+                    form.materialStatus === 'fulfilled'
+                      ? 'success'
+                      : form.materialStatus === 'partial'
+                        ? 'warning'
+                        : 'info'
+                  "
+                >
+                  {{ materialStatusLabel }}
+                </ElTag>
+              </template>
+            </ArtDescriptions>
+          </ArtSectionCard>
+        </ElTabPane>
+        <ElTabPane name="documentLines" :label="config.detailLabel"><DocumentLines /></ElTabPane>
+      </ElTabs>
+      <ArtForm
+        v-if="mode !== 'view'"
+        v-model:active-tab="activeTab"
+        class="px-0! pt-0!"
+        ref="formRef"
+        v-model="form"
+        :items="headerItems"
+        :rules="headerRules"
+        :validate-on-rule-change="false"
+        :span="8"
+        :gutter="18"
+        label-position="top"
+      >
+        <template #documentNo>
+          <div class="production-readonly-field" :class="{ 'is-placeholder': !form.documentNo }">
+            <ArtSvgIcon icon="ri:hashtag" />
+            <span>{{ form.documentNo || '保存后自动生成' }}</span>
+          </div>
+        </template>
+        <template #projectId>
+          <ArtTableSingleSelect
+            :model-value="form.projectId || undefined"
+            :selected-data="selectedProject"
+            :data="projects"
+            :columns="projectColumns"
+            row-key="id"
+            label-key="projectName"
+            description-key="projectCode"
+            title="参选销售项目"
+            placeholder="选择项目"
+            :disabled="!form.tenantId"
+            @update:selected-data="onProjectSelected"
+          />
+        </template>
+        <template #customerId>
+          <div class="production-readonly-field" :class="{ 'is-placeholder': !customerName }">
+            <ArtSvgIcon icon="ri:building-2-line" />
+            <span>{{ customerName || '选择项目后自动带入' }}</span>
+          </div>
+        </template>
+        <template #applicantId>
+          <ArtEmployeeSelect
+            :model-value="form.applicantId || undefined"
+            :selected-data="selectedApplicant"
+            :tenant-id="form.tenantId || undefined"
+            :title="
+              props.kind === 'issue' || props.kind === 'return' ? '选择领料人' : '选择领料申请人'
+            "
+            :disabled="!form.tenantId"
+            @change="onApplicantChange"
+          />
+        </template>
+        <template #keeperId>
+          <ArtEmployeeSelect
+            :model-value="form.keeperId || undefined"
+            :selected-data="selectedKeeper"
+            :tenant-id="form.tenantId || undefined"
+            title="选择仓管员"
+            :disabled="!form.tenantId"
+            @change="onKeeperChange"
+          />
+        </template>
+        <template #status>
+          <div class="production-readonly-field">
+            <ArtSvgIcon icon="ri:file-list-3-line" />
+            <ElTag
+              size="small"
+              effect="light"
+              :type="
+                form.status === 'approved'
+                  ? 'success'
+                  : form.status === 'submitted'
+                    ? 'warning'
+                    : 'info'
+              "
+              >{{ documentStatusLabel }}</ElTag
+            >
+          </div>
+        </template>
+        <template #materialStatus>
+          <div class="production-readonly-field">
+            <ArtSvgIcon icon="ri:progress-3-line" />
+            <ElTag
+              size="small"
+              effect="light"
+              :type="
+                form.materialStatus === 'fulfilled'
+                  ? 'success'
+                  : form.materialStatus === 'pending'
+                    ? 'info'
+                    : 'warning'
+              "
+              >{{ materialStatusLabel }}</ElTag
+            >
+          </div>
+        </template>
+        <template #lineItems><DocumentLines /></template>
+      </ArtForm>
     </div>
     <template v-if="props.kind === 'finished_inbound'" #footer="{ loading, api }">
       <div class="flex w-full flex-wrap justify-end gap-3">
@@ -929,12 +936,12 @@
     DataSelectRecord,
     ArtDataSelectExpose
   } from '@/components/core/forms/art-data-select/types'
-  import type { ColumnOption } from '@/types'
+  import type { ColumnOption, TableColumnValidationContext } from '@/types'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { storeToRefs } from 'pinia'
   import { cloneDeep, groupBy, round, uniq } from 'lodash-es'
-  import { useBreakpoints } from '@vueuse/core'
+  import { createReusableTemplate, useBreakpoints } from '@vueuse/core'
   import { normalizeNullableNumber, normalizeNullableText } from '@/utils/form/normalize'
   import {
     fetchWmsBatchSerials,
@@ -1002,6 +1009,8 @@
   const drawerRef = ref<ArtDrawerExpose<OpenData>>()
   const serialDialogRef = ref<ArtDialogExpose>()
   const bomSelectRef = ref<ArtDataSelectExpose>()
+  const [DefineDocumentLines, DocumentLines] = createReusableTemplate()
+  const activeTab = ref('identity')
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const lineTableRef = ref<InstanceType<typeof ArtTable>>()
   const mode = ref<OpenData['mode']>('create')
@@ -1514,7 +1523,14 @@
       ? []
       : [{ type: 'selection', width: 48, fixed: 'left' } as ColumnOption<DraftLine>]),
     { prop: 'lineNo', label: '行号', width: 72 },
-    { prop: 'materialId', label: '物料描述', minWidth: 245, useSlot: true },
+    {
+      prop: 'materialId',
+      label: '物料描述',
+      minWidth: 245,
+      useSlot: true,
+      required: mode.value !== 'view',
+      headerTooltip: '从库存、生产工单或来源单据选择物料。'
+    },
     {
       prop: 'materialCode',
       label: '物料编码',
@@ -1533,7 +1549,9 @@
             prop: 'productionUnitId',
             label: '生产单位',
             minWidth: 140,
-            useSlot: true
+            useSlot: true,
+            required: mode.value !== 'view',
+            headerTooltip: '完工明细必须有生产单位，按物料带入。'
           },
           {
             prop: 'workOrderQuantity',
@@ -1551,7 +1569,16 @@
             label: '申请数量',
             minWidth: 180,
             align: 'right' as const,
-            useSlot: true
+            useSlot: true,
+            required: mode.value !== 'view',
+            headerTooltip: isReturn.value ? '退料数量以负数登记。' : '申请数量必须大于 0。',
+            rules: {
+              validator: ({ value }: TableColumnValidationContext<DraftLine>) =>
+                Number.isFinite(Number(value)) &&
+                (isReturn.value ? Number(value) < 0 : Number(value) > 0),
+              message: ({ rowIndex }: TableColumnValidationContext<DraftLine>) =>
+                `第 ${rowIndex + 1} 行申请数量必须为${isReturn.value ? '负数' : '正数'}`
+            }
           }
         ]
       : []),
@@ -1560,14 +1587,51 @@
       label: config.value.quantityLabel,
       minWidth: 180,
       align: 'right',
-      useSlot: true
+      useSlot: true,
+      required: mode.value !== 'view',
+      headerTooltip: '数量方向随单据类型确定；绝对值不能超过申请数量或可用库存。',
+      rules: [
+        {
+          validator: ({ row }) =>
+            Number.isFinite(Number(row.requestedQuantity)) &&
+            (isReturn.value
+              ? Number(row.requestedQuantity) < 0
+              : Number(row.requestedQuantity) > 0),
+          message: ({ rowIndex }) =>
+            `第 ${rowIndex + 1} 行申请数量必须为${isReturn.value ? '负数' : '正数'}`
+        },
+        {
+          validator: ({ value }) =>
+            Number.isFinite(Number(value)) &&
+            (isReturn.value ? Number(value) < 0 : Number(value) > 0),
+          message: ({ rowIndex }) =>
+            `第 ${rowIndex + 1} 行${config.value.quantityLabel}必须为${isReturn.value ? '负数' : '正数'}`
+        },
+        {
+          validator: ({ row }) =>
+            Math.abs(Number(row.actualQuantity)) <= Math.abs(Number(row.requestedQuantity)),
+          message: ({ rowIndex }) => `第 ${rowIndex + 1} 行实发数量不能超过申请数量`
+        },
+        {
+          validator: ({ row }) =>
+            !(
+              isOutbound.value &&
+              row.sourceBatchId &&
+              Math.abs(Number(row.actualQuantity)) > Number(row.availableInventoryQuantity)
+            ),
+          message: ({ rowIndex }) =>
+            `第 ${rowIndex + 1} 行${config.value.quantityLabel}超过可用库存`
+        }
+      ]
     },
     {
       prop: 'inventoryUnitId',
       label: '库存单位',
       minWidth: 140,
       useSlot: true,
-      required: mode.value !== 'view'
+      required: mode.value !== 'view',
+      headerTooltip: '必须选择有有效物料换算关系的库存单位。',
+      rules: { validator: ({ row }) => lineUnitConversionError(row) || true }
     },
     { prop: 'projectId', label: '项目名称', minWidth: 145, useSlot: true },
     {
@@ -1636,7 +1700,12 @@
       prop: 'ownerId',
       label: '货主',
       minWidth: 150,
-      useSlot: true
+      useSlot: true,
+      headerTooltip: '货主类型为供应商或客户时必须选择对应货主。',
+      rules: {
+        validator: ({ row }) => row.ownerType === 'self' || Boolean(row.ownerId),
+        message: ({ rowIndex }) => `第 ${rowIndex + 1} 行请选择货主`
+      }
     },
     {
       prop: 'stockStatus',
@@ -1694,7 +1763,19 @@
           ? '包号'
           : '来源单据',
       minWidth: 190,
-      showOverflowTooltip: true
+      showOverflowTooltip: true,
+      headerTooltip: '完工明细须来自生产工单；完工退库须来自已过账的入库明细。',
+      rules: [
+        {
+          validator: ({ row }) => !isFinished.value || Boolean(row.workOrderId),
+          message: ({ rowIndex }) => `第 ${rowIndex + 1} 行请选择来源生产工单`
+        },
+        {
+          validator: ({ row }) =>
+            props.kind !== 'finished_return' || Boolean(row.sourceLineId && row.sourceBatchId),
+          message: ({ rowIndex }) => `第 ${rowIndex + 1} 行请选择已过账的完工入库明细`
+        }
+      ]
     },
     { prop: 'sourceLineNo', label: '源行号', minWidth: 95 },
     { prop: 'remark', label: '备注', minWidth: 180, useSlot: true },
@@ -1707,6 +1788,12 @@
     }
   ])
   const headerItems = computed<FormItem[]>(() => [
+    {
+      key: 'identity',
+      label: '单据信息',
+      type: 'tab',
+      description: '核对单据类型、仓库和生产工单。'
+    },
     { key: 'documentNo', label: config.value.numberLabel, type: 'input' },
     {
       key: 'documentTypeId',
@@ -1829,6 +1916,12 @@
           )
       }
     },
+    {
+      key: 'collaboration',
+      label: '业务与人员',
+      type: 'tab',
+      description: '维护项目、部门、办理人员和补充说明。'
+    },
     { key: 'projectId', label: '项目名称', type: 'input' },
     { key: 'customerId', label: '客户', type: 'input' },
     {
@@ -1885,7 +1978,14 @@
         showWordLimit: true,
         disabled: mode.value === 'view'
       }
-    }
+    },
+    {
+      key: 'documentLines',
+      label: config.value.detailLabel,
+      type: 'tab',
+      description: '维护物料数量、库存归属和仓储信息。'
+    },
+    { key: 'lineItems', label: '', type: 'slot', span: 24 }
   ])
   const headerRules = {
     documentTypeId: [{ required: true, message: '请选择单据类型', trigger: 'change' }],
@@ -3010,14 +3110,8 @@
       ElMessage.warning('库存组织尚未结束初始化，请先在“库存初始化”完成结束初始化后再保存单据')
       return false
     }
-    if (
-      isFinished.value &&
-      lines.value.some((line) => !line.workOrderId || !line.productionUnitId)
-    ) {
-      ElMessage.warning('完工明细必须选择生产工单和生产单位')
-      return false
-    }
     if (!lines.value.length) {
+      activeTab.value = 'documentLines'
       ElMessage.warning('请至少添加一行物料')
       return false
     }
@@ -3036,50 +3130,22 @@
       ElMessage.warning('入库明细与所选模式或工单首次入库模式不一致，请重新选单')
       return false
     }
-    const conversionError = lines.value.map(lineUnitConversionError).find(Boolean)
-    const validation = await lineTableRef.value?.validate()
+    const validation = await lineTableRef.value?.validate({ focus: false })
     if (!validation?.valid) {
+      activeTab.value = 'documentLines'
+      await nextTick()
+      if (validation?.firstError)
+        await lineTableRef.value?.validateField(validation.firstError.prop)
       if (validation?.firstError) ElMessage.warning(validation.firstError.message)
       return false
     }
-    if (conversionError) {
-      ElMessage.warning(conversionError)
-      return false
-    }
-    const invalid = lines.value.find((line) => {
-      const requested = Number(line.requestedQuantity)
-      const actual = Number(line.actualQuantity)
-      return (
-        !line.materialId ||
-        !line.inventoryUnitId ||
-        !line.warehouseId ||
-        !line.stockType ||
-        !Number.isFinite(requested) ||
-        !Number.isFinite(actual) ||
-        (isReturn.value ? requested >= 0 || actual >= 0 : requested <= 0 || actual <= 0) ||
-        Math.abs(actual) > Math.abs(requested) ||
-        (props.kind === 'finished_return' && (!line.sourceLineId || !line.sourceBatchId)) ||
-        (line.ownerType !== 'self' && !line.ownerId)
-      )
-    })
-    if (invalid) {
-      ElMessage.warning(`第 ${invalid.lineNo} 行未填写完整，或数量方向/范围不正确`)
-      return false
-    }
     for (const line of lines.value) {
-      if (
-        isOutbound.value &&
-        line.sourceBatchId &&
-        Math.abs(Number(line.actualQuantity)) > Number(line.availableInventoryQuantity)
-      ) {
-        ElMessage.warning(`第 ${line.lineNo} 行${config.value.quantityLabel}超过可用库存`)
-        return false
-      }
       const serialCount = isOutbound.value ? line.serialIds.length : line.serialNos.length
       if (
         line.material?.serialManagementEnabled &&
         serialCount !== Math.abs(Number(line.actualQuantity))
       ) {
+        activeTab.value = 'documentLines'
         ElMessage.warning(`第 ${line.lineNo} 行 SN 数量必须等于${config.value.quantityLabel}`)
         return false
       }
@@ -3153,6 +3219,7 @@
     }
   }
   async function handleOpen(data: OpenData): Promise<void> {
+    activeTab.value = 'identity'
     invalidateInlineOptions()
     ++documentRequest
     importing.value = false

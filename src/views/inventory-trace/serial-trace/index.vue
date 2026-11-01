@@ -19,8 +19,7 @@
       </ElAlert>
       <ArtTableQuery
         ref="tableRef"
-        :model-value="search"
-        @update:model-value="replaceReactiveModel(search, $event)"
+        v-model="search"
         :api-fn="fetchRows"
         :search-items="searchItems"
         :columns-factory="columnsFactory"
@@ -169,7 +168,6 @@
   import { formatWmsMovementType } from '@/utils/wms/movement-display'
   import { formatWmsSerialParent } from '@/utils/wms/serial-display'
   import { formatDateTimeValue } from '@/utils/ui/format'
-  import { replaceReactiveModel } from '@/utils/form/model'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
   import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
@@ -236,7 +234,7 @@
   const organizations = computed(() => organizationTreeUtils.treeToList(organizationTree.value))
   const sections = ref<WmsProjectSection[]>([])
   const optionError = ref(false)
-  const search = reactive({
+  const search = ref({
     organizationId: '',
     projectId: '',
     constructionNo: '',
@@ -275,7 +273,7 @@
             label: `${project.projectName} · ${project.projectCode}`,
             value: project.id
           })),
-        onChange: () => (search.constructionNo = '')
+        onChange: () => (search.value.constructionNo = '')
       }
     },
     {
@@ -283,12 +281,12 @@
       key: 'constructionNo',
       type: 'select',
       props: {
-        disabled: !search.projectId,
+        disabled: !search.value.projectId,
         clearable: true,
         filterable: true,
-        placeholder: search.projectId ? '全部施工号' : '先选择项目',
+        placeholder: search.value.projectId ? '全部施工号' : '先选择项目',
         options: sections.value
-          .filter((section) => section.projectId === search.projectId)
+          .filter((section) => section.projectId === search.value.projectId)
           .map((section) => ({
             label: `${section.constructionNo} · ${section.sectionName}`,
             value: section.constructionNo
