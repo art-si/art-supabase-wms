@@ -1,4 +1,5 @@
 import { buildSupabasePageRange, fetchAllRangePages } from '@/utils/supabase/pagination'
+import type { ApiFeedbackOptions } from '@/types/api/request'
 import { uniq } from 'lodash-es'
 import { useSupabase } from '@/hooks/core/useSupabase'
 import { loadAllDocumentPages } from '@/utils/business/document-detail-list'
@@ -1115,7 +1116,8 @@ export async function saveWmsTransferRequest(payload: WmsTransferRequestInput): 
 
 export async function changeWmsTransferRequestStatus(
   id: string,
-  action: 'submit' | 'approve' | 'withdraw' | 'delete'
+  action: 'submit' | 'approve' | 'withdraw' | 'delete',
+  feedback: ApiFeedbackOptions = {}
 ): Promise<void> {
   await responseHandle(
     () =>
@@ -1125,7 +1127,9 @@ export async function changeWmsTransferRequestStatus(
       }),
     {
       ...writeOptions,
-      showMessage: true,
+      showMessage: feedback.showMessage ?? true,
+      showErrorMessage: feedback.showErrorMessage ?? true,
+      showReferenceFeedback: feedback.showErrorMessage !== false,
       message:
         action === 'withdraw'
           ? '单据已撤回，可继续修改'
@@ -1189,7 +1193,8 @@ export async function saveWmsCountAdjustment(payload: WmsCountAdjustmentInput): 
 
 export async function changeWmsCountAdjustmentStatus(
   id: string,
-  action: 'submit' | 'approve' | 'withdraw' | 'delete'
+  action: 'submit' | 'approve' | 'withdraw' | 'delete',
+  feedback: ApiFeedbackOptions = {}
 ): Promise<void> {
   await responseHandle(
     () =>
@@ -1199,7 +1204,9 @@ export async function changeWmsCountAdjustmentStatus(
       }),
     {
       ...writeOptions,
-      showMessage: true,
+      showMessage: feedback.showMessage ?? true,
+      showErrorMessage: feedback.showErrorMessage ?? true,
+      showReferenceFeedback: feedback.showErrorMessage !== false,
       message:
         action === 'withdraw'
           ? '单据已撤回，可继续修改'
@@ -1316,10 +1323,19 @@ export async function copyWmsIssueRequest(id: string): Promise<void> {
   })
 }
 
-export async function deleteWmsIssueRequest(id: string): Promise<void> {
+export async function deleteWmsIssueRequest(
+  id: string,
+  feedback: ApiFeedbackOptions = {}
+): Promise<void> {
   await responseHandle(
     () => supabase.rpc('wms_delete_issue_request_secure', { p_request_id: id }),
-    { ...writeOptions, showMessage: true, message: '出库申请已删除' }
+    {
+      ...writeOptions,
+      showMessage: feedback.showMessage ?? true,
+      showErrorMessage: feedback.showErrorMessage ?? true,
+      showReferenceFeedback: feedback.showErrorMessage !== false,
+      message: '出库申请已删除'
+    }
   )
 }
 

@@ -106,6 +106,7 @@
   import { useAuth } from '@/hooks/core/useAuth'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { useDocumentBulkDelete } from '@/hooks/business/useDocumentBulkDelete'
+  import type { ApiFeedbackOptions } from '@/types/api/request'
   import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
   import MasterDataDeleteGuard from '@/components/business/master-data-delete-guard/index.vue'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
@@ -771,7 +772,8 @@
     idKey: 'documentId',
     busy: () => Boolean(workingId.value),
     inspect: inspectDeleteReferences,
-    remove: (id) => changeWmsInitialSalesStatus(id, 'delete'),
+    remove: (id, feedback: ApiFeedbackOptions = {}) =>
+      changeWmsInitialSalesStatus(id, 'delete', feedback),
     refresh,
     clearSelection: () => tableRef.value?.clearSelection()
   })
@@ -1071,7 +1073,8 @@
         label: '库存类型',
         minWidth: 100,
         formatter: (row) =>
-          userStore.getDictItemByValue('wmsInitialStockType', row.stockType)?.label || row.stockType
+          userStore.getDictItemByValue('wmsInitialStockType', row.stockType)?.label ||
+          '未识别库存类型'
       },
       {
         prop: 'stockStatus',

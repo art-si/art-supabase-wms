@@ -1,4 +1,5 @@
 import type { WmsMaterialOption, WmsStockBatch } from './warehouse.types'
+import type { WmsPackComposition } from './packing-composition'
 
 export type WmsProductionMaterialKind = 'issue' | 'return' | 'finished_inbound' | 'finished_return'
 export type WmsProductionDocumentStatus = 'draft' | 'submitted' | 'approved'
@@ -116,7 +117,7 @@ export type WmsProductionMaterialInput = Pick<
   >
 }
 
-export interface WmsProductionMaterialListRow {
+export interface WmsProductionMaterialListRow extends WmsPackComposition {
   documentId: string
   tenantId: string
   kind: WmsProductionMaterialKind
@@ -128,6 +129,7 @@ export interface WmsProductionMaterialListRow {
   warehouseId: string | null
   workOrderId: string | null
   projectId: string | null
+  constructionNo: string | null
   customerId: string | null
   demandDate: string | null
   applicantId: string | null
@@ -147,6 +149,17 @@ export interface WmsProductionMaterialListRow {
   requestedQuantity: number
   actualQuantity: number
   fulfilledQuantity: number
+  workOrderUnitName: string | null
+  baseQuantity: number | null
+  baseUnitName: string | null
+  auxiliaryQuantity: number | null
+  auxiliaryUnitName: string | null
+  auxiliaryQuantity2: number | null
+  auxiliaryUnit2Name: string | null
+  /** Current work order net posted finished inbound total, repeated on its document lines. */
+  inboundQuantity: number | null
+  /** Current work order quantity minus its net posted finished inbound total. */
+  pendingInboundQuantity: number | null
   workOrderQuantity: number | null
   productionUnitId: string | null
   productionUnitName: string | null

@@ -1,6 +1,7 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
 import { isPlainObject } from 'lodash-es'
 import { normalizeNullableText } from '@/utils/form/normalize'
+import { isWmsPackComposition, type WmsPackComposition } from './packing-composition'
 
 export type WmsInventoryReportKind = 'stock' | 'movement' | 'ledger' | 'receipt-issue'
 
@@ -44,7 +45,7 @@ export interface WmsInventoryReportQuery {
   summaryValues?: WmsInventorySummaryValue[]
 }
 
-export interface WmsInventoryReportRow {
+export interface WmsInventoryReportRow extends WmsPackComposition {
   id: string
   batchId: string
   businessDate: string | null
@@ -143,6 +144,7 @@ function isReportPage(value: unknown): value is WmsInventoryReportPage {
     value.data.every(
       (row: unknown) =>
         isRecord(row) &&
+        isWmsPackComposition(row) &&
         typeof row.id === 'string' &&
         typeof row.batchId === 'string' &&
         typeof row.materialCode === 'string' &&

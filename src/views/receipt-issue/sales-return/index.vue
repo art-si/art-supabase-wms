@@ -162,6 +162,7 @@
   import { RouterLink } from 'vue-router'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { formatDateTimeValue, formatNumberValue } from '@/utils/ui/format'
+  import { scaleWmsMaterialBaseQuantity } from '@/utils/wms/material-quantity'
   import { ElMessage } from 'element-plus'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import BusinessWorkspaceHeader from '@/components/business/business-workspace-header/index.vue'
@@ -244,8 +245,10 @@
     if (!allocation || outboundDisplayQuantity == null || remainingDisplayQuantity.value === null)
       return null
     if (form.value.quantity >= remainingQuantity.value) return remainingDisplayQuantity.value
-    return (
-      Math.round((outboundDisplayQuantity * form.value.quantity * 1e6) / allocation.quantity) / 1e6
+    return scaleWmsMaterialBaseQuantity(
+      outboundDisplayQuantity,
+      allocation.quantity,
+      form.value.quantity
     )
   })
   const availableSerials = computed(() =>
@@ -277,7 +280,10 @@
         {
           key: 'currentDisplay',
           label: '本次换算入库',
-          value: `${formatNumberValue(currentDisplayQuantity.value ?? 0, 'zh-CN', { maximumFractionDigits: 6 })} ${unit}`
+          value:
+            currentDisplayQuantity.value === null
+              ? '—'
+              : `${formatNumberValue(currentDisplayQuantity.value, 'zh-CN', { maximumFractionDigits: 6 })} ${unit}`
         }
       )
     }

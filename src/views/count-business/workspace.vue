@@ -49,6 +49,7 @@
   import { ElMessage, ElTag } from 'element-plus'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { useDocumentBulkDelete } from '@/hooks/business/useDocumentBulkDelete'
+  import type { ApiFeedbackOptions } from '@/types/api/request'
   import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
   import MasterDataDeleteGuard from '@/components/business/master-data-delete-guard/index.vue'
   import { useTenantScopeFormPolicy } from '@/hooks/core/useTenantScopeFormPolicy'
@@ -324,7 +325,8 @@
     idKey: 'documentId',
     busy: () => Boolean(workingId.value),
     inspect: inspectDeleteReferences,
-    remove: (id) => changeWmsCountAdjustmentStatus(id, 'delete'),
+    remove: (id, feedback: ApiFeedbackOptions = {}) =>
+      changeWmsCountAdjustmentStatus(id, 'delete', feedback),
     refresh,
     clearSelection: () => tableRef.value?.clearSelection()
   })
@@ -491,13 +493,13 @@
         prop: 'stockType',
         label: '库存类型',
         width: 105,
-        formatter: (row) => stockTypeLabels[row.stockType] || row.stockType || '—'
+        formatter: (row) => stockTypeLabels[row.stockType] || '未识别库存类型'
       },
       {
         prop: 'stockStatus',
         label: '库存状态',
         width: 105,
-        formatter: (row) => stockStatusLabels[row.stockStatus] || row.stockStatus || '—'
+        formatter: (row) => stockStatusLabels[row.stockStatus] || '未识别库存状态'
       },
       { prop: 'keeperName', label: '仓管员', minWidth: 105 },
       {

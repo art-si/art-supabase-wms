@@ -1,4 +1,5 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
+import type { ApiFeedbackOptions } from '@/types/api/request'
 import { buildSupabasePageRange } from '@/utils/supabase/pagination'
 import type { WmsStockQuery } from './warehouse.types'
 import type {
@@ -101,7 +102,8 @@ export async function saveWmsTransferBusinessDocument(
 
 export async function changeWmsTransferBusinessStatus(
   id: string,
-  action: 'submit' | 'withdraw' | 'approve' | 'delete'
+  action: 'submit' | 'withdraw' | 'approve' | 'delete',
+  feedback: ApiFeedbackOptions = {}
 ): Promise<void> {
   await responseHandle(
     () =>
@@ -111,7 +113,9 @@ export async function changeWmsTransferBusinessStatus(
       }),
     {
       ...writeOptions,
-      showMessage: true,
+      showMessage: feedback.showMessage ?? true,
+      showErrorMessage: feedback.showErrorMessage ?? false,
+      showReferenceFeedback: feedback.showErrorMessage !== false,
       message: {
         submit: '调拨单已提交',
         withdraw: '调拨单已撤回',

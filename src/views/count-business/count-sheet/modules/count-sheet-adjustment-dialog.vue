@@ -82,7 +82,12 @@
   )
   const columns: DataSelectColumn<WmsCountMovementOption>[] = [
     { prop: 'referenceNo', label: '单据编号', minWidth: 185 },
-    { prop: 'movementType', label: '业务类型', minWidth: 135 },
+    {
+      prop: 'movementType',
+      label: '业务类型',
+      minWidth: 135,
+      dict: { code: 'mdmInventoryMovementType', display: 'text' }
+    },
     {
       prop: 'quantity',
       label: '调整数量',

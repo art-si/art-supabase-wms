@@ -448,7 +448,7 @@
           (row) => ({
             ...row,
             status: statusLabels[row.status],
-            requestType: requestTypeLabels[row.requestType] || row.requestType
+            requestType: requestTypeLabels[row.requestType] || '未识别类型'
           })
         ),
       exportColumns: [
@@ -711,7 +711,7 @@
         prop: 'requestType',
         label: '申请类型',
         minWidth: 120,
-        formatter: (row) => requestTypeLabels[row.requestType] || row.requestType
+        formatter: (row) => requestTypeLabels[row.requestType] || '未识别类型'
       },
       { prop: 'applicationDate', label: '申请日期', minWidth: 118 },
       { prop: 'documentTypeName', label: '单据类型', minWidth: 150, showOverflowTooltip: true },

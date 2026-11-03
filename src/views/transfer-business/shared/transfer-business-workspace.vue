@@ -141,6 +141,7 @@
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { useDocumentBulkDelete } from '@/hooks/business/useDocumentBulkDelete'
+  import type { ApiFeedbackOptions } from '@/types/api/request'
   import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
   import { useTenantScopeFormPolicy } from '@/hooks/core/useTenantScopeFormPolicy'
   import { useAuth } from '@/hooks/core/useAuth'
@@ -661,7 +662,8 @@
     idKey: 'documentId',
     busy: () => Boolean(workingId.value),
     inspect: inspectDeleteReferences,
-    remove: (id) => changeWmsTransferBusinessStatus(id, 'delete'),
+    remove: (id, feedback: ApiFeedbackOptions = {}) =>
+      changeWmsTransferBusinessStatus(id, 'delete', feedback),
     refresh,
     clearSelection: () => tableRef.value?.clearSelection()
   })
@@ -933,7 +935,7 @@
               label: '在途状态',
               minWidth: 105,
               formatter: (row: WorkspaceRow) =>
-                row.stepStatus ? stepStatusLabels[row.stepStatus] || row.stepStatus : '—'
+                row.stepStatus ? stepStatusLabels[row.stepStatus] || '未识别状态' : '—'
             }
           ]
         : []),

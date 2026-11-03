@@ -125,6 +125,7 @@
 
 <script setup lang="tsx">
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
+  import { formatNumberValue } from '@/utils/ui/format'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { formatWithDayjs } from '@/utils/time'
   import { ElMessage, ElTag } from 'element-plus'
@@ -132,6 +133,7 @@
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { useAuth } from '@/hooks/core/useAuth'
   import { useDocumentBulkDelete } from '@/hooks/business/useDocumentBulkDelete'
+  import type { ApiFeedbackOptions } from '@/types/api/request'
   import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
   import { useRouteDocumentDrawer } from '@/hooks/core/useRouteDocumentDrawer'
   import MasterDataDeleteGuard from '@/components/business/master-data-delete-guard/index.vue'
@@ -150,6 +152,10 @@
   import BusinessTableWorkspaceActions from '@/components/business/business-table-workspace-actions/index.vue'
   import BusinessTableIdentityCell from '@/components/business/business-table-identity-cell/index.vue'
   import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
+  import {
+    createWmsPackCompositionColumns,
+    formatWmsPackComposition
+  } from '../../shared/wms-pack-composition-columns'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type { ColumnOption } from '@/types'
   import {
@@ -171,6 +177,15 @@
 
   const commonDocumentReviewStatusOptions = useDictionaryOptions('commonDocumentReviewStatus')
   const displayModeOptions = useDictionaryOptions('commonDocumentDisplayMode')
+  const formatOptionalQuantity = (value: number | null) =>
+    value == null
+      ? '—'
+      : formatNumberValue(value, 'zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 4 })
+  const formatWorkOrderInboundQuantity = (value: number | null, unitName: string | null) => {
+    if (value == null) return '—'
+    const unit = formatUnitDisplayName(unitName, '')
+    return `${formatOptionalQuantity(value)}${unit ? ` ${unit}` : ''}`
+  }
 
   const props = defineProps<{ kind: WmsProductionMaterialKind }>()
   const { confirmAction } = useArtFeedback()
@@ -189,6 +204,22 @@
     'materialDescription',
     'materialCode',
     'specificationModel',
+    'constructionNo',
+    'keeperName',
+    'baseQuantity',
+    'baseUnitName',
+    'auxiliaryQuantity',
+    'auxiliaryUnitName',
+    'auxiliaryQuantity2',
+    'auxiliaryUnit2Name',
+    'inboundQuantity',
+    'pendingInboundQuantity',
+    'packNo',
+    'packArea',
+    'packBoardNo',
+    'packLengthMm',
+    'packPieces',
+    'packDetails',
     'inventoryUnitName',
     'warehouseName',
     'batchNo'
@@ -622,7 +653,8 @@
     idKey: 'documentId',
     busy: () => Boolean(workingId.value),
     inspect: inspectDeleteReferences,
-    remove: (id) => changeWmsProductionMaterialStatus(id, 'delete'),
+    remove: (id, feedback: ApiFeedbackOptions = {}) =>
+      changeWmsProductionMaterialStatus(id, 'delete', feedback),
     refresh,
     clearSelection: () => tableRef.value?.clearSelection(),
     canDelete: (row) => row.materialStatus === 'pending'
@@ -669,10 +701,17 @@
         (await fetchRows({ ...search.value, current: 1, size: 500, exportAll: true })).data.map(
           (row) => ({
             ...row,
+            ...(displayMode.value === 'line' && config.value.finished
+              ? {
+                  packBoardNo: formatWmsPackComposition(row, 'boardNo'),
+                  packLengthMm: formatWmsPackComposition(row, 'lengthMm'),
+                  packPieces: formatWmsPackComposition(row, 'pieces')
+                }
+              : {}),
             status:
               commonDocumentReviewStatusOptions.find((option) => option.value === row.status)
-                ?.label || row.status,
-            materialStatus: materialStatusLabels.value[row.materialStatus] || row.materialStatus
+                ?.label || '未识别状态',
+            materialStatus: materialStatusLabels.value[row.materialStatus] || '未识别物料状态'
           })
         ),
       exportColumns: [
@@ -686,6 +725,26 @@
         { title: '项目名称', key: 'projectName' },
         { title: '物料编码', key: 'materialCode' },
         { title: '物料描述', key: 'materialDescription' },
+        ...(displayMode.value === 'line' && config.value.finished
+          ? [
+              { title: '施工号', key: 'constructionNo' },
+              { title: '仓管员', key: 'keeperName' },
+              { title: '基本数量', key: 'baseQuantity' },
+              { title: '基本单位', key: 'baseUnitName' },
+              { title: '辅助数量', key: 'auxiliaryQuantity' },
+              { title: '辅助单位', key: 'auxiliaryUnitName' },
+              { title: '辅助数量2', key: 'auxiliaryQuantity2' },
+              { title: '辅助单位2', key: 'auxiliaryUnit2Name' },
+              { title: '已入库数量', key: 'inboundQuantity' },
+              { title: '未入库数量', key: 'pendingInboundQuantity' },
+              { title: '工单单位', key: 'workOrderUnitName' },
+              { title: '包号', key: 'packNo' },
+              { title: '区域', key: 'packArea' },
+              { title: '编号', key: 'packBoardNo' },
+              { title: '长度 mm', key: 'packLengthMm' },
+              { title: '块数', key: 'packPieces' }
+            ]
+          : []),
         ...(config.value.finished
           ? [{ title: '工单数量', key: 'workOrderQuantity' }]
           : [{ title: '申请数量', key: 'requestedQuantity' }]),
@@ -913,6 +972,86 @@
         ? [{ prop: 'materialCode', label: '物料编码', minWidth: 145, showOverflowTooltip: true }]
         : []),
       { prop: 'specificationModel', label: '规格型号', minWidth: 140, showOverflowTooltip: true },
+      ...(config.value.finished
+        ? [
+            { prop: 'constructionNo', label: '施工号', minWidth: 130, showOverflowTooltip: true },
+            {
+              prop: 'baseQuantity',
+              label: '基本数量',
+              minWidth: 120,
+              align: 'right' as const,
+              formatter: (row: WmsProductionMaterialListRow) =>
+                formatOptionalQuantity(row.baseQuantity)
+            },
+            {
+              prop: 'baseUnitName',
+              label: '基本单位',
+              minWidth: 100,
+              formatter: (row: WmsProductionMaterialListRow) =>
+                formatUnitDisplayName(row.baseUnitName)
+            },
+            {
+              prop: 'auxiliaryQuantity',
+              label: '辅助数量',
+              minWidth: 120,
+              align: 'right' as const,
+              formatter: (row: WmsProductionMaterialListRow) =>
+                formatOptionalQuantity(row.auxiliaryQuantity)
+            },
+            {
+              prop: 'auxiliaryUnitName',
+              label: '辅助单位',
+              minWidth: 100,
+              formatter: (row: WmsProductionMaterialListRow) =>
+                formatUnitDisplayName(row.auxiliaryUnitName)
+            },
+            {
+              prop: 'auxiliaryQuantity2',
+              label: '辅助数量2',
+              minWidth: 120,
+              align: 'right' as const,
+              formatter: (row: WmsProductionMaterialListRow) =>
+                formatOptionalQuantity(row.auxiliaryQuantity2)
+            },
+            {
+              prop: 'auxiliaryUnit2Name',
+              label: '辅助单位2',
+              minWidth: 110,
+              formatter: (row: WmsProductionMaterialListRow) =>
+                formatUnitDisplayName(row.auxiliaryUnit2Name)
+            },
+            { prop: 'keeperName', label: '仓管员', minWidth: 115, showOverflowTooltip: true },
+            {
+              prop: 'inboundQuantity',
+              label: '已入库数量',
+              minWidth: 120,
+              align: 'right' as const,
+              headerTooltip: '工单级累计净入库数量，完工退库已扣减；使用工单生产单位。',
+              formatter: (row: WmsProductionMaterialListRow) => (
+                <span title="当前生产工单累计净入库数量" class="tabular-nums">
+                  {formatWorkOrderInboundQuantity(row.inboundQuantity, row.workOrderUnitName)}
+                </span>
+              )
+            },
+            {
+              prop: 'pendingInboundQuantity',
+              label: '未入库数量',
+              minWidth: 120,
+              align: 'right' as const,
+              headerTooltip:
+                '工单数量减去当前累计净入库数量，不按本行实际数量计算；使用工单生产单位。',
+              formatter: (row: WmsProductionMaterialListRow) => (
+                <span title="工单数量减去当前累计净入库数量" class="tabular-nums">
+                  {formatWorkOrderInboundQuantity(
+                    row.pendingInboundQuantity,
+                    row.workOrderUnitName
+                  )}
+                </span>
+              )
+            },
+            ...createWmsPackCompositionColumns<WmsProductionMaterialListRow>()
+          ]
+        : []),
       {
         prop: 'inventoryUnitName',
         label: '库存单位',
@@ -959,6 +1098,22 @@
       'materialStatus',
       'workOrderQuantity',
       'specificationModel',
+      'constructionNo',
+      'baseQuantity',
+      'baseUnitName',
+      'auxiliaryQuantity',
+      'auxiliaryUnitName',
+      'auxiliaryQuantity2',
+      'auxiliaryUnit2Name',
+      'keeperName',
+      'inboundQuantity',
+      'pendingInboundQuantity',
+      'packNo',
+      'packArea',
+      'packBoardNo',
+      'packLengthMm',
+      'packPieces',
+      'packDetails',
       'inventoryUnitName',
       'warehouseName',
       'batchNo'

@@ -1217,7 +1217,7 @@
     if (key === 'remainingQuantity')
       return Math.max(0, Number(row.quantity) - Number(row.returnedQuantity)).toFixed(4)
     if (key === 'ownerType') return ownerLabels[row.ownerType || 'self'] || '—'
-    if (key === 'stockStatus') return statusLabels[row.stockStatus || ''] || row.stockStatus || '—'
+    if (key === 'stockStatus') return statusLabels[row.stockStatus || ''] || '未识别库存状态'
     if (key === 'stockType')
       return (
         stockTypeDisplayOptions.value.find((option) => option.value === row.stockType)?.label ||

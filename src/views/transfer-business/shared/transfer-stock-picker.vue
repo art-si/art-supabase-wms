@@ -243,7 +243,7 @@
       label: '货主类型',
       minWidth: 100,
       formatter: (row) =>
-        ({ self: '自有', supplier: '供应商', customer: '客户' })[row.ownerType] || row.ownerType
+        ({ self: '自有', supplier: '供应商', customer: '客户' })[row.ownerType] || '未识别货主类型'
     },
     { prop: 'ownerName', label: '货主', minWidth: 130 },
     {

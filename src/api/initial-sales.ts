@@ -1,4 +1,5 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
+import type { ApiFeedbackOptions } from '@/types/api/request'
 import { omit } from 'lodash-es'
 import { buildSupabasePageRange } from '@/utils/supabase/pagination'
 import type {
@@ -144,7 +145,8 @@ export async function fetchWmsSalesReturnRemaining(
 
 export async function changeWmsInitialSalesStatus(
   id: string,
-  action: 'submit' | 'approve' | 'withdraw' | 'delete'
+  action: 'submit' | 'approve' | 'withdraw' | 'delete',
+  feedback: ApiFeedbackOptions = {}
 ): Promise<void> {
   await responseHandle(
     () =>
@@ -154,6 +156,9 @@ export async function changeWmsInitialSalesStatus(
       }),
     {
       ...writeOptions,
+      showMessage: feedback.showMessage ?? true,
+      showErrorMessage: feedback.showErrorMessage ?? true,
+      showReferenceFeedback: feedback.showErrorMessage !== false,
       message:
         action === 'withdraw'
           ? '单据已撤回，可继续修改'

@@ -1,8 +1,10 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
+import type { ApiFeedbackOptions } from '@/types/api/request'
 import { isPlainObjectRecord } from '@/utils/type-guards'
 import { uniq } from 'lodash-es'
 import { buildOrIlikeFilter } from '@/utils/supabase/search'
 import { buildSupabasePageRange, fetchAllRangePages } from '@/utils/supabase/pagination'
+import { isWmsPackComposition } from './packing-composition'
 import type { WmsMaterialOption } from './warehouse.types'
 import type {
   WmsProductionBomItem,
@@ -76,7 +78,11 @@ export async function fetchWmsProductionMaterialPage(query: {
     () => request.range(pageRange.from, pageRange.to),
     readOptions
   )
-  return { data: data ?? [], total: total ?? 0 }
+  const rows = data ?? []
+  if (rows.some((row) => !isWmsPackComposition(row))) {
+    throw new Error('生产单据排包明细格式异常，请联系管理员核查')
+  }
+  return { data: rows, total: total ?? 0 }
 }
 
 export async function fetchWmsProductionMaterialDocument(
@@ -208,7 +214,8 @@ export async function saveWmsProductionMaterial(
 
 export async function changeWmsProductionMaterialStatus(
   id: string,
-  action: 'submit' | 'approve' | 'withdraw' | 'delete' | 'close' | 'void'
+  action: 'submit' | 'approve' | 'withdraw' | 'delete' | 'close' | 'void',
+  feedback: ApiFeedbackOptions = {}
 ): Promise<void> {
   const messages = {
     submit: '生产单据已提交',
@@ -224,7 +231,13 @@ export async function changeWmsProductionMaterialStatus(
         p_document_id: id,
         p_action: action
       }),
-    { ...writeOptions, showMessage: true, message: messages[action] }
+    {
+      ...writeOptions,
+      showMessage: feedback.showMessage ?? true,
+      showErrorMessage: feedback.showErrorMessage ?? true,
+      showReferenceFeedback: feedback.showErrorMessage !== false,
+      message: messages[action]
+    }
   )
 }
 

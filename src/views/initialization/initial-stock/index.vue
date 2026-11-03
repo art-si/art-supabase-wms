@@ -51,6 +51,7 @@
   import { useAuth } from '@/hooks/core/useAuth'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { useDocumentBulkDelete } from '@/hooks/business/useDocumentBulkDelete'
+  import type { ApiFeedbackOptions } from '@/types/api/request'
   import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
   import MasterDataDeleteGuard from '@/components/business/master-data-delete-guard/index.vue'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
@@ -191,7 +192,8 @@
     idKey: 'id',
     busy: () => Boolean(workingId.value),
     inspect: inspectDeleteReferences,
-    remove: (id) => changeWmsInitialStockStatus(id, 'delete'),
+    remove: (id, feedback: ApiFeedbackOptions = {}) =>
+      changeWmsInitialStockStatus(id, 'delete', feedback),
     refresh,
     clearSelection: () => tableRef.value?.clearSelection()
   })

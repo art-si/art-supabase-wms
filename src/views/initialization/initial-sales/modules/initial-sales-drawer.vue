@@ -432,7 +432,7 @@
                     :label="option.label"
                     :value="option.value" /></ElSelect
                 ><span v-else>{{
-                  stockTypes.find((item) => item.value === row.stockType)?.label || row.stockType
+                  stockTypes.find((item) => item.value === row.stockType)?.label || '未识别库存类型'
                 }}</span></template
               >
               <template #ownerType="{ row }"
@@ -446,7 +446,7 @@
                     :label="option.label"
                     :value="option.value" /></ElSelect
                 ><span v-else>{{
-                  ownerTypes.find((item) => item.value === row.ownerType)?.label || row.ownerType
+                  ownerTypes.find((item) => item.value === row.ownerType)?.label || '未识别货主类型'
                 }}</span></template
               >
               <template #ownerId="{ row }"

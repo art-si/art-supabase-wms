@@ -96,6 +96,7 @@
   import { WMS_FINISHED_INBOUND_PATH } from '@/router/business-paths'
   import { RouterLink } from 'vue-router'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
+  import { createWmsPackCompositionColumns } from '../../shared/wms-pack-composition-columns'
   import {
     fetchWmsInventoryLocations,
     fetchWmsInventoryReportPage,
@@ -124,28 +125,29 @@
       title: '即时库存',
       eyebrow: 'WAREHOUSE STOCK',
       description:
-        '查看当前在库批次。日期区间按最近库存变动时间筛选，仓库、库区和库位与右侧记录联动。',
+        '查看当前在库批次。包号和板材规格显示原始排包组成；日期区间按最近库存变动时间筛选。',
       icon: 'ri:archive-stack-line',
       permission: 'WmsStock:View'
     },
     movement: {
       title: '库存流水',
       eyebrow: 'STOCK MOVEMENTS',
-      description: '按业务日期追溯每笔入库、出库和调拨；调拨在来源与目标仓储位置分别列示。',
+      description:
+        '按业务日期追溯每笔库存变动，包内板材显示原始排包组成；调拨在来源与目标位置分别列示。',
       icon: 'ri:file-list-3-line',
       permission: 'WmsInventoryLedger:View'
     },
     ledger: {
       title: '库存台账',
       eyebrow: 'STOCK BALANCE LEDGER',
-      description: '按物料、批次和仓储位置核对期初、入库、出库与结存数量。',
+      description: '按物料、批次和仓储位置核对期初、收发与结存；包内板材显示原始排包组成。',
       icon: 'ri:book-2-line',
       permission: 'WmsStockLedger:View'
     },
     'receipt-issue': {
       title: '物料收发明细表',
       eyebrow: 'MATERIAL RECEIPTS & ISSUES',
-      description: '逐笔查看物料收发记录，按仓库和库区核对入库与出库数量。',
+      description: '逐笔查看物料收发记录，核对仓储位置与收发数量；包内板材显示原始排包组成。',
       icon: 'ri:exchange-2-line',
       permission: 'WmsMaterialReceiptIssue:View'
     }
@@ -586,6 +588,7 @@
         formatter: (row) => formatCompactNumberValue(row.reservedQuantity, 3)
       },
       { prop: 'batchNo', label: '批号', minWidth: 150, showOverflowTooltip: true },
+      ...createWmsPackCompositionColumns<WmsInventoryReportRow>(),
       {
         prop: 'projectName',
         label: '项目全称',

@@ -1,4 +1,5 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
+import type { ApiFeedbackOptions } from '@/types/api/request'
 import { fetchWmsInventoryOrganizationOptions } from '@/api/wms-inventory-organization'
 import { buildOrIlikeFilter } from '@/utils/supabase/search'
 import { buildSupabasePageRange } from '@/utils/supabase/pagination'
@@ -133,7 +134,8 @@ export async function saveWmsInitialStock(payload: WmsInitialStockPayload): Prom
 
 export async function changeWmsInitialStockStatus(
   documentId: string,
-  action: 'submit' | 'approve' | 'withdraw' | 'delete'
+  action: 'submit' | 'approve' | 'withdraw' | 'delete',
+  feedback: ApiFeedbackOptions = {}
 ): Promise<void> {
   await responseHandle(
     () =>
@@ -143,6 +145,9 @@ export async function changeWmsInitialStockStatus(
       }),
     {
       ...writeOptions,
+      showMessage: feedback.showMessage ?? true,
+      showErrorMessage: feedback.showErrorMessage ?? true,
+      showReferenceFeedback: feedback.showErrorMessage !== false,
       message:
         action === 'withdraw'
           ? '单据已撤回，可继续修改'
