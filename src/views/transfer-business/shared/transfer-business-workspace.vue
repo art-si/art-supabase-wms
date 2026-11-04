@@ -278,14 +278,12 @@
   })
   watch(displayMode, () => void refresh())
   const displayModeOptions = useDictionaryOptions('commonDocumentDisplayMode')
-  const statusLabels = { draft: '暂存', submitted: '已提交', approved: '已审核' } as const
-  const stepStatusLabels: Record<string, string> = {
-    draft: '暂存',
-    in_transit: '在途',
-    received: '已收货',
-    returned: '已退回',
-    cancelled: '已取消'
-  }
+  const reviewStatusOptions = useDictionaryOptions('commonDocumentReviewStatus')
+  const stepStatusOptions = useDictionaryOptions('wmsStepTransferStatus')
+  const statusLabel = (status: string): string =>
+    reviewStatusOptions.find((item) => item.value === status)?.label || status
+  const stepStatusLabel = (status: string): string =>
+    stepStatusOptions.find((item) => item.value === status)?.label || status
   const searchItems = computed<SearchFormItem[]>(() => [
     {
       label: '展示方式',
@@ -301,7 +299,9 @@
       props: {
         clearable: true,
         placeholder: '全部状态',
-        options: Object.entries(statusLabels).map(([value, label]) => ({ value, label }))
+        options: reviewStatusOptions.filter((item) =>
+          ['draft', 'submitted', 'approved'].includes(item.value)
+        )
       }
     },
     {
@@ -698,7 +698,7 @@
         (await fetchRows({ ...search.value, current: 1, size: 500, exportAll: true })).data.map(
           (row) => ({
             ...row,
-            statusLabel: statusLabels[row.status],
+            statusLabel: statusLabel(row.status),
             quantity: row.displayQuantity ?? row.line.quantity,
             remaining: row.displayRemaining ?? remainingQuantity(row)
           })
@@ -884,7 +884,7 @@
                   : 'info'
             }
           >
-            {statusLabels[row.status]}
+            {statusLabel(row.status)}
           </ElTag>
         )
       },
@@ -935,7 +935,7 @@
               label: '在途状态',
               minWidth: 105,
               formatter: (row: WorkspaceRow) =>
-                row.stepStatus ? stepStatusLabels[row.stepStatus] || '未识别状态' : '—'
+                row.stepStatus ? stepStatusLabel(row.stepStatus) : '—'
             }
           ]
         : []),

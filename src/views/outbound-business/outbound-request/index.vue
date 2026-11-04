@@ -92,9 +92,9 @@
 <script setup lang="tsx">
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { formatDateTimeValue } from '@/utils/ui/format'
-  import { issueRequestTypeLabels as requestTypeLabels } from '@wms/views/shared/issue-request-types'
+  import { supportedIssueRequestTypes } from '@wms/views/shared/issue-request-types'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
-  import { ElMessage, ElTag } from 'element-plus'
+  import { ElMessage } from 'element-plus'
   import { useRoute, useRouter } from 'vue-router'
   import { useAuth } from '@/hooks/core/useAuth'
   import { useRouteDocumentDrawer } from '@/hooks/core/useRouteDocumentDrawer'
@@ -128,6 +128,7 @@
     paginateDetailRows
   } from '@/utils/business/document-detail-list'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
+  import { useUserStore } from '@/store/modules/user'
   import {
     cancelWmsIssueRequest,
     copyWmsIssueRequest,
@@ -153,6 +154,7 @@
   import IssueRequestDetailDrawer from './modules/issue-request-detail-drawer.vue'
 
   defineOptions({ name: 'WmsIssueRequest' })
+  const userStore = useUserStore()
   const props = withDefaults(defineProps<{ displayTitle?: string }>(), {
     displayTitle: '出库申请单'
   })
@@ -400,16 +402,28 @@
   })
   watch(displayMode, () => void refresh())
   const displayModeOptions = useDictionaryOptions('commonDocumentDisplayMode')
+  const requestTypeDictionaryOptions = useDictionaryOptions('wmsIssueReason')
+  const requestTypeOptions = computed(() =>
+    requestTypeDictionaryOptions.filter((option) =>
+      supportedIssueRequestTypes.some((type) => type === option.value)
+    )
+  )
+  const statusDictionaryOptions = useDictionaryOptions('wmsIssueRequestStatus')
+  const supportedStatuses: readonly WmsIssueRequestStatus[] = [
+    'draft',
+    'submitted',
+    'approved',
+    'partially_issued',
+    'fulfilled',
+    'rejected',
+    'cancelled'
+  ]
+  const statusOptions = computed(() =>
+    statusDictionaryOptions.filter((option) =>
+      supportedStatuses.some((status) => status === option.value)
+    )
+  )
   const filterTenantId = computed(() => effectiveTenantId.value || undefined)
-  const statusLabels: Record<WmsIssueRequestStatus, string> = {
-    draft: '暂存',
-    submitted: '待审核',
-    approved: '待领料',
-    partially_issued: '部分领料',
-    fulfilled: '已领完',
-    rejected: '已驳回',
-    cancelled: '已取消'
-  }
   const { bulkDeleteAction, bulkDeleting } = useDocumentBulkDelete({
     permission: 'WmsIssueRequest:Delete',
     resourceLabel: () => displayTitle.value,
@@ -443,14 +457,31 @@
       permission: 'WmsIssueRequest:Export',
       buttonProps: { type: 'warning', plain: true },
       exportFilename: displayTitle.value,
-      exportData: async () =>
-        (await fetchRows({ ...search.value, current: 1, size: 500, exportAll: true })).data.map(
-          (row) => ({
-            ...row,
-            status: statusLabels[row.status],
-            requestType: requestTypeLabels[row.requestType] || '未识别类型'
-          })
-        ),
+      exportData: async () => {
+        const rows = (await fetchRows({ ...search.value, current: 1, size: 500, exportAll: true }))
+          .data
+        await Promise.all([
+          ...uniq(rows.map((row) => row.status)).map((value) =>
+            userStore.ensureDictDisplayItemLoaded('wmsIssueRequestStatus', value)
+          ),
+          ...uniq(rows.map((row) => row.requestType)).map((value) =>
+            userStore.ensureDictDisplayItemLoaded('wmsIssueReason', value)
+          )
+        ])
+        return rows.map((row) => ({
+          ...row,
+          status: userStore.getDictDisplayLabelByValue(
+            'wmsIssueRequestStatus',
+            row.status,
+            '待核对'
+          ),
+          requestType: userStore.getDictDisplayLabelByValue(
+            'wmsIssueReason',
+            row.requestType,
+            '待核对'
+          )
+        }))
+      },
       exportColumns: [
         { title: '单据编号', key: 'documentNo' },
         { title: '申请类型', key: 'requestType' },
@@ -478,7 +509,7 @@
       props: {
         clearable: true,
         placeholder: '全部状态',
-        options: Object.entries(statusLabels).map(([value, label]) => ({ value, label }))
+        options: statusOptions.value
       }
     },
     {
@@ -488,7 +519,7 @@
       props: {
         clearable: true,
         placeholder: '全部类型',
-        options: Object.entries(requestTypeLabels).map(([value, label]) => ({ value, label }))
+        options: requestTypeOptions.value
       }
     },
     {
@@ -711,7 +742,7 @@
         prop: 'requestType',
         label: '申请类型',
         minWidth: 120,
-        formatter: (row) => requestTypeLabels[row.requestType] || '未识别类型'
+        dict: { code: 'wmsIssueReason', display: 'text' }
       },
       { prop: 'applicationDate', label: '申请日期', minWidth: 118 },
       { prop: 'documentTypeName', label: '单据类型', minWidth: 150, showOverflowTooltip: true },
@@ -720,22 +751,7 @@
         prop: 'status',
         label: '状态',
         width: 115,
-        formatter: (row) => (
-          <ElTag
-            type={
-              row.status === 'fulfilled'
-                ? 'success'
-                : row.status === 'partially_issued'
-                  ? 'warning'
-                  : row.status === 'approved'
-                    ? 'primary'
-                    : 'info'
-            }
-            size="small"
-          >
-            {statusLabels[row.status]}
-          </ElTag>
-        )
+        dict: { code: 'wmsIssueRequestStatus', display: 'auto' }
       },
       { prop: 'applicantName', label: '申请人', minWidth: 110 },
       { prop: 'departmentName', label: '领用部门', minWidth: 150, showOverflowTooltip: true },

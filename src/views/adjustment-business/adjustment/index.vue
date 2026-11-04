@@ -71,17 +71,24 @@
     fetchWmsProjectSections,
     fetchWmsProjects,
     type WmsAdjustmentDocument,
+    type WmsAdjustmentType,
     type WmsProject,
     type WmsProjectSection,
     type WmsStockQuery
   } from '@wms/api'
   import AdjustmentDialog from './modules/adjustment-dialog.vue'
-  import { adjustmentLabel, adjustmentOptions } from './adjustment-options'
+  import { isSupportedAdjustmentType } from './adjustment-types'
 
   defineOptions({ name: 'WmsAdjustment' })
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const tableRef = ref<ArtTableQueryExpose>()
   const conditionOptions = useDictionaryOptions('wmsAdjustmentCondition')
+  const dictionaryAdjustmentOptions = useDictionaryOptions('wmsAdjustmentType')
+  const adjustmentOptions = computed(() =>
+    dictionaryAdjustmentOptions.filter((item) => isSupportedAdjustmentType(item.value))
+  )
+  const adjustmentLabel = (type: WmsAdjustmentType): string =>
+    adjustmentOptions.value.find((item) => item.value === type)?.label || '库存调整'
   type AdjustmentListRow = WmsAdjustmentDocument & {
     detailRowId?: string
     detailLine?: 'source' | 'target'
@@ -145,7 +152,7 @@
       label: '业务类型',
       key: 'status',
       type: 'select',
-      props: { clearable: true, placeholder: '全部类型', options: adjustmentOptions }
+      props: { clearable: true, placeholder: '全部类型', options: adjustmentOptions.value }
     },
     {
       label: '项目',

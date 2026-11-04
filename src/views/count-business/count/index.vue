@@ -267,12 +267,8 @@
       props: { clearable: true, placeholder: '输入盘点单号' }
     }
   ])
-  const statusLabels: Record<WmsCountPlan['status'], string> = {
-    draft: '待审核',
-    counting: '盘点中',
-    posted: '已记账',
-    cancelled: '已取消'
-  }
+  const statusLabel = (status: WmsCountPlan['status']): string =>
+    wmsCountStatusOptions.find((item) => item.value === status)?.label || status
   function projectName(id: string | null): string {
     return id ? projects.value.find((row) => row.id === id)?.projectName || '历史项目' : '全仓范围'
   }
@@ -416,7 +412,7 @@
             }
             size="small"
           >
-            {statusLabels[row.status]}
+            {statusLabel(row.status)}
           </ElTag>
         )
       },

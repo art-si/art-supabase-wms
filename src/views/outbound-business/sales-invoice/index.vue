@@ -81,6 +81,7 @@
   import type { ColumnOption } from '@/types'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { useAuth } from '@/hooks/core/useAuth'
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { useRouteDocumentDrawer } from '@/hooks/core/useRouteDocumentDrawer'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
@@ -103,10 +104,9 @@
   const editing = ref(false)
   const loadError = ref(false)
   const form = ref({ issueDate: '', remark: '' })
-  const invoiceTypeLabels: Record<WmsSalesInvoice['invoiceType'], string> = {
-    ordinary: '普通发票',
-    special: '专用发票'
-  }
+  const invoiceTypeOptions = useDictionaryOptions('wmsSalesInvoiceType')
+  const invoiceTypeLabel = (type: WmsSalesInvoice['invoiceType']): string =>
+    invoiceTypeOptions.find((item) => item.value === type)?.label || type
   let requestVersion = 0
   const searchItems: SearchFormItem[] = [
     {
@@ -131,7 +131,7 @@
     {
       key: 'invoiceType',
       label: '发票类型',
-      value: (data: WmsSalesInvoice) => invoiceTypeLabels[data.invoiceType]
+      value: (data: WmsSalesInvoice) => invoiceTypeLabel(data.invoiceType)
     },
     {
       key: 'redLetter',
@@ -246,7 +246,7 @@
         prop: 'invoiceType',
         label: '发票类型',
         minWidth: 120,
-        formatter: (row) => invoiceTypeLabels[row.invoiceType]
+        formatter: (row) => invoiceTypeLabel(row.invoiceType)
       },
       {
         prop: 'redLetter',

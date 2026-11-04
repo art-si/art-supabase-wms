@@ -137,7 +137,7 @@
                 class="flex min-w-0 flex-col gap-1 py-3 text-sm sm:flex-row sm:justify-between sm:gap-3"
               >
                 <span class="min-w-0 break-all"
-                  >{{ formatWmsMovementType(item.movement?.movementType) }} ·
+                  >{{ formatWmsMovementType(item.movement?.movementType, movementTypeOptions) }} ·
                   {{ item.movement?.referenceNo || '无单号' }}</span
                 >
                 <time class="shrink-0 text-[var(--el-text-color-secondary)]">{{
@@ -166,6 +166,7 @@
 
 <script setup lang="tsx">
   import { formatWmsMovementType } from '@/utils/wms/movement-display'
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { formatWmsSerialParent } from '@/utils/wms/serial-display'
   import { formatDateTimeValue } from '@/utils/ui/format'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
@@ -206,6 +207,7 @@
   import SerialActionDialog from './modules/serial-action-dialog.vue'
 
   defineOptions({ name: 'WmsSerialTrace' })
+  const movementTypeOptions = useDictionaryOptions('wmsInventoryMovementType')
   const { confirmAction } = useArtFeedback()
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const tableRef = ref<ArtTableQueryExpose>()

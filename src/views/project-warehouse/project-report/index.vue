@@ -188,6 +188,7 @@
 <script setup lang="tsx">
   import { ElButton } from 'element-plus'
   import { formatWmsMovementType } from '@/utils/wms/movement-display'
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { formatWmsSerialParent } from '@/utils/wms/serial-display'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
@@ -225,6 +226,7 @@
   } from '@wms/api'
 
   defineOptions({ name: 'WmsProjectReport' })
+  const movementTypeOptions = useDictionaryOptions('wmsInventoryMovementType')
   type ReportTab =
     'stock' | 'materials' | 'materialWip' | 'packs' | 'orders' | 'movements' | 'serials'
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
@@ -771,7 +773,7 @@
         prop: 'movementType',
         label: '业务类型',
         minWidth: 130,
-        formatter: (row) => formatWmsMovementType(row.movementType)
+        formatter: (row) => formatWmsMovementType(row.movementType, movementTypeOptions)
       },
       {
         prop: 'material',

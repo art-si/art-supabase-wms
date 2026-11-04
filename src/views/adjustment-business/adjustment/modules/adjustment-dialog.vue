@@ -71,9 +71,13 @@
     type WmsStockBatch,
     type WmsUnitOption
   } from '@wms/api'
-  import { adjustmentOptions } from '../adjustment-options'
+  import { isSupportedAdjustmentType } from '../adjustment-types'
 
   const wmsAdjustmentConditionOptions = useDictionaryOptions('wmsAdjustmentCondition')
+  const dictionaryAdjustmentOptions = useDictionaryOptions('wmsAdjustmentType')
+  const adjustmentOptions = computed(() =>
+    dictionaryAdjustmentOptions.filter((item) => isSupportedAdjustmentType(item.value))
+  )
 
   interface Context {
     tenantId?: string
@@ -155,7 +159,7 @@
       key: 'adjustmentType',
       label: '调整类型',
       type: 'select',
-      options: adjustmentOptions,
+      options: adjustmentOptions.value,
       props: { onChange: onTypeChange }
     },
     {

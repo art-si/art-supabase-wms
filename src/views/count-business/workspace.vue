@@ -163,14 +163,13 @@
     }
   } as const
   const permission = computed(() => permissionByKind[props.kind])
-  const statusLabels = { draft: '暂存', submitted: '已提交', approved: '已审核' } as const
+  const reviewStatusOptions = useDictionaryOptions('commonDocumentReviewStatus')
+  const statusLabel = (status: string): string =>
+    reviewStatusOptions.find((item) => item.value === status)?.label || status
   const stockTypeLabels = WMS_STOCK_TYPE_LABELS
-  const stockStatusLabels: Record<string, string> = {
-    available: '可用',
-    scrap: '报废',
-    defective: '不良',
-    frozen: '冻结'
-  }
+  const stockStatusOptions = useDictionaryOptions('wmsStockStatus')
+  const stockStatusLabel = (status: string): string =>
+    stockStatusOptions.find((item) => item.value === status)?.label || status
   const search = ref({
     displayMode: 'document' as 'document' | 'line',
     status: '',
@@ -202,7 +201,9 @@
       props: {
         clearable: true,
         placeholder: '全部状态',
-        options: Object.entries(statusLabels).map(([value, label]) => ({ value, label }))
+        options: reviewStatusOptions.filter((item) =>
+          ['draft', 'submitted', 'approved'].includes(item.value)
+        )
       }
     },
     {
@@ -355,7 +356,7 @@
       exportFilename: title.value,
       exportData: async () =>
         (await fetchRows({ ...search.value, current: 1, size: 500, exportAll: true })).data.map(
-          (row) => ({ ...row, status: statusLabels[row.status] })
+          (row) => ({ ...row, status: statusLabel(row.status) })
         ),
       exportColumns: [
         { title: '单据编号', key: 'documentNo' },
@@ -457,7 +458,7 @@
                   : 'info'
             }
           >
-            {statusLabels[row.status]}
+            {statusLabel(row.status)}
           </ElTag>
         )
       },
@@ -499,7 +500,7 @@
         prop: 'stockStatus',
         label: '库存状态',
         width: 105,
-        formatter: (row) => stockStatusLabels[row.stockStatus] || '未识别库存状态'
+        formatter: (row) => stockStatusLabel(row.stockStatus)
       },
       { prop: 'keeperName', label: '仓管员', minWidth: 105 },
       {

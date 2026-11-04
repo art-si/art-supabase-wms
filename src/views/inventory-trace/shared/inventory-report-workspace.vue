@@ -73,6 +73,7 @@
 
 <script setup lang="tsx">
   import { formatWmsMovementType } from '@/utils/wms/movement-display'
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import BusinessWorkspaceHeader from '@/components/business/business-workspace-header/index.vue'
   import BusinessTableWorkspaceActions from '@/components/business/business-table-workspace-actions/index.vue'
@@ -174,6 +175,7 @@
     batchNo: '',
     summaryValues: ['inventoryQuantity', 'basicQuantity']
   })
+  const movementTypeOptions = useDictionaryOptions('wmsInventoryMovementType')
 
   const summaryOptions: Array<{ label: string; value: WmsInventorySummaryValue }> = [
     { label: '库存数量', value: 'inventoryQuantity' },
@@ -445,7 +447,7 @@
           prop: 'documentType',
           label: '单据类型',
           minWidth: 145,
-          formatter: (row) => formatWmsMovementType(row.documentType)
+          formatter: (row) => formatWmsMovementType(row.documentType, movementTypeOptions)
         },
         {
           prop: 'documentNo',
