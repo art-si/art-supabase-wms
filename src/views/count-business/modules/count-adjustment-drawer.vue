@@ -418,6 +418,7 @@
   import { isWmsBusinessTypeAvailable } from '@/utils/wms/business-type'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { useBreakpoints } from '@vueuse/core'
+  import dayjs from 'dayjs'
   import { useWarehouseRowBinLoader } from '@/hooks/core/useWarehouseBinOptions'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { ElMessage } from 'element-plus'
@@ -648,7 +649,7 @@
   const organizationTreeUtils = new TreeUtils({ parentKey: 'parentId' })
   const availableOrganizations = computed(() => organizations.value.filter((row) => row.enabledOn))
   const businessMenuId = ref('')
-  const today = () => new Date().toISOString().slice(0, 10)
+  const today = () => dayjs().format('YYYY-MM-DD')
   const form = ref({
     id: '',
     documentNo: '保存后自动生成',

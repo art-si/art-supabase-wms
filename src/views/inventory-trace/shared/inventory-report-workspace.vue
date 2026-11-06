@@ -253,15 +253,47 @@
     search.value.binId = undefined
   }
 
-  async function loadLocations(): Promise<void> {
+  function selectedLocationStillExists(nextLocations: WmsInventoryLocations): boolean {
+    const warehouseId = search.value.warehouseId
+    if (!warehouseId) return true
+    if (!nextLocations.warehouses.some((warehouse) => warehouse.id === warehouseId)) return false
+    const zoneId = search.value.zoneId
+    if (
+      zoneId &&
+      !nextLocations.zones.some((zone) => zone.id === zoneId && zone.warehouseId === warehouseId)
+    ) {
+      return false
+    }
+    const binId = search.value.binId
+    return (
+      !binId ||
+      nextLocations.bins.some(
+        (bin) =>
+          bin.id === binId &&
+          bin.warehouseId === warehouseId &&
+          (bin.zoneId || undefined) === zoneId
+      )
+    )
+  }
+
+  async function loadLocations(refreshOnInvalidSelection = true): Promise<boolean | null> {
     const request = ++locationRequest
     locationLoading.value = true
     locationError.value = false
     try {
       const nextLocations = await fetchWmsInventoryLocations(effectiveTenantId.value || undefined)
-      if (request === locationRequest) locations.value = nextLocations
+      if (request !== locationRequest) return null
+      locations.value = nextLocations
+      if (!selectedLocationStillExists(nextLocations)) {
+        resetLocation()
+        if (refreshOnInvalidSelection) void tableRef.value?.getData()
+        return true
+      }
+      return false
     } catch {
-      if (request === locationRequest) locationError.value = true
+      if (request !== locationRequest) return null
+      locationError.value = true
+      return false
     } finally {
       if (request === locationRequest) locationLoading.value = false
     }
@@ -684,13 +716,26 @@
     void tableRef.value?.getData()
   })
   let returningToReport = false
+  let reportActivation = 0
   onDeactivated(() => {
     returningToReport = true
+    reportActivation += 1
   })
   onActivated(() => {
     if (!returningToReport) return
     returningToReport = false
-    void refresh()
+    const activation = ++reportActivation
+    const reportAtActivation = reportRequest
+    void loadLocations(false).then((selectionInvalidated) => {
+      if (
+        activation !== reportActivation ||
+        selectionInvalidated === null ||
+        reportRequest !== reportAtActivation
+      ) {
+        return
+      }
+      return selectionInvalidated ? tableRef.value?.getData() : refresh()
+    })
   })
   onMounted(() => void loadLocations())
 </script>
