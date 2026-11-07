@@ -1105,10 +1105,18 @@ export async function fetchWmsTransferRequest(id: string): Promise<WmsTransferRe
   return data ?? []
 }
 
-export async function saveWmsTransferRequest(payload: WmsTransferRequestInput): Promise<string> {
+export async function saveWmsTransferRequest(
+  payload: WmsTransferRequestInput,
+  feedback: ApiFeedbackOptions = {}
+): Promise<string> {
   const { data } = await responseHandle<string>(
     () => supabase.rpc('wms_save_transfer_request_secure', { p_payload: keysToSnakeDeep(payload) }),
-    { ...writeOptions, showMessage: true, message: '调拨申请已暂存' }
+    {
+      ...writeOptions,
+      showMessage: feedback.showMessage ?? true,
+      showErrorMessage: feedback.showErrorMessage ?? true,
+      message: '调拨申请已暂存'
+    }
   )
   if (!data) throw new Error('调拨申请保存失败')
   return data
