@@ -14,7 +14,7 @@
       <ArtDescriptions v-if="line" :data="line" :items="descriptionItems" :columns="3" />
       <div v-if="editable" class="flex justify-end">
         <ArtExcelImport
-          v-auth="'WmsCountSheet:ImportSerial'"
+          v-if="hasAuth('WmsCountSheet:ImportSerial')"
           icon="ri:file-upload-line"
           :context-key="`${line?.id || ''}:${recount}`"
           :button-props="{ type: 'primary', plain: true }"
@@ -188,6 +188,7 @@
     }
   }
   function importSerials(rows: Array<Record<string, unknown>>): void {
+    if (!editable.value || !hasAuth('WmsCountSheet:ImportSerial')) return
     const values = rows
       .map((row) => {
         const key = Object.keys(row).find((name) =>
