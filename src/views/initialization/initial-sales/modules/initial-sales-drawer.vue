@@ -601,6 +601,10 @@
 <script setup lang="ts">
   import { getWmsMaterialUnitFactor } from '@/utils/wms/material-quantity'
   import { calculateWmsDocumentLineFinancial } from '@/utils/wms/document-line-financial'
+  import {
+    calculateTaxExclusiveUnitPrice,
+    calculateTaxInclusiveUnitPrice
+  } from '@/utils/finance/unit-price'
   import { getMaterialCategoryIds } from '@/utils/business/material-category'
   import { supportedIssueRequestTypes } from '@wms/views/shared/issue-request-types'
   import { readWmsDocumentImportRows } from '@/utils/wms/document-import'
@@ -1617,10 +1621,17 @@
   }
   function updatePrice(line: WmsInitialSalesLine, basis: 'untaxed' | 'taxed'): void {
     line.priceBasis = basis
-    const factor = 1 + Number(line.taxRate || 0) / 100
+    const taxRate = Number(line.taxRate || 0)
     if (basis === 'taxed')
-      line.unitPrice = round(Number(line.taxInclusiveUnitPrice || 0) / factor, 4)
-    else line.taxInclusiveUnitPrice = round(Number(line.unitPrice || 0) * factor, 4)
+      line.unitPrice = calculateTaxExclusiveUnitPrice(
+        Number(line.taxInclusiveUnitPrice || 0),
+        taxRate
+      )
+    else
+      line.taxInclusiveUnitPrice = calculateTaxInclusiveUnitPrice(
+        Number(line.unitPrice || 0),
+        taxRate
+      )
   }
   function makeLine(material: WmsInitialMaterial): WmsInitialSalesLine {
     return {
@@ -1956,7 +1967,7 @@
         line.quantity = amounts.quantity
         line.unitPrice = amounts.unitPrice
         line.taxRate = amounts.taxRate
-        line.taxInclusiveUnitPrice = round(line.unitPrice * (1 + line.taxRate / 100), 4)
+        line.taxInclusiveUnitPrice = calculateTaxInclusiveUnitPrice(line.unitPrice, line.taxRate)
         line.batchNo = String(row['批号'] || row.batchNo || '') || null
         importedLines.push(line)
       }

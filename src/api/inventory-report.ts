@@ -1,6 +1,6 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
-import { isPlainObject } from 'lodash-es'
 import { normalizeNullableText } from '@/utils/form/normalize'
+import { isPlainObjectRecord } from '@/utils/type-guards'
 import { isWmsPackComposition, type WmsPackComposition } from './packing-composition'
 
 export type WmsInventoryReportKind = 'stock' | 'movement' | 'ledger' | 'receipt-issue'
@@ -129,12 +129,12 @@ export interface WmsInventoryLocations {
   bins: WmsInventoryLocationOption[]
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return isPlainObject(value)
-}
-
 function isReportPage(value: unknown): value is WmsInventoryReportPage {
-  if (!isRecord(value) || !Array.isArray(value.data) || !Array.isArray(value.navigation)) {
+  if (
+    !isPlainObjectRecord(value) ||
+    !Array.isArray(value.data) ||
+    !Array.isArray(value.navigation)
+  ) {
     return false
   }
   if (typeof value.total !== 'number' || !Number.isFinite(value.total) || value.total < 0) {
@@ -143,7 +143,7 @@ function isReportPage(value: unknown): value is WmsInventoryReportPage {
   return (
     value.data.every(
       (row: unknown) =>
-        isRecord(row) &&
+        isPlainObjectRecord(row) &&
         isWmsPackComposition(row) &&
         typeof row.id === 'string' &&
         typeof row.batchId === 'string' &&
@@ -172,7 +172,7 @@ function isReportPage(value: unknown): value is WmsInventoryReportPage {
     ) &&
     value.navigation.every(
       (item: unknown) =>
-        isRecord(item) &&
+        isPlainObjectRecord(item) &&
         typeof item.warehouseId === 'string' &&
         (item.zoneId === null || typeof item.zoneId === 'string') &&
         (item.binId === null || typeof item.binId === 'string') &&
