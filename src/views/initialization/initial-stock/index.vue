@@ -71,7 +71,7 @@
   import type { ColumnOption } from '@/types'
   import {
     getDocumentDetailRowKey,
-    documentGroupSpan,
+    createDocumentGroupSpan,
     expandDocumentLines,
     loadAllLinePages,
     paginateDetailRows
@@ -114,22 +114,11 @@
     'stockStatus',
     'ownerType'
   ])
-  function mergeDocumentCells({
-    rowIndex,
-    column
-  }: {
-    rowIndex: number
-    column: { property?: string }
-  }) {
-    return displayMode.value === 'line'
-      ? documentGroupSpan(
-          (tableRef.value?.dataState.rows.value as StockListRow[] | undefined) ?? [],
-          rowIndex,
-          column.property,
-          lineProperties
-        )
-      : ([1, 1] as [number, number])
-  }
+  const mergeDocumentCells = createDocumentGroupSpan(
+    () => displayMode.value,
+    () => tableRef.value?.dataState.rows.value as readonly StockListRow[] | undefined,
+    lineProperties
+  )
   type StockListRow = WmsInitialStockDocument & {
     detailRowId?: string
     detailLine?: WmsInitialStockLine

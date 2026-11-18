@@ -99,6 +99,7 @@
       empty-text="没有匹配位置"
       :aria-label="kind === 'stock' ? '按仓库、库区和库位筛选库存' : '按仓库和库区筛选库存'"
       @node-click="handleNodeClick"
+      @keydown.capture="handleSelectableTreeKeydown"
     >
       <template #default="{ data: node }">
         <span class="inventory-location-navigator__node" :class="{ 'is-empty': node.count === 0 }">
@@ -130,6 +131,7 @@
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
+  import { handleSelectableTreeKeydown } from '@/utils/ui/selection-tree-keyboard'
   import type {
     WmsInventoryLocations,
     WmsInventoryNavigationCount,

@@ -7,7 +7,7 @@
         :title="document.documentNo"
         :description="`${document.warehouse?.warehouseName || '仓库'} · ${projectName}${document.constructionNo ? ` / ${document.constructionNo}` : ''}`"
       />
-      <ElTabs v-model="activeDetailTab"
+      <ElTabs v-model="activeDetailTab" class="art-card-xs art-overlay-tab-card"
         ><ElTabPane name="section0" label="组装信息" :lazy="false"
           ><div class="space-y-4"
             ><ArtSectionCard

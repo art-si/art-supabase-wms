@@ -140,7 +140,7 @@
               :data="lines"
               :columns="lineColumns"
               :pagination="false"
-              row-key="lineNo"
+              :row-key="getDraftLineKey"
               table-layout="fixed"
               @selection-change="onLineSelectionChange"
             >
@@ -544,6 +544,8 @@
     invalidate: invalidateBins
   } = useWarehouseBinOptions<WmsInitialStockLine, WmsBin>(() => lines.value, fetchWmsBins)
   const lines = ref<WmsInitialStockLine[]>([])
+  const draftLineKeys = new WeakMap<WmsInitialStockLine, string>()
+  let draftLineSequence = 0
   const selectedLines = ref<WmsInitialStockLine[]>([])
   const initialStockMenuId = ref('')
   const selectableOrganizationTree = computed(() => {
@@ -1030,6 +1032,16 @@
       serialNos: []
     }
   }
+  // 行号会随明细操作重排，表格焦点应跟随原记录。
+  function getDraftLineKey(line: WmsInitialStockLine): string {
+    const record = toRaw(line)
+    const existingKey = draftLineKeys.get(record)
+    if (existingKey !== undefined) return existingKey
+    const key = String(++draftLineSequence)
+    draftLineKeys.set(record, key)
+    return key
+  }
+
   function renumber(): void {
     lines.value.forEach((line, index) => {
       line.lineNo = (index + 1) * 10

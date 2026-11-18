@@ -61,7 +61,7 @@
   import type { ColumnOption } from '@/types'
   import {
     getDocumentDetailRowKey,
-    documentGroupSpan,
+    createDocumentGroupSpan,
     expandDocumentLines,
     loadAllLinePages,
     paginateDetailRows
@@ -82,6 +82,7 @@
   } from '@wms/api'
   import AssemblyDialog from './modules/assembly-dialog.vue'
   import AssemblyDetailDrawer from './modules/assembly-detail-drawer.vue'
+  import { toWarehouseOption } from '../../shared/warehouse-option'
 
   defineOptions({ name: 'WmsAssembly' })
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
@@ -98,22 +99,11 @@
     'detailQuantity',
     'detailUnitCost'
   ])
-  function mergeDocumentCells({
-    rowIndex,
-    column
-  }: {
-    rowIndex: number
-    column: { property?: string }
-  }) {
-    return displayMode.value === 'line'
-      ? documentGroupSpan(
-          (tableRef.value?.dataState.rows.value as AssemblyListRow[] | undefined) ?? [],
-          rowIndex,
-          column.property,
-          lineProperties
-        )
-      : ([1, 1] as [number, number])
-  }
+  const mergeDocumentCells = createDocumentGroupSpan(
+    () => displayMode.value,
+    () => tableRef.value?.dataState.rows.value as readonly AssemblyListRow[] | undefined,
+    lineProperties
+  )
   const dialogRef = ref<InstanceType<typeof AssemblyDialog>>()
   const detailRef = ref<InstanceType<typeof AssemblyDetailDrawer>>()
   const warehouses = ref<WmsWarehouse[]>([])
@@ -164,7 +154,7 @@
         placeholder: '全部仓库',
         options: warehouses.value
           .filter((row) => !filterTenantId.value || row.tenantId === filterTenantId.value)
-          .map((row) => ({ label: `${row.warehouseName} · ${row.warehouseCode}`, value: row.id }))
+          .map(toWarehouseOption)
       }
     },
     {

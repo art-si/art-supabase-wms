@@ -131,7 +131,7 @@
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type { ColumnOption } from '@/types'
   import {
-    documentGroupSpan,
+    createDocumentGroupSpan,
     groupDocumentLines,
     loadAllLinePages
   } from '@/utils/business/document-detail-list'
@@ -179,22 +179,11 @@
     'stockStatus',
     'gift'
   ])
-  function mergeDocumentCells({
-    rowIndex,
-    column
-  }: {
-    rowIndex: number
-    column: { property?: string }
-  }) {
-    return displayMode.value === 'line'
-      ? documentGroupSpan(
-          (tableRef.value?.dataState.rows.value as WmsTransferRequestRow[] | undefined) ?? [],
-          rowIndex,
-          column.property,
-          lineProperties
-        )
-      : ([1, 1] as [number, number])
-  }
+  const mergeDocumentCells = createDocumentGroupSpan(
+    () => displayMode.value,
+    () => tableRef.value?.dataState.rows.value as readonly WmsTransferRequestRow[] | undefined,
+    lineProperties
+  )
   const drawerRef = ref<InstanceType<typeof TransferRequestDrawer>>()
   const pushDialogRef = ref<ArtDialogExpose>()
   const pushResultDialogRef = ref<ArtDialogExpose>()

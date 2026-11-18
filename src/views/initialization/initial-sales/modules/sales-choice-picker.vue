@@ -14,7 +14,7 @@
     description-key="materialDescription"
     disabled-key="selectionDisabled"
     :context-key="`${tenantId}:${organizationId}:${warehouseId}:${kind}`"
-    @update:model-value="selectedIds = Array.isArray($event) ? $event.map(String) : []"
+    @update:model-value="selectedIds = normalizeStringList($event)"
     @update:selected-data="selectedRows = $event"
     @confirm="confirm"
   />
@@ -27,6 +27,7 @@
     DataSelectFetchParams
   } from '@/components/core/forms/art-data-select/types'
   import { fetchWmsSalesChoices, type WmsSalesChoice, type WmsSalesSourceKind } from '@wms/api'
+  import { normalizeStringList } from '@/utils/form/normalize'
   import { formatCurrencyValue } from '@/utils/ui/format'
 
   const props = defineProps<{

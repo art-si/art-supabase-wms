@@ -29,7 +29,7 @@
               : '暂存 → 提交 → 审核记账 → 可按原行退回'
         "
       />
-      <ElTabs v-model="activeDocumentTab">
+      <ElTabs v-model="activeDocumentTab" class="art-card-xs art-overlay-tab-card">
         <ElTabPane name="header" label="单据信息">
           <ArtSectionCard
             title="单据表头"
@@ -49,6 +49,7 @@
               v-model="form"
               :items="headerItems"
               :rules="headerRules"
+              root-class="px-0! pt-0!"
               :span="12"
               :gutter="20"
               label-position="top"
@@ -190,7 +191,7 @@
         :title="lineForm.materialDescription || '调拨明细'"
         :description="`${lineForm.materialCode || '未选择物料'} · ${lineForm.batchNo || '无批号'}`"
       />
-      <ElTabs v-if="readonly" v-model="activeLineTab">
+      <ElTabs v-if="readonly" v-model="activeLineTab" class="art-card-xs art-overlay-tab-card">
         <ElTabPane
           v-for="section in lineViewSections"
           :key="section.key"
@@ -252,6 +253,7 @@
       :table-props="{
         rowKey: 'lineId',
         tableLayout: 'fixed',
+        height: 'clamp(320px, 60vh, 480px)',
         emptyText: '暂无可选调拨申请明细',
         emptyDescription: '请核对申请单审核状态或调整筛选条件。'
       }"
@@ -275,6 +277,7 @@
     readTransferStockImportRows
   } from './transfer-stock-import'
   import { replaceReactiveModel } from '@/utils/form/model'
+  import { toWarehouseOption } from '../../shared/warehouse-option'
   import { convertWmsMaterialQuantity } from '@/utils/wms/material-quantity'
   import { WMS_STOCK_TYPE_LABELS } from '@/utils/wms/stock-type'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
@@ -1272,10 +1275,7 @@
         [
           ...warehouses.value
             .filter((row) => row.status === 'enabled' && row.organizationId === organizationId)
-            .map((row) => ({
-              label: `${row.warehouseName} · ${row.warehouseCode}`,
-              value: row.id
-            })),
+            .map(toWarehouseOption),
           ...(selectedId
             ? [
                 {

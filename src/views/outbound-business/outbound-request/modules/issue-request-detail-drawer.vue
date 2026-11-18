@@ -7,7 +7,7 @@
         :title="request.documentNo"
         :description="`${request.workOrder?.workOrderNo || request.workOrderNo || '未关联工单'} · ${request.warehouse?.warehouseName || request.warehouseName || '未填写仓库'} · ${projectName}${request.constructionNo ? ` / ${request.constructionNo}` : ''}`"
       />
-      <ElTabs v-model="activeDetailTab"
+      <ElTabs v-model="activeDetailTab" class="art-card-xs art-overlay-tab-card"
         ><ElTabPane name="section0" label="申请信息" :lazy="false"
           ><div class="space-y-4"
             ><ArtSectionCard title="申请信息" subtitle="核对申请范围与领料仓库，再按明细办理出库。">

@@ -70,7 +70,7 @@
   import type { ColumnOption } from '@/types'
   import {
     getDocumentDetailRowKey,
-    documentGroupSpan,
+    createDocumentGroupSpan,
     expandDocumentLines,
     loadAllLinePages,
     paginateDetailRows
@@ -97,6 +97,7 @@
   import CountCreateDialog from './modules/count-create-dialog.vue'
   import CountDetailDrawer from './modules/count-detail-drawer.vue'
   import { countLineVariance } from './count-variance'
+  import { toWarehouseOption } from '../../shared/warehouse-option'
 
   const wmsCountStatusOptions = useDictionaryOptions('wmsCountStatus')
 
@@ -119,22 +120,11 @@
     'detailGain',
     'detailLoss'
   ])
-  function mergeDocumentCells({
-    rowIndex,
-    column
-  }: {
-    rowIndex: number
-    column: { property?: string }
-  }) {
-    return displayMode.value === 'line'
-      ? documentGroupSpan(
-          (tableRef.value?.dataState.rows.value as CountPlanListRow[] | undefined) ?? [],
-          rowIndex,
-          column.property,
-          lineProperties
-        )
-      : ([1, 1] as [number, number])
-  }
+  const mergeDocumentCells = createDocumentGroupSpan(
+    () => displayMode.value,
+    () => tableRef.value?.dataState.rows.value as readonly CountPlanListRow[] | undefined,
+    lineProperties
+  )
   const createRef = ref<InstanceType<typeof CountCreateDialog>>()
   const detailRef = ref<InstanceType<typeof CountDetailDrawer>>()
   const warehouses = ref<WmsWarehouse[]>([])
@@ -216,7 +206,7 @@
               (!filterTenantId.value || row.tenantId === filterTenantId.value) &&
               (!search.value.organizationId || row.organizationId === search.value.organizationId)
           )
-          .map((row) => ({ label: `${row.warehouseName} · ${row.warehouseCode}`, value: row.id }))
+          .map(toWarehouseOption)
       }
     },
     {

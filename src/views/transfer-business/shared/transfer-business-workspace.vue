@@ -147,7 +147,7 @@
   import { useAuth } from '@/hooks/core/useAuth'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import {
-    documentGroupSpan,
+    createDocumentGroupSpan,
     groupDocumentLines,
     loadAllLinePages
   } from '@/utils/business/document-detail-list'
@@ -374,22 +374,11 @@
     'inTransitQuantity',
     'stepStatus'
   ])
-  function mergeDocumentCells({
-    rowIndex,
-    column
-  }: {
-    rowIndex: number
-    column: { property?: string }
-  }) {
-    return displayMode.value === 'line'
-      ? documentGroupSpan(
-          (tableRef.value?.dataState.rows.value as WorkspaceRow[] | undefined) ?? [],
-          rowIndex,
-          column.property,
-          lineProperties
-        )
-      : ([1, 1] as [number, number])
-  }
+  const mergeDocumentCells = createDocumentGroupSpan(
+    () => displayMode.value,
+    () => tableRef.value?.dataState.rows.value as readonly WorkspaceRow[] | undefined,
+    lineProperties
+  )
   function isBusinessRow(value: unknown): value is WmsTransferBusinessRow {
     if (typeof value !== 'object' || value === null) return false
     return (

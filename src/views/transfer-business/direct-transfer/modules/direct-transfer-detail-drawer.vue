@@ -27,6 +27,7 @@
       </div>
       <ElTabs
         v-model="activeDetailTab"
+        class="art-card-xs art-overlay-tab-card"
         :class="!transfer.serialMovements.length ? '[&_.el-tabs__header]:hidden' : undefined"
         ><ElTabPane name="section0" label="调拨信息" :lazy="false"
           ><div class="space-y-4"

@@ -60,7 +60,7 @@
   import type { ColumnOption } from '@/types'
   import {
     getDocumentDetailRowKey,
-    documentGroupSpan,
+    createDocumentGroupSpan,
     expandDocumentLines,
     loadAllLinePages,
     paginateDetailRows
@@ -95,22 +95,11 @@
     detailGroupStart?: boolean
   }
   const lineProperties = new Set(['detailSide', 'detailMaterial', 'detailBatch', 'detailQuantity'])
-  function mergeDocumentCells({
-    rowIndex,
-    column
-  }: {
-    rowIndex: number
-    column: { property?: string }
-  }) {
-    return displayMode.value === 'line'
-      ? documentGroupSpan(
-          (tableRef.value?.dataState.rows.value as AdjustmentListRow[] | undefined) ?? [],
-          rowIndex,
-          column.property,
-          lineProperties
-        )
-      : ([1, 1] as [number, number])
-  }
+  const mergeDocumentCells = createDocumentGroupSpan(
+    () => displayMode.value,
+    () => tableRef.value?.dataState.rows.value as readonly AdjustmentListRow[] | undefined,
+    lineProperties
+  )
   const dialogRef = ref<InstanceType<typeof AdjustmentDialog>>()
   const projects = ref<WmsProject[]>([])
   const sections = ref<WmsProjectSection[]>([])

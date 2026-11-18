@@ -50,7 +50,9 @@
           spanMethod: mergeDocumentCells,
           tableLayout: 'fixed',
           emptyText: `当前范围暂无${displayTitle}`,
-          emptyDescription: '新增申请并填写申请类型、日期、项目、物料和数量。'
+          emptyDescription: hasAuth('WmsIssueRequest:Add')
+            ? '新增申请并填写申请类型、日期、项目、物料和数量。'
+            : '可调整申请日期、项目或物料条件后再查询。'
         }"
         focusable
         @selection-change="onSelectionChange"
@@ -122,7 +124,7 @@
   import type { ColumnOption } from '@/types'
   import {
     getDocumentDetailRowKey,
-    documentGroupSpan,
+    createDocumentGroupSpan,
     expandDocumentLines,
     loadAllLinePages,
     paginateDetailRows
@@ -240,22 +242,11 @@
     'detailIssuedQuantity',
     'detailUnit'
   ])
-  function mergeDocumentCells({
-    rowIndex,
-    column
-  }: {
-    rowIndex: number
-    column: { property?: string }
-  }) {
-    return displayMode.value === 'line'
-      ? documentGroupSpan(
-          (tableRef.value?.dataState.rows.value as IssueListRow[] | undefined) ?? [],
-          rowIndex,
-          column.property,
-          lineProperties
-        )
-      : ([1, 1] as [number, number])
-  }
+  const mergeDocumentCells = createDocumentGroupSpan(
+    () => displayMode.value,
+    () => tableRef.value?.dataState.rows.value as readonly IssueListRow[] | undefined,
+    lineProperties
+  )
   const createRef = ref<InstanceType<typeof IssueRequestCreateDialog>>()
   const otherOutboundRef = ref<InstanceType<typeof InitialSalesDrawer>>()
   const selectedRequests = ref<Array<{ id: string; lineId?: string }>>([])

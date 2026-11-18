@@ -49,6 +49,7 @@
       </div>
       <ElTabs
         v-model="activeDetailTab"
+        class="art-card-xs art-overlay-tab-card"
         :class="plan.status !== 'posted' ? '[&_.el-tabs__header]:hidden' : undefined"
         ><ElTabPane v-if="plan.status === 'posted'" name="section0" label="盘盈盘亏单" :lazy="false"
           ><div class="space-y-4"

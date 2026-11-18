@@ -22,20 +22,6 @@
           >
         </div>
       </ElAlert>
-      <div v-if="request?.projectId" class="flex flex-wrap items-center gap-3">
-        <span class="text-sm font-medium">库存来源</span>
-        <ElSegmented
-          v-model="stockScope"
-          :options="[
-            { label: '本项目库存', value: 'project' },
-            { label: '公共库存', value: 'public' }
-          ]"
-          @change="clearSelectedBatch"
-        />
-        <span class="text-xs text-[var(--el-text-color-secondary)]">
-          公共库存领用后，流水仍关联当前工单与施工号。
-        </span>
-      </div>
       <ArtForm
         ref="formRef"
         v-model="form"
@@ -44,8 +30,7 @@
         :span="12"
         :gutter="20"
         label-position="top"
-      >
-      </ArtForm>
+      />
       <ElAlert v-if="selectedBatch" type="success" :closable="false" show-icon>
         {{ selectedBatch.material?.materialName }} · {{ selectedBatch.batchNo }} · 在库
         {{ selectedBatch.quantity }} · {{ selectedBatch.bin?.binCode || '仓库直存' }}
@@ -126,8 +111,13 @@
   const loadError = ref(false)
   const loadingSerials = ref(false)
   let serialRequest = 0
-  const stockScope = ref<'project' | 'public'>('project')
-  const form = ref({ batchId: '', quantity: 1, serialIds: [] as string[], remark: '' })
+  const form = ref({
+    stockScope: 'project' as 'project' | 'public',
+    batchId: '',
+    quantity: 1,
+    serialIds: [] as string[],
+    remark: ''
+  })
   const remaining = computed(() =>
     Math.max(0, (line.value?.requestedQuantity || 0) - (line.value?.issuedQuantity || 0))
   )
@@ -155,6 +145,19 @@
   ]
   const items = computed<FormItem[]>(() => [
     {
+      key: 'stockScope',
+      label: '库存来源',
+      type: 'segment',
+      span: 24,
+      hidden: !request.value?.projectId,
+      options: [
+        { label: '本项目库存', value: 'project' },
+        { label: '公共库存', value: 'public' }
+      ],
+      props: { onChange: clearSelectedBatch },
+      description: '公共库存领用后，流水仍关联当前工单与施工号。'
+    },
+    {
       key: 'batchId',
       label: '来源批次',
       span: 24,
@@ -171,7 +174,7 @@
           columns: batchColumns,
           title: '选择领料批次',
           subtitle:
-            stockScope.value === 'project'
+            form.value.stockScope === 'project'
               ? '仅显示当前项目施工号的在库物料'
               : '仅显示申请仓库内未归属项目的在库物料',
           placeholder: '选择来源库存批次',
@@ -246,17 +249,15 @@
     const doc = request.value
     const item = line.value
     if (!doc || !item) return { data: [], total: 0 }
+    const projectId = form.value.stockScope === 'project' ? doc.projectId || undefined : undefined
     const result = await fetchWmsStockPage({
       tenantId: doc.tenantId,
       warehouseId: doc.warehouseId,
       organizationId: doc.organizationId,
       materialId: item.materialId,
-      projectId: doc.projectId && stockScope.value === 'project' ? doc.projectId : undefined,
-      publicOnly: !doc.projectId || stockScope.value === 'public',
-      constructionNo:
-        doc.projectId && stockScope.value === 'project'
-          ? doc.constructionNo || undefined
-          : undefined,
+      projectId,
+      publicOnly: !projectId,
+      constructionNo: projectId ? doc.constructionNo || undefined : undefined,
       positiveOnly: true,
       status: 'normal',
       keyword: params.keyword,
@@ -389,9 +390,9 @@
     request.value = data.request
     line.value = data.line
     projectName.value = data.projectName
-    stockScope.value = 'project'
+    form.value.stockScope = 'project'
     clearSelectedBatch()
-    Object.assign(form.value, { batchId: '', quantity: 1, serialIds: [], remark: '' })
+    form.value.remark = ''
     await dialogRef.value?.handleOpen(data, {
       title: '办理领料出库',
       subtitle: '按批次与 SN 领用，申请余额同步核销',

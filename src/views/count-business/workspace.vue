@@ -69,7 +69,7 @@
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type { ColumnOption } from '@/types'
   import {
-    documentGroupSpan,
+    createDocumentGroupSpan,
     groupDocumentLines,
     loadAllLinePages
   } from '@/utils/business/document-detail-list'
@@ -108,22 +108,11 @@
     'keeperName',
     'gift'
   ])
-  function mergeDocumentCells({
-    rowIndex,
-    column
-  }: {
-    rowIndex: number
-    column: { property?: string }
-  }) {
-    return displayMode.value === 'line'
-      ? documentGroupSpan(
-          (tableRef.value?.dataState.rows.value as WmsCountAdjustmentRow[] | undefined) ?? [],
-          rowIndex,
-          column.property,
-          lineProperties
-        )
-      : ([1, 1] as [number, number])
-  }
+  const mergeDocumentCells = createDocumentGroupSpan(
+    () => displayMode.value,
+    () => tableRef.value?.dataState.rows.value as readonly WmsCountAdjustmentRow[] | undefined,
+    lineProperties
+  )
   const drawerRef = ref<InstanceType<typeof CountAdjustmentDrawer>>()
   const workingId = ref<string>()
   const title = computed(() => (props.kind === 'gain' ? '盘盈单' : '盘亏单'))

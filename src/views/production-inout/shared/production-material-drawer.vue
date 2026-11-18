@@ -655,7 +655,7 @@
           </ArtTable>
         </ArtSectionCard>
       </DefineDocumentLines>
-      <ElTabs v-if="mode === 'view'" v-model="activeTab">
+      <ElTabs v-if="mode === 'view'" v-model="activeTab" class="art-card-xs art-overlay-tab-card">
         <ElTabPane name="identity" label="单据信息">
           <ArtSectionCard
             title="单据表头"
@@ -776,7 +776,7 @@
           :type="canSaveAndPost ? 'default' : 'primary'"
           :loading="loading && !postImmediately"
           :disabled="loading || saveBlocked"
-          @click="confirmSave(false)"
+          @click="confirmSave(false, $event)"
           >{{ mode === 'copy' ? '保存副本' : '保存' }}</ElButton
         >
         <ElButton
@@ -784,7 +784,7 @@
           type="primary"
           :loading="loading && postImmediately"
           :disabled="loading || saveBlocked"
-          @click="confirmSave(true)"
+          @click="confirmSave(true, $event)"
           >保存并入库</ElButton
         >
       </div>
@@ -3088,12 +3088,12 @@
       }
     }
   }
-  async function confirmSave(post: boolean): Promise<void> {
+  async function confirmSave(post: boolean, event: MouseEvent): Promise<void> {
     if (saveBlocked.value || unref(drawerRef.value?.confirmLoading)) return
     if (post && !canSaveAndPost.value) return
     postImmediately.value = post
     try {
-      await drawerRef.value?.handleConfirm()
+      await drawerRef.value?.handleConfirm(event)
     } finally {
       postImmediately.value = false
     }

@@ -1,1 +1,0 @@
-var e=(e,t)=>t?.signal?e.abortSignal(t.signal):e;export{e as t};

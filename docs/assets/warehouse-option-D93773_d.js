@@ -1,0 +1,1 @@
+function e({id:e,warehouseCode:t,warehouseName:n}){return{value:e,label:t?`${t} · ${n}`:n}}export{e as t};

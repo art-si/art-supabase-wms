@@ -31,7 +31,7 @@
         :columns-factory="columnsFactory"
         :header-actions="headerActions"
         header-actions-placement="workspace"
-        :search-bar-props="{ span: 6, labelWidth: 82 }"
+        :search-bar-props="{ span: 6 }"
         :table-props="{
           rowKey: 'id',
           tableLayout: 'fixed',

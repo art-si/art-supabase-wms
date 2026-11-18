@@ -19,7 +19,7 @@
         </template>
       </ArtEntitySummary>
 
-      <ElTabs v-model="activeDetailTab"
+      <ElTabs v-model="activeDetailTab" class="art-card-xs art-overlay-tab-card"
         ><ElTabPane name="section0" label="基本信息" :lazy="false"
           ><div class="space-y-4"
             ><ArtSectionCard

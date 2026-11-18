@@ -55,6 +55,7 @@
   import ArtMaterialSelect from '@/components/business/art-material-select/index.vue'
   import type { DataSelectFetchParams } from '@/components/core/forms/art-data-select/types'
   import { normalizeNullableText } from '@/utils/form/normalize'
+  import { toWarehouseOption } from '../../../shared/warehouse-option'
   import TreeUtils from '@/utils/tree'
   import { buildOrganizationSelectTree } from '@/utils/organization-options'
   import {
@@ -291,10 +292,7 @@
       label: '仓库',
       type: 'select',
       span: 12,
-      options: scopedWarehouses.value.map((row) => ({
-        label: `${row.warehouseName} · ${row.warehouseCode}`,
-        value: row.id
-      })),
+      options: scopedWarehouses.value.map(toWarehouseOption),
       props: {
         multiple: true,
         filterable: true,
