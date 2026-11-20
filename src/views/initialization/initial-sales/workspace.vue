@@ -103,6 +103,7 @@
   import { useRouteDocumentDrawer } from '@/hooks/core/useRouteDocumentDrawer'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { ElMessage, ElTag } from 'element-plus'
+  import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
   import { useAuth } from '@/hooks/core/useAuth'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { useDocumentBulkDelete } from '@/hooks/business/useDocumentBulkDelete'
@@ -1061,9 +1062,15 @@
         prop: 'stockType',
         label: '库存类型',
         minWidth: 100,
-        formatter: (row) =>
-          userStore.getDictItemByValue('wmsInitialStockType', row.stockType)?.label ||
-          '未识别库存类型'
+        formatter: (row) => (
+          <ArtDictDisplay
+            dictCode="wmsInitialStockType"
+            value={row.stockType}
+            display="text"
+            emptyText="未识别库存类型"
+            unknownText="未识别库存类型"
+          />
+        )
       },
       {
         prop: 'stockStatus',
